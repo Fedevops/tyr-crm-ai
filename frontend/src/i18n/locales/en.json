@@ -1,0 +1,70 @@
+{
+  "common": {
+    "welcome": "Welcome",
+    "logout": "Logout",
+    "save": "Save",
+    "cancel": "Cancel",
+    "delete": "Delete",
+    "edit": "Edit",
+    "create": "Create",
+    "loading": "Loading...",
+    "error": "Error",
+    "success": "Success"
+  },
+  "auth": {
+    "login": "Login",
+    "register": "Register",
+    "email": "Email",
+    "password": "Password",
+    "fullName": "Full Name",
+    "tenantName": "Company Name",
+    "loginTitle": "Login to your account",
+    "registerTitle": "Create your account",
+    "noAccount": "Don't have an account?",
+    "hasAccount": "Already have an account?"
+  },
+  "navigation": {
+    "dashboard": "Dashboard",
+    "playbooks": "Playbooks",
+    "leads": "Leads",
+    "settings": "Settings"
+  },
+  "dashboard": {
+    "title": "Dashboard",
+    "welcomeBack": "Welcome back",
+    "totalLeads": "Total Leads",
+    "activePlaybooks": "Active Playbooks",
+    "suggestions": "Agent Suggestions"
+  },
+  "playbooks": {
+    "title": "Playbooks",
+    "createNew": "Create New Playbook",
+    "name": "Name",
+    "description": "Description",
+    "content": "Content",
+    "active": "Active",
+    "inactive": "Inactive",
+    "noPlaybooks": "No playbooks found",
+    "createFirst": "Create your first playbook"
+  },
+  "onboarding": {
+    "title": "Initial Setup",
+    "step1": "Company Profile",
+    "step2": "ICP (Ideal Customer Profile)",
+    "step3": "API Keys",
+    "next": "Next",
+    "previous": "Previous",
+    "finish": "Finish",
+    "companyInfo": "Company Information",
+    "industry": "Industry",
+    "companySize": "Company Size",
+    "targetMarket": "Target Market",
+    "icpDescription": "Describe your ICP",
+    "apiKeys": "API Keys (optional)"
+  }
+}
+
+
+
+
+
