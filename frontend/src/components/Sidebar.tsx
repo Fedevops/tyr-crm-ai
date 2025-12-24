@@ -1,12 +1,13 @@
 import { Link, useLocation } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
-import { LayoutDashboard, BookOpen, Users, Settings, LogOut, ListChecks, Workflow } from 'lucide-react'
+import { LayoutDashboard, BookOpen, Users, Settings, LogOut, ListChecks, Workflow, Search } from 'lucide-react'
 import { useAuth } from '@/contexts/AuthContext'
 import { Button } from './ui/button'
 import { cn } from '@/lib/utils'
 
 const navigation = [
   { name: 'dashboard', href: '/dashboard', icon: LayoutDashboard },
+  { name: 'prospecting', href: '/prospecting', icon: Search },
   { name: 'leads', href: '/leads', icon: Users },
   { name: 'tasks', href: '/tasks', icon: ListChecks },
   { name: 'sequences', href: '/sequences', icon: Workflow },
@@ -20,9 +21,30 @@ export function Sidebar() {
   const { logout } = useAuth()
 
   return (
-    <div className="flex h-screen w-64 flex-col border-r bg-card">
-      <div className="flex h-16 items-center border-b px-6">
-        <h1 className="text-xl font-bold">TYR CRM AI</h1>
+    <div className="flex h-screen w-64 flex-col border-r bg-card shadow-sm">
+      <div className="flex h-20 items-center justify-center border-b px-6 bg-gradient-to-r from-blue-50/50 via-indigo-50/50 to-purple-50/50 dark:from-blue-950/20 dark:via-indigo-950/20 dark:to-purple-950/20">
+        <Link to="/dashboard" className="flex items-center gap-3 group transition-all duration-200 hover:opacity-80">
+          <div className="relative flex-shrink-0">
+            <img 
+              src="/assets/LOGO AZUL.png" 
+              alt="TYR CRM AI" 
+              className="h-24 w-auto dark:hidden transition-all duration-300 group-hover:scale-110 drop-shadow-sm"
+            />
+            <img 
+              src="/assets/LOGO BRANCO.svg" 
+              alt="TYR CRM AI" 
+              className="h-24 w-auto hidden dark:block transition-all duration-300 group-hover:scale-110 drop-shadow-sm"
+            />
+          </div>
+          <div className="flex flex-col">
+            {/* <span className="text-lg font-bold bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 dark:from-blue-400 dark:via-indigo-400 dark:to-purple-400 bg-clip-text text-transparent leading-tight">
+              TYR CRM
+            </span>
+            <span className="text-xs font-medium text-muted-foreground -mt-1">
+              AI
+            </span> */}
+          </div>
+        </Link>
       </div>
       <nav className="flex-1 space-y-1 px-3 py-4">
         {navigation.map((item) => {

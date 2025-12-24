@@ -28,8 +28,6 @@ api.interceptors.request.use((config) => {
 })
 
 // Handle 401 errors (unauthorized)
-// NOTA: Não redirecionamos automaticamente aqui para evitar conflitos com ProtectedRoute
-// O ProtectedRoute cuida do redirecionamento baseado no estado de autenticação
 api.interceptors.response.use(
   (response) => response,
   (error) => {
@@ -37,23 +35,34 @@ api.interceptors.response.use(
       const url = error.config?.url || ''
       const isAuthEndpoint = url.includes('/api/auth/')
       
-      // Para endpoints de autenticação, apenas rejeitar o erro
+      // Para endpoints de autenticação (login, register), apenas rejeitar o erro
       if (isAuthEndpoint) {
         return Promise.reject(error)
       }
       
-      // Para outros endpoints com 401, verificar se realmente há um token
-      // antes de limpar (pode ser que o token não foi enviado)
+      // Para outros endpoints com 401, verificar se há um token
       const token = localStorage.getItem('token')
-      console.log('Erro 401 em', url, 'Token no localStorage:', token ? 'EXISTE' : 'NÃO EXISTE')
       
       if (token) {
-        // Token existe mas foi rejeitado - pode estar expirado ou inválido
-        console.log('Token existe mas foi rejeitado. Pode estar expirado ou inválido.')
+        // Token existe mas foi rejeitado - está expirado ou inválido
+        console.log('⚠️ Token expirado ou inválido. Limpando autenticação...')
+        console.log('URL:', url)
         console.log('Detalhes do erro:', error.response?.data)
         
-        // Não limpar automaticamente - deixar o componente decidir
-        // Mas logar para debug
+        // Limpar token do localStorage
+        localStorage.removeItem('token')
+        
+        // Disparar evento customizado para notificar outros componentes
+        window.dispatchEvent(new CustomEvent('auth:token-expired'))
+        
+        // Redirecionar para login apenas se não estiver já na página de login
+        if (!window.location.pathname.includes('/login')) {
+          console.log('Redirecionando para login...')
+          // Usar setTimeout para evitar problemas com navegação durante tratamento de erro
+          setTimeout(() => {
+            window.location.href = '/login'
+          }, 100)
+        }
       } else {
         console.log('Token não existe no localStorage. Requisição foi feita sem autenticação.')
       }

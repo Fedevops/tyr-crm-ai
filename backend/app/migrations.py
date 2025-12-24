@@ -64,3 +64,4 @@ def migrate_lead_table():
 if __name__ == "__main__":
     migrate_lead_table()
 
+

@@ -1,19 +1,218 @@
-from typing import List, Optional
+from typing import List, Optional, Dict, Any, Union
+from enum import Enum
 import csv
 import io
 import json
+import asyncio
 from datetime import datetime
-from fastapi import APIRouter, Depends, HTTPException, status, Query, UploadFile, File
+from fastapi import APIRouter, Depends, HTTPException, status, Query, UploadFile, File, BackgroundTasks, Body
 from fastapi.responses import Response, JSONResponse
 from sqlmodel import Session, select, or_, and_, func
+from pydantic import BaseModel, Field
 from app.database import get_session
 from app.models import (
     Lead, LeadCreate, LeadResponse, LeadStatus, User,
     LeadComment, LeadCommentCreate, LeadCommentResponse
 )
 from app.dependencies import get_current_active_user
+from app.services.enrichment_service import enrich_lead
+import pandas as pd
+import logging
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
+
+# Modelos para filtros avançados
+class FilterOperator(str, Enum):
+    """Operadores disponíveis para filtros"""
+    # Operadores numéricos e de data
+    EQUALS = "equals"
+    NOT_EQUALS = "not_equals"
+    GREATER_THAN = "greater_than"
+    LESS_THAN = "less_than"
+    GREATER_THAN_OR_EQUAL = "greater_than_or_equal"
+    LESS_THAN_OR_EQUAL = "less_than_or_equal"
+    BETWEEN = "between"
+    
+    # Operadores de string
+    CONTAINS = "contains"
+    NOT_CONTAINS = "not_contains"
+    STARTS_WITH = "starts_with"
+    ENDS_WITH = "ends_with"
+    
+    # Operadores especiais
+    IS_NULL = "is_null"
+    IS_NOT_NULL = "is_not_null"
+    IN = "in"
+    NOT_IN = "not_in"
+
+
+class LeadFilter(BaseModel):
+    """Filtro individual para um campo"""
+    field: str = Field(..., description="Nome do campo do Lead")
+    operator: str = Field(..., description="Operador de comparação")
+    value: Optional[Union[str, int, float, bool, List[Any]]] = Field(None, description="Valor para comparação")
+    value2: Optional[Union[str, int, float]] = Field(None, description="Segundo valor (para operador BETWEEN)")
+
+
+class LeadFiltersRequest(BaseModel):
+    """Request com múltiplos filtros"""
+    filters: List[LeadFilter] = Field(default_factory=list, description="Lista de filtros")
+    logic: str = Field("AND", description="Lógica de combinação: 'AND' ou 'OR'")
+    search: Optional[str] = Field(None, description="Busca geral em name, email, company")
+    status: Optional[LeadStatus] = None
+    assigned_to: Optional[int] = None
+    source: Optional[str] = None
+    min_score: Optional[int] = None
+    max_score: Optional[int] = None
+    skip: int = 0
+    limit: int = 100
+
+
+# Mapeamento de campos e seus tipos
+FIELD_TYPES: Dict[str, str] = {
+    # Campos numéricos
+    "id": "number",
+    "score": "number",
+    "capital_social": "number",
+    "assigned_to": "number",
+    
+    # Campos de data
+    "data_abertura": "date",
+    "data_situacao_cadastral": "date",
+    "data_opcao_simples": "date",
+    "data_exclusao_simples": "date",
+    "last_contact": "date",
+    "next_followup": "date",
+    "created_at": "date",
+    "updated_at": "date",
+    
+    # Campos booleanos
+    "simples_nacional": "boolean",
+    
+    # Campos de enum/dropdown
+    "status": "enum",
+    "situacao_cadastral": "enum",
+    "porte": "enum",
+    "natureza_juridica": "enum",
+    "uf": "enum",
+    
+    # Campos de string (padrão)
+    # Todos os outros campos são tratados como string
+}
+
+
+def get_field_type(field_name: str) -> str:
+    """Retorna o tipo do campo"""
+    return FIELD_TYPES.get(field_name, "string")
+
+
+@router.get("/filter-fields")
+async def get_filter_fields():
+    """Retorna os campos disponíveis para filtros e seus tipos"""
+    fields_info = []
+    
+    # Campos básicos
+    basic_fields = [
+        ("name", "string", "Nome"),
+        ("email", "string", "E-mail"),
+        ("phone", "string", "Telefone"),
+        ("company", "string", "Empresa"),
+        ("position", "string", "Cargo"),
+        ("status", "enum", "Status"),
+        ("source", "string", "Origem"),
+        ("score", "number", "Score"),
+    ]
+    
+    # Campos Casa dos Dados
+    fiscal_fields = [
+        ("cnpj", "string", "CNPJ"),
+        ("razao_social", "string", "Razão Social"),
+        ("nome_fantasia", "string", "Nome Fantasia"),
+        ("data_abertura", "date", "Data de Abertura"),
+        ("capital_social", "number", "Capital Social"),
+        ("situacao_cadastral", "enum", "Situação Cadastral"),
+        ("porte", "enum", "Porte"),
+        ("natureza_juridica", "enum", "Natureza Jurídica"),
+        ("municipio", "string", "Município"),
+        ("uf", "enum", "UF"),
+        ("cnae_principal_descricao", "string", "CNAE Principal"),
+        ("simples_nacional", "boolean", "Simples Nacional"),
+    ]
+    
+    # Campos de enriquecimento
+    enrichment_fields = [
+        ("city", "string", "Cidade"),
+        ("state", "string", "Estado"),
+        ("industry", "string", "Indústria"),
+        ("company_size", "string", "Tamanho da Empresa"),
+    ]
+    
+    all_fields = basic_fields + fiscal_fields + enrichment_fields
+    
+    for field_name, field_type, label in all_fields:
+        operators = []
+        
+        if field_type == "number":
+            operators = [
+                {"value": "equals", "label": "Igual a"},
+                {"value": "not_equals", "label": "Diferente de"},
+                {"value": "greater_than", "label": "Maior que"},
+                {"value": "less_than", "label": "Menor que"},
+                {"value": "greater_than_or_equal", "label": "Maior ou igual a"},
+                {"value": "less_than_or_equal", "label": "Menor ou igual a"},
+                {"value": "between", "label": "Entre"},
+                {"value": "is_null", "label": "É nulo"},
+                {"value": "is_not_null", "label": "Não é nulo"},
+            ]
+        elif field_type == "date":
+            operators = [
+                {"value": "equals", "label": "Igual a"},
+                {"value": "not_equals", "label": "Diferente de"},
+                {"value": "greater_than", "label": "Depois de"},
+                {"value": "less_than", "label": "Antes de"},
+                {"value": "between", "label": "Entre"},
+                {"value": "is_null", "label": "É nulo"},
+                {"value": "is_not_null", "label": "Não é nulo"},
+            ]
+        elif field_type == "boolean":
+            operators = [
+                {"value": "equals", "label": "Igual a"},
+                {"value": "not_equals", "label": "Diferente de"},
+                {"value": "is_null", "label": "É nulo"},
+                {"value": "is_not_null", "label": "Não é nulo"},
+            ]
+        elif field_type == "enum":
+            operators = [
+                {"value": "equals", "label": "Igual a"},
+                {"value": "not_equals", "label": "Diferente de"},
+                {"value": "in", "label": "Está em"},
+                {"value": "not_in", "label": "Não está em"},
+                {"value": "is_null", "label": "É nulo"},
+                {"value": "is_not_null", "label": "Não é nulo"},
+            ]
+        else:  # string
+            operators = [
+                {"value": "equals", "label": "Igual a"},
+                {"value": "not_equals", "label": "Diferente de"},
+                {"value": "contains", "label": "Contém"},
+                {"value": "not_contains", "label": "Não contém"},
+                {"value": "starts_with", "label": "Começa com"},
+                {"value": "ends_with", "label": "Termina com"},
+                {"value": "is_null", "label": "É nulo"},
+                {"value": "is_not_null", "label": "Não é nulo"},
+            ]
+        
+        fields_info.append({
+            "field": field_name,
+            "type": field_type,
+            "label": label,
+            "operators": operators
+        })
+    
+    return {"fields": fields_info}
 
 
 @router.post("", response_model=LeadResponse)
@@ -33,6 +232,189 @@ async def create_lead(
     return lead
 
 
+@router.post("/filter", response_model=List[LeadResponse])
+async def filter_leads(
+    filters_request: LeadFiltersRequest = Body(...),
+    session: Session = Depends(get_session),
+    current_user: User = Depends(get_current_active_user)
+):
+    """Get leads with advanced filters"""
+    logger.info(f"🔍 [FILTERS] Recebida requisição de filtros: {len(filters_request.filters)} filtro(s), lógica={filters_request.logic}")
+    
+    # Base query for counting
+    count_query = select(func.count(Lead.id)).where(Lead.tenant_id == current_user.tenant_id)
+    
+    # Query for data
+    query = select(Lead).where(Lead.tenant_id == current_user.tenant_id)
+    
+    # Aplicar filtros avançados
+    filter_conditions = []
+    
+    # Filtros estruturados
+    if filters_request.filters:
+        for filter_obj in filters_request.filters:
+            try:
+                # Verificar se o campo existe
+                if not hasattr(Lead, filter_obj.field):
+                    logger.warning(f"Campo '{filter_obj.field}' não existe no modelo Lead")
+                    continue
+                
+                field = getattr(Lead, filter_obj.field)
+                field_type = get_field_type(filter_obj.field)
+                operator = filter_obj.operator
+                value = filter_obj.value
+                value2 = filter_obj.value2
+                
+                logger.info(f"Aplicando filtro: campo={filter_obj.field}, operador={operator}, valor={value}, tipo={field_type}")
+                
+                # Ignorar filtros sem valor (exceto para operadores is_null/is_not_null)
+                if value is None and operator not in ["is_null", "is_not_null"]:
+                    logger.warning(f"Filtro ignorado: campo '{filter_obj.field}' sem valor")
+                    continue
+                
+                if operator == "equals":
+                    if field_type == "string":
+                        # Para strings, equals deve ser comparação exata (case-insensitive)
+                        if value:
+                            filter_conditions.append(field.ilike(f"{value}"))
+                    else:
+                        filter_conditions.append(field == value)
+                
+                elif operator == "not_equals":
+                    if field_type == "string":
+                        # Para strings, not_equals deve ser comparação exata (case-insensitive)
+                        if value:
+                            filter_conditions.append(~field.ilike(f"{value}"))
+                    else:
+                        filter_conditions.append(field != value)
+                
+                elif operator == "greater_than":
+                    if value is not None:
+                        filter_conditions.append(field > value)
+                
+                elif operator == "less_than":
+                    if value is not None:
+                        filter_conditions.append(field < value)
+                
+                elif operator == "greater_than_or_equal":
+                    if value is not None:
+                        filter_conditions.append(field >= value)
+                
+                elif operator == "less_than_or_equal":
+                    if value is not None:
+                        filter_conditions.append(field <= value)
+                
+                elif operator == "between":
+                    if value is not None and value2 is not None:
+                        filter_conditions.append(and_(field >= value, field <= value2))
+                    else:
+                        logger.warning(f"Filtro 'between' ignorado: valores incompletos")
+                
+                elif operator == "contains":
+                    if value:
+                        filter_conditions.append(field.ilike(f"%{value}%"))
+                
+                elif operator == "not_contains":
+                    if value:
+                        filter_conditions.append(~field.ilike(f"%{value}%"))
+                
+                elif operator == "starts_with":
+                    if value:
+                        filter_conditions.append(field.ilike(f"{value}%"))
+                
+                elif operator == "ends_with":
+                    if value:
+                        filter_conditions.append(field.ilike(f"%{value}"))
+                
+                elif operator == "is_null":
+                    filter_conditions.append(field.is_(None))
+                
+                elif operator == "is_not_null":
+                    filter_conditions.append(field.isnot(None))
+                
+                elif operator == "in":
+                    if value:
+                        if not isinstance(value, list):
+                            value = [value]
+                        filter_conditions.append(field.in_(value))
+                
+                elif operator == "not_in":
+                    if value:
+                        if not isinstance(value, list):
+                            value = [value]
+                        filter_conditions.append(~field.in_(value))
+                
+            except Exception as e:
+                logger.error(f"Erro ao aplicar filtro {filter_obj.field}: {e}", exc_info=True)
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Erro ao aplicar filtro no campo '{filter_obj.field}': {str(e)}"
+                )
+    
+    # Filtros legados (compatibilidade)
+    if filters_request.status:
+        filter_conditions.append(Lead.status == filters_request.status)
+    
+    if filters_request.assigned_to:
+        filter_conditions.append(Lead.assigned_to == filters_request.assigned_to)
+    
+    if filters_request.source:
+        filter_conditions.append(Lead.source == filters_request.source)
+    
+    if filters_request.min_score is not None:
+        filter_conditions.append(Lead.score >= filters_request.min_score)
+    
+    if filters_request.max_score is not None:
+        filter_conditions.append(Lead.score <= filters_request.max_score)
+    
+    if filters_request.search:
+        search_filter = or_(
+            Lead.name.ilike(f"%{filters_request.search}%"),
+            Lead.email.ilike(f"%{filters_request.search}%"),
+            Lead.company.ilike(f"%{filters_request.search}%")
+        )
+        filter_conditions.append(search_filter)
+    
+    # Combinar filtros com lógica AND ou OR
+    if filter_conditions:
+        logger.info(f"🔍 [FILTERS] Aplicando {len(filter_conditions)} condição(ões) com lógica {filters_request.logic}")
+        if filters_request.logic.upper() == "OR":
+            combined_filter = or_(*filter_conditions)
+        else:
+            combined_filter = and_(*filter_conditions)
+        
+        query = query.where(combined_filter)
+        count_query = count_query.where(combined_filter)
+    else:
+        logger.warning("🔍 [FILTERS] Nenhuma condição de filtro aplicada")
+    
+    # Order by created_at descending (newest first)
+    query = query.order_by(Lead.created_at.desc())
+    
+    # Get total count before pagination
+    total_count = session.exec(count_query).one()
+    
+    # Apply pagination
+    query = query.offset(filters_request.skip).limit(filters_request.limit)
+    
+    leads = session.exec(query).all()
+    
+    # Serialize leads properly (handles datetime objects)
+    leads_data = []
+    for lead in leads:
+        lead_dict = lead.dict()
+        # Convert datetime objects to ISO format strings
+        for key, value in lead_dict.items():
+            if isinstance(value, datetime):
+                lead_dict[key] = value.isoformat()
+        leads_data.append(lead_dict)
+    
+    # Return JSONResponse with total count in header
+    response = JSONResponse(content=leads_data)
+    response.headers["X-Total-Count"] = str(total_count)
+    return response
+
+
 @router.get("", response_model=List[LeadResponse])
 async def get_leads(
     status: Optional[LeadStatus] = Query(None, description="Filter by status"),
@@ -46,7 +428,7 @@ async def get_leads(
     session: Session = Depends(get_session),
     current_user: User = Depends(get_current_active_user)
 ):
-    """Get all leads for the current tenant with filters"""
+    """Get all leads for the current tenant with filters (legacy endpoint)"""
     # Base query for counting
     count_query = select(func.count(Lead.id)).where(Lead.tenant_id == current_user.tenant_id)
     
@@ -216,13 +598,48 @@ async def download_import_template():
     )
 
 
+async def process_lead_enrichment(lead_id: int, cnpj: str):
+    """Processa o enriquecimento de um lead em background"""
+    import logging
+    logger = logging.getLogger(__name__)
+    
+    try:
+        # Criar nova sessão para o background task
+        from app.database import engine
+        from sqlmodel import Session
+        with Session(engine) as db:
+            try:
+                lead = db.get(Lead, lead_id)
+                if lead and cnpj:
+                    enriched_lead = await enrich_lead(lead, cnpj)
+                    db.add(enriched_lead)
+                    db.commit()
+                    db.refresh(enriched_lead)
+                    logger.info(f"✅ [BACKGROUND] Lead {lead_id} enriquecido com sucesso")
+                else:
+                    logger.warning(f"⚠️ [BACKGROUND] Lead {lead_id} não encontrado ou CNPJ inválido")
+            except Exception as db_error:
+                db.rollback()
+                logger.error(f"❌ [BACKGROUND] Erro no banco ao enriquecer lead {lead_id}: {db_error}")
+    except Exception as e:
+        logger.error(f"❌ [BACKGROUND] Erro ao enriquecer lead {lead_id}: {e}")
+        import traceback
+        traceback.print_exc()
+        import traceback
+        traceback.print_exc()
+
+
 @router.post("/import-csv")
 async def import_leads_csv(
     file: UploadFile = File(...),
+    background_tasks: BackgroundTasks = BackgroundTasks(),
     session: Session = Depends(get_session),
     current_user: User = Depends(get_current_active_user)
 ):
-    """Import leads from CSV file"""
+    """
+    Import leads from CSV file (formato Casa dos Dados)
+    Processa o CSV com pandas e inicia enriquecimento agêntico para cada linha
+    """
     if not file.filename.endswith('.csv'):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -230,151 +647,335 @@ async def import_leads_csv(
         )
     
     try:
-        # Read file content
+        # Ler arquivo com pandas
         contents = await file.read()
-        csv_content = contents.decode('utf-8-sig')  # Handle BOM if present
-        csv_reader = csv.DictReader(io.StringIO(csv_content))
+        df = pd.read_csv(io.BytesIO(contents), encoding='utf-8-sig', dtype=str)
+        
+        logger.info(f"📊 [IMPORT] CSV lido com sucesso. {len(df)} linhas encontradas")
+        logger.info(f"📊 [IMPORT] Colunas: {list(df.columns)}")
         
         imported = 0
         errors = []
+        leads_to_enrich = []  # Lista de (lead_id, cnpj) para enriquecimento
         
-        for row_num, row in enumerate(csv_reader, start=2):  # Start at 2 (row 1 is header)
+        for idx, row in df.iterrows():
             try:
-                # Map CSV columns to Lead fields
-                # Handle different possible column names
-                name = row.get('Nome') or row.get('nome') or row.get('Name') or row.get('name') or ''
-                company_raw = row.get('Empresa') or row.get('empresa') or row.get('Company') or row.get('company') or ''
-                position_raw = row.get('Cargo') or row.get('cargo') or row.get('Position') or row.get('position') or row.get('Role') or row.get('role') or ''
-                linkedin = row.get('Linkedin') or row.get('linkedin') or row.get('LinkedIn') or row.get('linkedin_url') or None
-                first_contact = row.get('Data 1o contato') or row.get('Data 1º contato') or row.get('data_1o_contato') or row.get('First Contact') or row.get('first_contact') or None
-                status_str = row.get('Status') or row.get('status') or 'new'
-                next_action = row.get('Próxima ação') or row.get('Próxima acao') or row.get('proxima_acao') or row.get('Next Action') or row.get('next_action') or None
-                notes = row.get('Observação') or row.get('Observacao') or row.get('observacao') or row.get('Observation') or row.get('observation') or row.get('Notes') or row.get('notes') or None
+                row_num = idx + 2  # +2 porque idx começa em 0 e linha 1 é header
                 
-                # Smart detection: if Empresa looks like a role (CEO, CTO, etc) and Cargo looks like a company, swap them
-                role_keywords = ['ceo', 'cto', 'cfo', 'founder', 'co-founder', 'director', 'manager', 'head', 'lead', 'senior', 'junior', 'analyst', 'specialist']
-                company_raw_clean = company_raw.strip() if company_raw else ''
-                position_raw_clean = position_raw.strip() if position_raw else ''
+                # Extrair CNPJ (campo obrigatório para enriquecimento)
+                cnpj = None
+                for col in ['cnpj', 'CNPJ', 'Cnpj']:
+                    if col in row and pd.notna(row[col]):
+                        cnpj = str(row[col]).strip().replace('.', '').replace('/', '').replace('-', '')
+                        break
                 
-                company = company_raw_clean if company_raw_clean else None
-                position = position_raw_clean if position_raw_clean else None
-                
-                # Check if they might be swapped
-                if company and position:
-                    company_lower = company.lower()
-                    position_lower = position.lower()
-                    
-                    # If "Empresa" contains role keywords and "Cargo" doesn't, they're likely swapped
-                    company_has_role = any(keyword in company_lower for keyword in role_keywords)
-                    position_has_role = any(keyword in position_lower for keyword in role_keywords)
-                    
-                    if company_has_role and not position_has_role:
-                        # Swap them
-                        company, position = position, company
-                
-                # Skip empty rows
-                if not name.strip():
+                if not cnpj or len(cnpj) != 14:
+                    errors.append(f"Linha {row_num}: CNPJ inválido ou não encontrado")
                     continue
                 
-                # Parse status
-                status_map = {
-                    'lead novo': LeadStatus.NEW,
-                    'novo': LeadStatus.NEW,
-                    'new': LeadStatus.NEW,
-                    'contatado': LeadStatus.CONTACTED,
-                    'contacted': LeadStatus.CONTACTED,
-                    'qualificado': LeadStatus.QUALIFIED,
-                    'qualified': LeadStatus.QUALIFIED,
-                    'reunião agendada': LeadStatus.MEETING_SCHEDULED,
-                    'meeting scheduled': LeadStatus.MEETING_SCHEDULED,
-                    'proposta enviada': LeadStatus.PROPOSAL_SENT,
-                    'proposal sent': LeadStatus.PROPOSAL_SENT,
-                    'negociação': LeadStatus.NEGOTIATION,
-                    'negotiation': LeadStatus.NEGOTIATION,
-                    'ganho': LeadStatus.WON,
-                    'won': LeadStatus.WON,
-                    'perdido': LeadStatus.LOST,
-                    'lost': LeadStatus.LOST,
-                    'nutrição': LeadStatus.NURTURING,
-                    'nurturing': LeadStatus.NURTURING,
-                }
-                lead_status = status_map.get(status_str.lower(), LeadStatus.NEW)
-                
-                # Parse first contact date
-                last_contact = None
-                if first_contact:
-                    try:
-                        # Try different date formats
-                        for date_format in ['%d/%m/%Y', '%Y-%m-%d', '%d-%m-%Y', '%Y/%m/%d']:
-                            try:
-                                last_contact = datetime.strptime(first_contact.strip(), date_format)
-                                break
-                            except ValueError:
-                                continue
-                    except Exception:
-                        pass
-                
-                # Add next action to notes if provided
-                full_notes = notes or ''
-                if next_action:
-                    if full_notes:
-                        full_notes += f'\n\nPróxima ação: {next_action}'
-                    else:
-                        full_notes = f'Próxima ação: {next_action}'
-                
-                # Check if lead already exists (by email or name+company)
-                existing_lead = None
-                if company:
-                    existing_query = select(Lead).where(
+                # Verificar se lead já existe pelo CNPJ
+                existing_lead = session.exec(
+                    select(Lead).where(
                         and_(
                             Lead.tenant_id == current_user.tenant_id,
-                            Lead.name == name,
-                            Lead.company == company
+                            Lead.cnpj == cnpj
                         )
                     )
-                    existing_lead = session.exec(existing_query).first()
+                ).first()
                 
                 if existing_lead:
-                    # Update existing lead
-                    existing_lead.position = position or existing_lead.position
-                    existing_lead.linkedin_url = linkedin or existing_lead.linkedin_url
-                    existing_lead.status = lead_status
-                    existing_lead.notes = full_notes or existing_lead.notes
-                    if last_contact:
-                        existing_lead.last_contact = last_contact
-                    existing_lead.updated_at = datetime.utcnow()
-                    session.add(existing_lead)
+                    logger.info(f"📋 [IMPORT] Lead com CNPJ {cnpj} já existe. Atualizando...")
+                    lead = existing_lead
                 else:
-                    # Create new lead
+                    # Criar novo lead
+                    # Extrair nome (pode ser do primeiro sócio ou razao_social)
+                    name = None
+                    for col in ['nome', 'Nome', 'NOME', 'name', 'Name']:
+                        if col in row and pd.notna(row[col]):
+                            name = str(row[col]).strip()
+                            break
+                    
+                    # Se não tem nome, usar razao_social
+                    if not name:
+                        for col in ['razao_social', 'Razao Social', 'RAZAO_SOCIAL']:
+                            if col in row and pd.notna(row[col]):
+                                name = str(row[col]).strip()
+                                break
+                    
+                    if not name:
+                        errors.append(f"Linha {row_num}: Nome não encontrado")
+                        continue
+                    
                     lead = Lead(
                         tenant_id=current_user.tenant_id,
                         name=name,
-                        company=company,
-                        position=position,
-                        linkedin_url=linkedin,
-                        status=lead_status,
-                        notes=full_notes,
-                        last_contact=last_contact,
-                        source='CSV Import'
+                        cnpj=cnpj,
+                        source='CSV Import - Casa dos Dados'
                     )
                     session.add(lead)
+                    session.flush()  # Para obter o ID
+                
+                # Mapear colunas do CSV para campos do Lead
+                # Razão Social
+                for col in ['razao_social', 'Razao Social', 'RAZAO_SOCIAL', 'razaoSocial']:
+                    if col in row and pd.notna(row[col]):
+                        lead.razao_social = str(row[col]).strip()
+                        if not lead.company:
+                            lead.company = lead.razao_social
+                        break
+                
+                # Nome Fantasia
+                for col in ['nome_fantasia', 'Nome Fantasia', 'NOME_FANTASIA', 'nomeFantasia']:
+                    if col in row and pd.notna(row[col]):
+                        lead.nome_fantasia = str(row[col]).strip()
+                        break
+                
+                # Data de Abertura
+                for col in ['data_abertura', 'Data Abertura', 'DATA_ABERTURA', 'dataAbertura']:
+                    if col in row and pd.notna(row[col]):
+                        try:
+                            date_str = str(row[col]).strip()
+                            # Tentar diferentes formatos
+                            for fmt in ['%Y-%m-%d', '%d/%m/%Y', '%d-%m-%Y', '%Y/%m/%d']:
+                                try:
+                                    lead.data_abertura = datetime.strptime(date_str, fmt)
+                                    break
+                                except ValueError:
+                                    continue
+                        except Exception:
+                            pass
+                        break
+                
+                # Capital Social
+                for col in ['capital_social', 'Capital Social', 'CAPITAL_SOCIAL', 'capitalSocial']:
+                    if col in row and pd.notna(row[col]):
+                        try:
+                            capital_str = str(row[col]).strip().replace(',', '.').replace('R$', '').strip()
+                            lead.capital_social = float(capital_str)
+                        except (ValueError, TypeError):
+                            pass
+                        break
+                
+                # Situação Cadastral
+                for col in ['situacao_cadastral', 'Situação Cadastral', 'SITUACAO_CADATRAL']:
+                    if col in row and pd.notna(row[col]):
+                        lead.situacao_cadastral = str(row[col]).strip()
+                        break
+                
+                # Endereço
+                for col in ['logradouro', 'Logradouro', 'LOGRADOURO']:
+                    if col in row and pd.notna(row[col]):
+                        lead.logradouro = str(row[col]).strip()
+                        break
+                
+                for col in ['numero', 'Número', 'NUMERO', 'numero']:
+                    if col in row and pd.notna(row[col]):
+                        lead.numero = str(row[col]).strip()
+                        break
+                
+                for col in ['bairro', 'Bairro', 'BAIRRO']:
+                    if col in row and pd.notna(row[col]):
+                        lead.bairro = str(row[col]).strip()
+                        break
+                
+                for col in ['cep', 'CEP', 'Cep']:
+                    if col in row and pd.notna(row[col]):
+                        cep = str(row[col]).strip().replace('-', '').replace('.', '')
+                        lead.cep = cep
+                        lead.zip_code = cep
+                        break
+                
+                for col in ['municipio', 'Município', 'MUNICIPIO', 'município']:
+                    if col in row and pd.notna(row[col]):
+                        lead.municipio = str(row[col]).strip()
+                        lead.city = lead.municipio
+                        break
+                
+                for col in ['uf', 'UF', 'Uf', 'estado', 'Estado']:
+                    if col in row and pd.notna(row[col]):
+                        lead.uf = str(row[col]).strip().upper()
+                        lead.state = lead.uf
+                        break
+                
+                # Complemento
+                for col in ['complemento', 'Complemento', 'COMPLEMENTO']:
+                    if col in row and pd.notna(row[col]):
+                        lead.complemento = str(row[col]).strip()
+                        break
+                
+                # Situação Cadastral (campos adicionais)
+                for col in ['data_situacao_cadastral', 'Data Situação Cadastral', 'dataSituacaoCadastral']:
+                    if col in row and pd.notna(row[col]):
+                        try:
+                            date_str = str(row[col]).strip()
+                            for fmt in ['%Y-%m-%d', '%d/%m/%Y', '%d-%m-%Y', '%Y/%m/%d']:
+                                try:
+                                    lead.data_situacao_cadastral = datetime.strptime(date_str, fmt)
+                                    break
+                                except ValueError:
+                                    continue
+                        except Exception:
+                            pass
+                        break
+                
+                for col in ['motivo_situacao_cadastral', 'Motivo Situação Cadastral', 'motivoSituacaoCadastral']:
+                    if col in row and pd.notna(row[col]):
+                        lead.motivo_situacao_cadastral = str(row[col]).strip()
+                        break
+                
+                # Natureza Jurídica
+                for col in ['natureza_juridica', 'Natureza Jurídica', 'NATUREZA_JURIDICA', 'naturezaJuridica']:
+                    if col in row and pd.notna(row[col]):
+                        lead.natureza_juridica = str(row[col]).strip()
+                        break
+                
+                # Porte
+                for col in ['porte', 'Porte', 'PORTE']:
+                    if col in row and pd.notna(row[col]):
+                        lead.porte = str(row[col]).strip()
+                        break
+                
+                # CNAE Principal
+                for col in ['cnae_principal_codigo', 'CNAE Principal Código', 'cnaePrincipalCodigo', 'cnae_principal', 'CNAE Principal']:
+                    if col in row and pd.notna(row[col]):
+                        lead.cnae_principal_codigo = str(row[col]).strip()
+                        break
+                
+                for col in ['cnae_principal_descricao', 'CNAE Principal Descrição', 'cnaePrincipalDescricao']:
+                    if col in row and pd.notna(row[col]):
+                        lead.cnae_principal_descricao = str(row[col]).strip()
+                        if not lead.industry:
+                            lead.industry = lead.cnae_principal_descricao
+                        break
+                
+                # CNAEs Secundários
+                for col in ['cnaes_secundarios', 'CNAEs Secundários', 'CNAES_SECUNDARIOS', 'cnaesSecundarios', 'cnaes_secundarios_json']:
+                    if col in row and pd.notna(row[col]):
+                        cnaes_value = str(row[col]).strip()
+                        try:
+                            json.loads(cnaes_value)
+                            lead.cnaes_secundarios_json = cnaes_value
+                        except:
+                            lead.cnaes_secundarios_json = cnaes_value
+                        break
+                
+                # Telefone e Email da Empresa
+                for col in ['telefone_empresa', 'Telefone Empresa', 'TELEFONE_EMPRESA', 'telefoneEmpresa', 'telefone', 'Telefone']:
+                    if col in row and pd.notna(row[col]):
+                        lead.telefone_empresa = str(row[col]).strip()
+                        if not lead.phone:
+                            lead.phone = lead.telefone_empresa
+                        break
+                
+                for col in ['email_empresa', 'Email Empresa', 'EMAIL_EMPRESA', 'emailEmpresa', 'email', 'Email']:
+                    if col in row and pd.notna(row[col]):
+                        lead.email_empresa = str(row[col]).strip()
+                        if not lead.email:
+                            lead.email = lead.email_empresa
+                        break
+                
+                # Simples Nacional
+                for col in ['simples_nacional', 'Simples Nacional', 'SIMPLES_NACIONAL', 'simplesNacional', 'optante_simples']:
+                    if col in row and pd.notna(row[col]):
+                        simples_value = str(row[col]).strip().lower()
+                        lead.simples_nacional = simples_value in ['true', '1', 'sim', 'yes', 's']
+                        break
+                
+                for col in ['data_opcao_simples', 'Data Opção Simples', 'dataOpcaoSimples']:
+                    if col in row and pd.notna(row[col]):
+                        try:
+                            date_str = str(row[col]).strip()
+                            for fmt in ['%Y-%m-%d', '%d/%m/%Y', '%d-%m-%Y', '%Y/%m/%d']:
+                                try:
+                                    lead.data_opcao_simples = datetime.strptime(date_str, fmt)
+                                    break
+                                except ValueError:
+                                    continue
+                        except Exception:
+                            pass
+                        break
+                
+                for col in ['data_exclusao_simples', 'Data Exclusão Simples', 'dataExclusaoSimples']:
+                    if col in row and pd.notna(row[col]):
+                        try:
+                            date_str = str(row[col]).strip()
+                            for fmt in ['%Y-%m-%d', '%d/%m/%Y', '%d-%m-%Y', '%Y/%m/%d']:
+                                try:
+                                    lead.data_exclusao_simples = datetime.strptime(date_str, fmt)
+                                    break
+                                except ValueError:
+                                    continue
+                        except Exception:
+                            pass
+                        break
+                
+                # Sócios (pode estar em formato JSON ou texto)
+                for col in ['socios', 'Sócios', 'SOCIOS', 'socios_json', 'sociosJson']:
+                    if col in row and pd.notna(row[col]):
+                        socios_value = str(row[col]).strip()
+                        # Se já é JSON válido, usar direto
+                        try:
+                            json.loads(socios_value)
+                            lead.socios_json = socios_value
+                        except:
+                            # Se não é JSON, tentar converter
+                            lead.socios_json = socios_value
+                        break
+                
+                # Montar endereço completo
+                endereco_parts = []
+                if lead.logradouro:
+                    endereco_parts.append(lead.logradouro)
+                if lead.numero:
+                    endereco_parts.append(lead.numero)
+                if lead.complemento:
+                    endereco_parts.append(lead.complemento)
+                if lead.bairro:
+                    endereco_parts.append(lead.bairro)
+                if lead.municipio:
+                    endereco_parts.append(lead.municipio)
+                if lead.uf:
+                    endereco_parts.append(lead.uf)
+                if lead.cep:
+                    endereco_parts.append(f"CEP: {lead.cep}")
+                
+                if endereco_parts:
+                    lead.address = ', '.join(endereco_parts)
+                
+                lead.updated_at = datetime.utcnow()
+                session.add(lead)
+                session.flush()
                 
                 imported += 1
                 
+                # Adicionar à lista para enriquecimento em background
+                if cnpj:
+                    leads_to_enrich.append((lead.id, cnpj))
+                
             except Exception as e:
                 errors.append(f"Linha {row_num}: {str(e)}")
+                logger.error(f"❌ [IMPORT] Erro na linha {row_num}: {e}")
                 continue
         
         session.commit()
         
+        # Iniciar enriquecimento em background para cada lead
+        for lead_id, cnpj in leads_to_enrich:
+            background_tasks.add_task(process_lead_enrichment, lead_id, cnpj, session)
+            logger.info(f"🚀 [IMPORT] Enriquecimento agendado para lead {lead_id} (CNPJ: {cnpj})")
+        
         return {
-            "message": f"Importação concluída",
+            "message": f"Importação concluída. {len(leads_to_enrich)} lead(s) serão enriquecidos em background.",
             "imported": imported,
+            "enrichment_scheduled": len(leads_to_enrich),
             "errors": errors if errors else None
         }
         
     except Exception as e:
         session.rollback()
+        logger.error(f"❌ [IMPORT] Erro ao processar CSV: {e}")
+        import traceback
+        traceback.print_exc()
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Erro ao processar arquivo CSV: {str(e)}"

@@ -165,6 +165,43 @@ class Lead(SQLModel, table=True):
     tags: Optional[str] = None  # JSON string com tags
     last_contact: Optional[datetime] = None
     next_followup: Optional[datetime] = None
+    # Campos de enriquecimento automático
+    address: Optional[str] = None  # Endereço completo
+    city: Optional[str] = None  # Cidade
+    state: Optional[str] = None  # Estado (sigla)
+    zip_code: Optional[str] = None  # CEP
+    country: Optional[str] = None  # País
+    industry: Optional[str] = None  # Setor/Indústria
+    company_size: Optional[str] = None  # Tamanho da empresa (ex: "50-200 funcionários")
+    context: Optional[str] = None  # Contexto/resumo da empresa, dores, oportunidades
+    # Campos Casa dos Dados
+    razao_social: Optional[str] = None
+    nome_fantasia: Optional[str] = None
+    cnpj: Optional[str] = Field(default=None, unique=True, index=True)  # CNPJ único
+    data_abertura: Optional[datetime] = None
+    capital_social: Optional[float] = None
+    situacao_cadastral: Optional[str] = None
+    data_situacao_cadastral: Optional[datetime] = None
+    motivo_situacao_cadastral: Optional[str] = None
+    natureza_juridica: Optional[str] = None
+    porte: Optional[str] = None  # ME, EPP, Grande, etc
+    logradouro: Optional[str] = None
+    numero: Optional[str] = None
+    bairro: Optional[str] = None
+    cep: Optional[str] = None
+    municipio: Optional[str] = None
+    uf: Optional[str] = None
+    complemento: Optional[str] = None
+    cnae_principal_codigo: Optional[str] = None
+    cnae_principal_descricao: Optional[str] = None
+    cnaes_secundarios_json: Optional[str] = None  # JSON string com lista de CNAEs secundários
+    telefone_empresa: Optional[str] = None
+    email_empresa: Optional[str] = None
+    socios_json: Optional[str] = None  # JSON string com lista de sócios e qualificações
+    simples_nacional: Optional[bool] = None  # Se está no Simples Nacional
+    data_opcao_simples: Optional[datetime] = None
+    data_exclusao_simples: Optional[datetime] = None
+    agent_suggestion: Optional[str] = None  # Sugestão de abordagem gerada pelo agente
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)
 
@@ -187,6 +224,43 @@ class LeadCreate(SQLModel):
     tags: Optional[str] = None
     last_contact: Optional[datetime] = None
     next_followup: Optional[datetime] = None
+    # Campos de enriquecimento automático
+    address: Optional[str] = None
+    city: Optional[str] = None
+    state: Optional[str] = None
+    zip_code: Optional[str] = None
+    country: Optional[str] = None
+    industry: Optional[str] = None
+    company_size: Optional[str] = None
+    context: Optional[str] = None
+    # Campos Casa dos Dados
+    razao_social: Optional[str] = None
+    nome_fantasia: Optional[str] = None
+    cnpj: Optional[str] = None
+    data_abertura: Optional[datetime] = None
+    capital_social: Optional[float] = None
+    situacao_cadastral: Optional[str] = None
+    data_situacao_cadastral: Optional[datetime] = None
+    motivo_situacao_cadastral: Optional[str] = None
+    natureza_juridica: Optional[str] = None
+    porte: Optional[str] = None
+    logradouro: Optional[str] = None
+    numero: Optional[str] = None
+    bairro: Optional[str] = None
+    cep: Optional[str] = None
+    municipio: Optional[str] = None
+    uf: Optional[str] = None
+    complemento: Optional[str] = None
+    cnae_principal_codigo: Optional[str] = None
+    cnae_principal_descricao: Optional[str] = None
+    cnaes_secundarios_json: Optional[str] = None
+    telefone_empresa: Optional[str] = None
+    email_empresa: Optional[str] = None
+    socios_json: Optional[str] = None
+    simples_nacional: Optional[bool] = None
+    data_opcao_simples: Optional[datetime] = None
+    data_exclusao_simples: Optional[datetime] = None
+    agent_suggestion: Optional[str] = None
 
 
 class LeadResponse(SQLModel):
@@ -207,6 +281,43 @@ class LeadResponse(SQLModel):
     tags: Optional[str]
     last_contact: Optional[datetime]
     next_followup: Optional[datetime]
+    # Campos de enriquecimento automático
+    address: Optional[str]
+    city: Optional[str]
+    state: Optional[str]
+    zip_code: Optional[str]
+    country: Optional[str]
+    industry: Optional[str]
+    company_size: Optional[str]
+    context: Optional[str]
+    # Campos Casa dos Dados
+    razao_social: Optional[str]
+    nome_fantasia: Optional[str]
+    cnpj: Optional[str]
+    data_abertura: Optional[datetime]
+    capital_social: Optional[float]
+    situacao_cadastral: Optional[str]
+    data_situacao_cadastral: Optional[datetime]
+    motivo_situacao_cadastral: Optional[str]
+    natureza_juridica: Optional[str]
+    porte: Optional[str]
+    logradouro: Optional[str]
+    numero: Optional[str]
+    bairro: Optional[str]
+    cep: Optional[str]
+    municipio: Optional[str]
+    uf: Optional[str]
+    complemento: Optional[str]
+    cnae_principal_codigo: Optional[str]
+    cnae_principal_descricao: Optional[str]
+    cnaes_secundarios_json: Optional[str]
+    telefone_empresa: Optional[str]
+    email_empresa: Optional[str]
+    socios_json: Optional[str]
+    simples_nacional: Optional[bool]
+    data_opcao_simples: Optional[datetime]
+    data_exclusao_simples: Optional[datetime]
+    agent_suggestion: Optional[str]
     created_at: datetime
     updated_at: datetime
 

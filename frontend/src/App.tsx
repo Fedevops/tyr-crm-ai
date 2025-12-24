@@ -10,6 +10,7 @@ import { Playbooks } from './pages/Playbooks'
 import { Leads } from './pages/Leads'
 import { Sequences } from './pages/Sequences'
 import { Tasks } from './pages/Tasks'
+import { Prospecting } from './pages/Prospecting'
 import { Settings } from './pages/Settings'
 import { OnboardingWizard } from './pages/OnboardingWizard'
 
@@ -106,6 +107,16 @@ function AppRoutes() {
           <ProtectedRoute>
             <Layout>
               <Tasks />
+            </Layout>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/prospecting"
+        element={
+          <ProtectedRoute>
+            <Layout>
+              <Prospecting />
             </Layout>
           </ProtectedRoute>
         }

@@ -1,7 +1,9 @@
 from sqlmodel import SQLModel, create_engine, Session, text
+from sqlalchemy.orm import sessionmaker
 from app.config import settings
 
 engine = create_engine(settings.database_url, echo=True)
+SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 
 def get_session():
@@ -38,6 +40,43 @@ def migrate_lead_table():
                 ("tags", "TEXT"),
                 ("last_contact", "TIMESTAMP WITH TIME ZONE"),
                 ("next_followup", "TIMESTAMP WITH TIME ZONE"),
+                # Campos de enriquecimento automático
+                ("address", "TEXT"),
+                ("city", "VARCHAR(255)"),
+                ("state", "VARCHAR(50)"),
+                ("zip_code", "VARCHAR(20)"),
+                ("country", "VARCHAR(100)"),
+                ("industry", "VARCHAR(255)"),
+                ("company_size", "VARCHAR(100)"),
+                ("context", "TEXT"),
+                # Campos Casa dos Dados
+                ("razao_social", "VARCHAR(500)"),
+                ("nome_fantasia", "VARCHAR(500)"),
+                ("cnpj", "VARCHAR(18)"),
+                ("data_abertura", "TIMESTAMP WITH TIME ZONE"),
+                ("capital_social", "NUMERIC(15,2)"),
+                ("situacao_cadastral", "VARCHAR(100)"),
+                ("data_situacao_cadastral", "TIMESTAMP WITH TIME ZONE"),
+                ("motivo_situacao_cadastral", "VARCHAR(255)"),
+                ("natureza_juridica", "VARCHAR(255)"),
+                ("porte", "VARCHAR(50)"),
+                ("logradouro", "VARCHAR(255)"),
+                ("numero", "VARCHAR(50)"),
+                ("bairro", "VARCHAR(255)"),
+                ("cep", "VARCHAR(20)"),
+                ("municipio", "VARCHAR(255)"),
+                ("uf", "VARCHAR(2)"),
+                ("complemento", "VARCHAR(255)"),
+                ("cnae_principal_codigo", "VARCHAR(20)"),
+                ("cnae_principal_descricao", "VARCHAR(500)"),
+                ("cnaes_secundarios_json", "TEXT"),
+                ("telefone_empresa", "VARCHAR(50)"),
+                ("email_empresa", "VARCHAR(255)"),
+                ("socios_json", "TEXT"),
+                ("simples_nacional", "BOOLEAN"),
+                ("data_opcao_simples", "TIMESTAMP WITH TIME ZONE"),
+                ("data_exclusao_simples", "TIMESTAMP WITH TIME ZONE"),
+                ("agent_suggestion", "TEXT"),
             ]
             
             for column_name, column_type in migrations:

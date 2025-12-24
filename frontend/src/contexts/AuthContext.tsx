@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useEffect, ReactNode } from 'react'
+import { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react'
 import api from '@/lib/api'
 
 interface User {
@@ -28,6 +28,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true)
   const [initialized, setInitialized] = useState(false)
 
+  const logout = useCallback(() => {
+    console.log('Fazendo logout...')
+    setUser(null)
+    setToken(null)
+    localStorage.removeItem('token')
+  }, [])
+
   useEffect(() => {
     const initializeAuth = async () => {
       const storedToken = localStorage.getItem('token')
@@ -50,8 +57,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
     
     initializeAuth()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+    
+    // Escutar evento de token expirado
+    const handleTokenExpired = () => {
+      console.log('Evento de token expirado recebido. Fazendo logout...')
+      logout()
+    }
+    
+    window.addEventListener('auth:token-expired', handleTokenExpired)
+    
+    return () => {
+      window.removeEventListener('auth:token-expired', handleTokenExpired)
+    }
+  }, [logout, user])
 
   const fetchUser = async (authToken: string) => {
     try {
@@ -102,12 +120,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     })
     // After registration, login automatically
     await login(email, password)
-  }
-
-  const logout = () => {
-    setUser(null)
-    setToken(null)
-    localStorage.removeItem('token')
   }
 
   return (

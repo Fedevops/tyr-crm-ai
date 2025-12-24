@@ -176,13 +176,43 @@ export function Tasks() {
 
   const handleStatusChange = async (taskId: number, newStatus: string) => {
     try {
-      await api.patch(`/api/tasks/${taskId}`, {
+      console.log(`🔄 [FRONTEND] Atualizando tarefa ${taskId} para status: ${newStatus}`)
+      
+      // Atualizar otimisticamente a UI
+      setTasks(prevTasks => 
+        prevTasks.map(task => 
+          task.id === taskId 
+            ? { ...task, status: newStatus, completed_at: newStatus === 'completed' ? new Date().toISOString() : task.completed_at }
+            : task
+        )
+      )
+      
+      const response = await api.patch(`/api/tasks/${taskId}`, {
         status: newStatus
+      }, {
+        timeout: 60000 // 60 segundos de timeout para permitir pesquisa automática
       })
+      
+      console.log(`✅ [FRONTEND] Tarefa atualizada com sucesso:`, response.data)
+      console.log(`🔍 [FRONTEND] Tipo da tarefa:`, response.data?.type)
+      
+      // Recarregar tarefas para obter dados atualizados (incluindo notes da pesquisa)
+      await fetchTasks()
+      
+      // Feedback visual
+      if (newStatus === 'completed' && response.data?.type === 'research') {
+        console.log('✅ [FRONTEND] Tarefa de pesquisa concluída. Verifique as notas para ver o resultado da pesquisa automática.')
+      }
+    } catch (error: any) {
+      console.error('❌ [FRONTEND] Erro ao atualizar tarefa:', error)
+      console.error('❌ [FRONTEND] Detalhes do erro:', error.response?.data)
+      console.error('❌ [FRONTEND] Status do erro:', error.response?.status)
+      
+      // Reverter atualização otimista em caso de erro
       fetchTasks()
-    } catch (error) {
-      console.error('Error updating task:', error)
-      alert('Erro ao atualizar tarefa')
+      
+      const errorMessage = error.response?.data?.detail || error.message || 'Erro desconhecido'
+      alert(`Erro ao atualizar tarefa: ${errorMessage}`)
     }
   }
 
@@ -259,7 +289,10 @@ export function Tasks() {
             <Plus className="mr-2 h-4 w-4" />
             Associar Cadência a Lead
           </Button>
-          <Button onClick={() => setShowForm(!showForm)}>
+          <Button 
+            onClick={() => setShowForm(!showForm)}
+            className="bg-gradient-to-r from-emerald-600 to-emerald-700 hover:from-emerald-700 hover:to-emerald-800 text-white shadow-md hover:shadow-lg transition-all duration-200"
+          >
             <Plus className="mr-2 h-4 w-4" />
             Nova Tarefa
           </Button>
@@ -268,10 +301,10 @@ export function Tasks() {
 
       {/* Formulário de Nova Tarefa */}
       {showForm && (
-        <Card>
-          <CardHeader>
+        <Card className="border-t-4 border-t-emerald-500 bg-gradient-to-br from-emerald-50/30 to-white dark:from-emerald-950/10 dark:to-background">
+          <CardHeader className="bg-gradient-to-r from-emerald-50/50 to-transparent dark:from-emerald-950/20">
             <div className="flex items-center justify-between">
-              <CardTitle>Nova Tarefa</CardTitle>
+              <CardTitle className="text-emerald-900 dark:text-emerald-100">Nova Tarefa</CardTitle>
               <Button
                 variant="ghost"
                 size="sm"
@@ -368,10 +401,16 @@ export function Tasks() {
                 </div>
               </div>
               <div className="flex gap-2 pt-4">
-                <Button type="submit">Criar Tarefa</Button>
+                <Button 
+                  type="submit"
+                  className="bg-gradient-to-r from-emerald-600 to-emerald-700 hover:from-emerald-700 hover:to-emerald-800 text-white shadow-md hover:shadow-lg transition-all duration-200"
+                >
+                  Criar Tarefa
+                </Button>
                 <Button
                   type="button"
                   variant="outline"
+                  className="border-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800"
                   onClick={() => {
                     setShowForm(false)
                     setFormData({
@@ -393,10 +432,10 @@ export function Tasks() {
       )}
 
       {/* Filtros e Paginação */}
-      <Card>
-        <CardHeader>
+      <Card className="border-t-4 border-t-emerald-500 bg-gradient-to-br from-emerald-50/30 to-white dark:from-emerald-950/10 dark:to-background">
+        <CardHeader className="bg-gradient-to-r from-emerald-50/50 to-transparent dark:from-emerald-950/20">
           <div className="flex items-center justify-between">
-            <CardTitle>Filtros</CardTitle>
+            <CardTitle className="text-emerald-900 dark:text-emerald-100">Filtros</CardTitle>
             <div className="flex items-center gap-2">
               <label className="text-sm font-medium">Itens por página:</label>
               <select
@@ -472,10 +511,10 @@ export function Tasks() {
 
       {/* Tarefas Atrasadas */}
       {overdueTasks.length > 0 && (
-        <Card className="border-red-200 dark:border-red-800">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-red-600 dark:text-red-400">
-              <AlertCircle className="h-5 w-5" />
+        <Card className="border-t-4 border-t-red-500 bg-gradient-to-br from-red-50/30 to-white dark:from-red-950/10 dark:to-background">
+          <CardHeader className="bg-gradient-to-r from-red-50/50 to-transparent dark:from-red-950/20">
+            <CardTitle className="flex items-center gap-2 text-red-900 dark:text-red-100">
+              <AlertCircle className="h-5 w-5 text-red-600 dark:text-red-400" />
               Tarefas Atrasadas ({overdueTasks.length})
             </CardTitle>
           </CardHeader>
@@ -532,10 +571,10 @@ export function Tasks() {
 
       {/* Próximas Tarefas */}
       {upcomingTasks.length > 0 && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Clock className="h-5 w-5" />
+        <Card className="border-t-4 border-t-blue-500 bg-gradient-to-br from-blue-50/30 to-white dark:from-blue-950/10 dark:to-background">
+          <CardHeader className="bg-gradient-to-r from-blue-50/50 to-transparent dark:from-blue-950/20">
+            <CardTitle className="flex items-center gap-2 text-blue-900 dark:text-blue-100">
+              <Clock className="h-5 w-5 text-blue-600 dark:text-blue-400" />
               Próximas Tarefas ({upcomingTasks.length})
             </CardTitle>
           </CardHeader>
@@ -602,10 +641,10 @@ export function Tasks() {
 
       {/* Tarefas Concluídas */}
       {completedTasks.length > 0 && statusFilter === 'all' && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <CheckCircle2 className="h-5 w-5" />
+        <Card className="border-t-4 border-t-green-500 bg-gradient-to-br from-green-50/30 to-white dark:from-green-950/10 dark:to-background">
+          <CardHeader className="bg-gradient-to-r from-green-50/50 to-transparent dark:from-green-950/20">
+            <CardTitle className="flex items-center gap-2 text-green-900 dark:text-green-100">
+              <CheckCircle2 className="h-5 w-5 text-green-600 dark:text-green-400" />
               Tarefas Concluídas ({completedTasks.length})
             </CardTitle>
           </CardHeader>

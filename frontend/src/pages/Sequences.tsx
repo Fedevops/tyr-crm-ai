@@ -251,16 +251,19 @@ export function Sequences() {
             Gerencie suas cadências de prospecção
           </p>
         </div>
-        <Button onClick={() => setShowForm(!showForm)}>
+        <Button 
+          onClick={() => setShowForm(!showForm)}
+          className="bg-gradient-to-r from-purple-600 to-purple-700 hover:from-purple-700 hover:to-purple-800 text-white shadow-md hover:shadow-lg transition-all duration-200"
+        >
           <Plus className="mr-2 h-4 w-4" />
           Nova Cadência
         </Button>
       </div>
 
       {showForm && (
-        <Card>
-          <CardHeader>
-            <CardTitle>{editingId ? 'Editar' : 'Nova'} Cadência</CardTitle>
+        <Card className="border-t-4 border-t-purple-500 bg-gradient-to-br from-purple-50/30 to-white dark:from-purple-950/10 dark:to-background">
+          <CardHeader className="bg-gradient-to-r from-purple-50/50 to-transparent dark:from-purple-950/20">
+            <CardTitle className="text-purple-900 dark:text-purple-100">{editingId ? 'Editar' : 'Nova'} Cadência</CardTitle>
           </CardHeader>
           <CardContent>
             <form onSubmit={handleSubmit} className="space-y-6">
@@ -444,7 +447,12 @@ export function Sequences() {
               )}
 
               <div className="flex gap-2 pt-4 border-t">
-                <Button type="submit">Salvar Cadência</Button>
+                <Button 
+                  type="submit"
+                  className="bg-gradient-to-r from-purple-600 to-purple-700 hover:from-purple-700 hover:to-purple-800 text-white shadow-md hover:shadow-lg transition-all duration-200"
+                >
+                  Salvar Cadência
+                </Button>
                 <Button
                   type="button"
                   variant="outline"
@@ -472,10 +480,13 @@ export function Sequences() {
           }
 
           return (
-            <Card key={sequence.id}>
+            <Card 
+              key={sequence.id}
+              className="border-l-4 border-l-purple-400 hover:border-l-purple-600 transition-all duration-200 bg-gradient-to-r from-white to-purple-50/30 dark:from-background dark:to-purple-950/20 hover:shadow-lg"
+            >
               <CardHeader>
                 <div className="flex items-center justify-between">
-                  <CardTitle className="text-lg">{sequence.name}</CardTitle>
+                  <CardTitle className="text-lg text-purple-900 dark:text-purple-100">{sequence.name}</CardTitle>
                   <div className="flex gap-2">
                     <Button
                       size="sm"

@@ -29,7 +29,8 @@
     "leads": "Leads",
     "tasks": "Tarefas",
     "sequences": "Cadências",
-    "settings": "Configurações"
+    "settings": "Configurações",
+    "prospecting": "Prospecção"
   },
   "dashboard": {
     "title": "Dashboard",
@@ -63,6 +64,42 @@
     "targetMarket": "Mercado Alvo",
     "icpDescription": "Descreva seu ICP",
     "apiKeys": "Chaves de API (opcional)"
+  },
+  "tasks": {
+    "title": "Tarefas",
+    "createNew": "Criar Nova Tarefa",
+    "name": "Nome",
+    "description": "Descrição",
+    "content": "Conteúdo",
+    "active": "Ativo",
+    "inactive": "Inativo"
+  },
+  "sequences": {
+    "title": "Cadências",
+    "createNew": "Criar Nova Cadência",
+    "name": "Nome",
+    "description": "Descrição",
+    "content": "Conteúdo",
+    "active": "Ativo",
+    "inactive": "Inativo"
+  },
+  "leads": {
+    "title": "Leads",
+    "createNew": "Criar Novo Lead",
+    "name": "Nome",
+    "description": "Descrição",
+    "content": "Conteúdo",
+    "active": "Ativo",
+    "inactive": "Inativo"
+  },
+  "prospecting": {
+    "title": "Prospecção",
+    "createNew": "Criar Novo Prospect",
+    "name": "Nome",
+    "description": "Descrição",
+    "content": "Conteúdo",
+    "active": "Ativo",
+    "inactive": "Inativo"
   }
 }
 

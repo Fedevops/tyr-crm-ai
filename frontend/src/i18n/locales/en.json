@@ -27,7 +27,10 @@
     "dashboard": "Dashboard",
     "playbooks": "Playbooks",
     "leads": "Leads",
-    "settings": "Settings"
+    "settings": "Settings",
+    "prospecting": "Prospecting",
+    "tasks": "Tasks",
+    "sequences": "Sequences"
   },
   "dashboard": {
     "title": "Dashboard",
@@ -61,8 +64,45 @@
     "targetMarket": "Target Market",
     "icpDescription": "Describe your ICP",
     "apiKeys": "API Keys (optional)"
+  },
+  "tasks": {
+    "title": "Tasks",
+    "createNew": "Create New Task",
+    "name": "Name",
+    "description": "Description",
+    "content": "Content",
+    "active": "Active",
+    "inactive": "Inactive"
+  },
+  "sequences": {
+    "title": "Sequences",
+    "createNew": "Create New Sequence",
+    "name": "Name",
+    "description": "Description",
+    "content": "Content",
+    "active": "Active",
+    "inactive": "Inactive"
+  },
+  "leads": {
+    "title": "Leads",
+    "createNew": "Create New Lead",
+    "name": "Name",
+    "content": "Content",
+    "active": "Active",
+    "inactive": "Inactive",
+    "description": "Manage your leads and opportunities"
+  },
+  "prospecting": {
+    "title": "Prospecting",
+    "createNew": "Create New Prospect",
+    "name": "Name",
+    "description": "Description",
+    "content": "Content",
+    "active": "Active",
+    "inactive": "Inactive"
   }
 }
+
 
 
 

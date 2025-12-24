@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
+import { AdvancedFilters } from '@/components/AdvancedFilters'
 import { 
   Plus, 
   Trash2, 
@@ -54,6 +55,43 @@ interface Lead {
   tags: string | null
   last_contact: string | null
   next_followup: string | null
+  // Campos de enriquecimento automático
+  address: string | null
+  city: string | null
+  state: string | null
+  zip_code: string | null
+  country: string | null
+  industry: string | null
+  company_size: string | null
+  context: string | null
+  // Campos Casa dos Dados
+  razao_social: string | null
+  nome_fantasia: string | null
+  cnpj: string | null
+  data_abertura: string | null
+  capital_social: number | null
+  situacao_cadastral: string | null
+  data_situacao_cadastral: string | null
+  motivo_situacao_cadastral: string | null
+  natureza_juridica: string | null
+  porte: string | null
+  logradouro: string | null
+  numero: string | null
+  bairro: string | null
+  cep: string | null
+  municipio: string | null
+  uf: string | null
+  complemento: string | null
+  cnae_principal_codigo: string | null
+  cnae_principal_descricao: string | null
+  cnaes_secundarios_json: string | null
+  telefone_empresa: string | null
+  email_empresa: string | null
+  socios_json: string | null
+  simples_nacional: boolean | null
+  data_opcao_simples: string | null
+  data_exclusao_simples: string | null
+  agent_suggestion: string | null
   created_at: string
   updated_at: string
 }
@@ -71,15 +109,15 @@ const statusLabels: Record<LeadStatus, string> = {
 }
 
 const statusColors: Record<LeadStatus, string> = {
-  new: 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200',
-  contacted: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200',
-  qualified: 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200',
-  meeting_scheduled: 'bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200',
-  proposal_sent: 'bg-indigo-100 text-indigo-800 dark:bg-indigo-900 dark:text-indigo-200',
-  negotiation: 'bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200',
-  won: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900 dark:text-emerald-200',
-  lost: 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200',
-  nurturing: 'bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-200'
+  new: 'bg-gradient-to-r from-blue-500 to-blue-600 text-white shadow-sm border border-blue-400/20',
+  contacted: 'bg-gradient-to-r from-amber-500 to-amber-600 text-white shadow-sm border border-amber-400/20',
+  qualified: 'bg-gradient-to-r from-green-500 to-green-600 text-white shadow-sm border border-green-400/20',
+  meeting_scheduled: 'bg-gradient-to-r from-purple-500 to-purple-600 text-white shadow-sm border border-purple-400/20',
+  proposal_sent: 'bg-gradient-to-r from-indigo-500 to-indigo-600 text-white shadow-sm border border-indigo-400/20',
+  negotiation: 'bg-gradient-to-r from-orange-500 to-orange-600 text-white shadow-sm border border-orange-400/20',
+  won: 'bg-gradient-to-r from-emerald-500 to-emerald-600 text-white shadow-sm border border-emerald-400/20',
+  lost: 'bg-gradient-to-r from-red-500 to-red-600 text-white shadow-sm border border-red-400/20',
+  nurturing: 'bg-gradient-to-r from-slate-500 to-slate-600 text-white shadow-sm border border-slate-400/20'
 }
 
 export function Leads() {
@@ -98,6 +136,7 @@ export function Leads() {
   const [sequenceStartDate, setSequenceStartDate] = useState('')
   const [showLeadDetailModal, setShowLeadDetailModal] = useState(false)
   const [selectedLeadDetail, setSelectedLeadDetail] = useState<Lead | null>(null)
+  const [activeTab, setActiveTab] = useState('basicas')
   const [leadTasks, setLeadTasks] = useState<any[]>([])
   const [loadingTasks, setLoadingTasks] = useState(false)
   const [leadComments, setLeadComments] = useState<any[]>([])
@@ -115,6 +154,14 @@ export function Leads() {
   const [searchTerm, setSearchTerm] = useState('')
   const [statusFilter, setStatusFilter] = useState<LeadStatus | 'all'>('all')
   const [sourceFilter, setSourceFilter] = useState<string>('all')
+  const [advancedFilters, setAdvancedFilters] = useState<Array<{
+    id: string
+    field: string
+    operator: string
+    value: string | number | boolean | null
+    value2?: string | number | null
+  }>>([])
+  const [filterLogic, setFilterLogic] = useState<'AND' | 'OR'>('AND')
   
   const [formData, setFormData] = useState({
     name: '',
@@ -128,13 +175,50 @@ export function Leads() {
     source: '',
     score: 0,
     notes: '',
-    tags: ''
+    tags: '',
+    // Campos de enriquecimento
+    address: '',
+    city: '',
+    state: '',
+    zip_code: '',
+    country: '',
+    industry: '',
+    company_size: '',
+    context: '',
+    // Campos Casa dos Dados
+    razao_social: '',
+    nome_fantasia: '',
+    cnpj: '',
+    data_abertura: '',
+    capital_social: '',
+    situacao_cadastral: '',
+    data_situacao_cadastral: '',
+    motivo_situacao_cadastral: '',
+    natureza_juridica: '',
+    porte: '',
+    logradouro: '',
+    numero: '',
+    bairro: '',
+    cep: '',
+    municipio: '',
+    uf: '',
+    complemento: '',
+    cnae_principal_codigo: '',
+    cnae_principal_descricao: '',
+    cnaes_secundarios_json: '',
+    telefone_empresa: '',
+    email_empresa: '',
+    socios_json: '',
+    simples_nacional: false,
+    data_opcao_simples: '',
+    data_exclusao_simples: '',
+    agent_suggestion: ''
   })
 
   useEffect(() => {
     fetchLeads()
     fetchStats()
-  }, [statusFilter, sourceFilter, searchTerm, currentPage, pageSize])
+  }, [statusFilter, sourceFilter, searchTerm, currentPage, pageSize, advancedFilters, filterLogic])
 
   useEffect(() => {
     if (showSequenceModal) {
@@ -143,11 +227,12 @@ export function Leads() {
   }, [showSequenceModal])
 
   useEffect(() => {
-    if (showLeadDetailModal && selectedLeadDetail) {
-      fetchLeadTasks(selectedLeadDetail.id)
-      fetchLeadComments(selectedLeadDetail.id)
+    if (showLeadDetailModal && selectedLeadDetail?.id) {
+      const leadId = selectedLeadDetail.id
+      fetchLeadTasks(leadId)
+      fetchLeadComments(leadId)
     }
-  }, [showLeadDetailModal, selectedLeadDetail])
+  }, [showLeadDetailModal, selectedLeadDetail?.id]) // Usar apenas o ID como dependência
 
   const fetchSequences = async () => {
     try {
@@ -197,9 +282,9 @@ export function Leads() {
       setLeadComments([response.data, ...leadComments])
       setNewComment('')
       
-      // Refresh lead data to update updated_at
+      // Atualizar apenas updated_at sem disparar useEffect (evita múltiplas requisições)
       const leadResponse = await api.get(`/api/leads/${selectedLeadDetail.id}`)
-      setSelectedLeadDetail(leadResponse.data)
+      setSelectedLeadDetail(prev => prev ? { ...prev, updated_at: leadResponse.data.updated_at } : leadResponse.data)
     } catch (error: any) {
       console.error('Error adding comment:', error)
       alert(error.response?.data?.detail || 'Erro ao adicionar comentário')
@@ -213,7 +298,13 @@ export function Leads() {
     
     try {
       await api.delete(`/api/leads/comments/${commentId}`)
-      setLeadComments(leadComments.filter(c => c.id !== commentId))
+      setLeadComments(prevComments => prevComments.filter(c => c.id !== commentId))
+      
+      // Atualizar lead sem disparar useEffect (apenas updated_at)
+      if (selectedLeadDetail) {
+        const leadResponse = await api.get(`/api/leads/${selectedLeadDetail.id}`)
+        setSelectedLeadDetail(prev => prev ? { ...prev, updated_at: leadResponse.data.updated_at } : leadResponse.data)
+      }
     } catch (error: any) {
       console.error('Error deleting comment:', error)
       alert(error.response?.data?.detail || 'Erro ao excluir comentário')
@@ -224,6 +315,7 @@ export function Leads() {
     setSelectedLeadDetail(lead)
     setShowLeadDetailModal(true)
     setNewComment('')
+    setActiveTab('basicas')
   }
 
   const handleAssociateSequence = async (sequenceId: number) => {
@@ -393,37 +485,131 @@ export function Leads() {
   const fetchLeads = async () => {
     try {
       setLoading(true)
-      const params: any = {
-        skip: (currentPage - 1) * pageSize,
-        limit: pageSize
-      }
       
-      if (statusFilter !== 'all') {
-        params.status = statusFilter
-      }
-      
-      if (sourceFilter !== 'all') {
-        params.source = sourceFilter
-      }
-      
-      if (searchTerm) {
-        params.search = searchTerm
-      }
-      
-      const queryString = new URLSearchParams(params).toString()
-      const response = await api.get(`/api/leads${queryString ? `?${queryString}` : ''}`)
-      setLeads(response.data)
-      
-      // Get total count from response header
-      const totalCount = response.headers['x-total-count']
-      if (totalCount) {
-        setTotalLeads(parseInt(totalCount, 10))
-      } else {
-        // Fallback estimation
-        if (response.data.length < pageSize) {
-          setTotalLeads((currentPage - 1) * pageSize + response.data.length)
+      // Se houver filtros avançados, usar o endpoint de filtros
+      if (advancedFilters.length > 0) {
+        // Filtrar apenas filtros válidos (com valor ou operadores especiais)
+        const validFilters = advancedFilters.filter(f => {
+          // Operadores que não precisam de valor
+          if (f.operator === 'is_null' || f.operator === 'is_not_null') {
+            return true
+          }
+          // Operador between precisa de dois valores
+          if (f.operator === 'between') {
+            return f.value !== null && f.value !== '' && f.value2 !== null && f.value2 !== ''
+          }
+          // Outros operadores precisam de valor
+          return f.value !== null && f.value !== ''
+        })
+        
+        console.log('🔍 [FILTERS] Filtros avançados:', {
+          total: advancedFilters.length,
+          validos: validFilters.length,
+          filtros: validFilters
+        })
+        
+        if (validFilters.length === 0) {
+          console.warn('🔍 [FILTERS] Nenhum filtro válido encontrado, usando endpoint padrão')
+          // Usar endpoint padrão se não houver filtros válidos
+          const params: any = {
+            skip: (currentPage - 1) * pageSize,
+            limit: pageSize
+          }
+          
+          if (statusFilter !== 'all') {
+            params.status = statusFilter
+          }
+          
+          if (sourceFilter !== 'all') {
+            params.source = sourceFilter
+          }
+          
+          if (searchTerm) {
+            params.search = searchTerm
+          }
+          
+          const queryString = new URLSearchParams(params).toString()
+          const response = await api.get(`/api/leads${queryString ? `?${queryString}` : ''}`)
+          setLeads(response.data)
+          
+          const totalCount = response.headers['x-total-count']
+          if (totalCount) {
+            setTotalLeads(parseInt(totalCount, 10))
+          } else {
+            if (response.data.length < pageSize) {
+              setTotalLeads((currentPage - 1) * pageSize + response.data.length)
+            } else {
+              setTotalLeads(currentPage * pageSize + 1)
+            }
+          }
+          return
+        }
+        
+        const filtersRequest = {
+          filters: validFilters.map(f => ({
+            field: f.field,
+            operator: f.operator,
+            value: f.value,
+            value2: f.value2
+          })),
+          logic: filterLogic,
+          search: searchTerm || undefined,
+          status: statusFilter !== 'all' ? statusFilter : undefined,
+          assigned_to: undefined,
+          source: sourceFilter !== 'all' ? sourceFilter : undefined,
+          min_score: undefined,
+          max_score: undefined,
+          skip: (currentPage - 1) * pageSize,
+          limit: pageSize
+        }
+        
+        console.log('🔍 [FILTERS] Enviando requisição:', filtersRequest)
+        
+        const response = await api.post('/api/leads/filter', filtersRequest)
+        console.log('🔍 [FILTERS] Resposta recebida:', response.data.length, 'leads')
+        setLeads(response.data)
+        
+        // Get total count from response header
+        const totalCount = response.headers['x-total-count']
+        if (totalCount) {
+          setTotalLeads(parseInt(totalCount, 10))
         } else {
-          setTotalLeads(currentPage * pageSize + 1)
+          setTotalLeads(response.data.length)
+        }
+      } else {
+        // Usar endpoint legado se não houver filtros avançados
+        const params: any = {
+          skip: (currentPage - 1) * pageSize,
+          limit: pageSize
+        }
+        
+        if (statusFilter !== 'all') {
+          params.status = statusFilter
+        }
+        
+        if (sourceFilter !== 'all') {
+          params.source = sourceFilter
+        }
+        
+        if (searchTerm) {
+          params.search = searchTerm
+        }
+        
+        const queryString = new URLSearchParams(params).toString()
+        const response = await api.get(`/api/leads${queryString ? `?${queryString}` : ''}`)
+        setLeads(response.data)
+        
+        // Get total count from response header
+        const totalCount = response.headers['x-total-count']
+        if (totalCount) {
+          setTotalLeads(parseInt(totalCount, 10))
+        } else {
+          // Fallback estimation
+          if (response.data.length < pageSize) {
+            setTotalLeads((currentPage - 1) * pageSize + response.data.length)
+          } else {
+            setTotalLeads(currentPage * pageSize + 1)
+          }
         }
       }
     } catch (error) {
@@ -464,7 +650,44 @@ export function Leads() {
         linkedin_url: formData.linkedin_url || null,
         source: formData.source || null,
         notes: formData.notes || null,
-        tags: formData.tags || null
+        tags: formData.tags || null,
+        // Campos de enriquecimento
+        address: formData.address || null,
+        city: formData.city || null,
+        state: formData.state || null,
+        zip_code: formData.zip_code || null,
+        country: formData.country || null,
+        industry: formData.industry || null,
+        company_size: formData.company_size || null,
+        context: formData.context || null,
+        // Campos Casa dos Dados
+        razao_social: formData.razao_social || null,
+        nome_fantasia: formData.nome_fantasia || null,
+        cnpj: formData.cnpj || null,
+        data_abertura: formData.data_abertura ? new Date(formData.data_abertura).toISOString() : null,
+        capital_social: formData.capital_social ? parseFloat(formData.capital_social.toString()) : null,
+        situacao_cadastral: formData.situacao_cadastral || null,
+        data_situacao_cadastral: formData.data_situacao_cadastral ? new Date(formData.data_situacao_cadastral).toISOString() : null,
+        motivo_situacao_cadastral: formData.motivo_situacao_cadastral || null,
+        natureza_juridica: formData.natureza_juridica || null,
+        porte: formData.porte || null,
+        logradouro: formData.logradouro || null,
+        numero: formData.numero || null,
+        bairro: formData.bairro || null,
+        cep: formData.cep || null,
+        municipio: formData.municipio || null,
+        uf: formData.uf || null,
+        complemento: formData.complemento || null,
+        cnae_principal_codigo: formData.cnae_principal_codigo || null,
+        cnae_principal_descricao: formData.cnae_principal_descricao || null,
+        cnaes_secundarios_json: formData.cnaes_secundarios_json || null,
+        telefone_empresa: formData.telefone_empresa || null,
+        email_empresa: formData.email_empresa || null,
+        socios_json: formData.socios_json || null,
+        simples_nacional: formData.simples_nacional || null,
+        data_opcao_simples: formData.data_opcao_simples ? new Date(formData.data_opcao_simples).toISOString() : null,
+        data_exclusao_simples: formData.data_exclusao_simples ? new Date(formData.data_exclusao_simples).toISOString() : null,
+        agent_suggestion: formData.agent_suggestion || null
       }
 
       if (editingId) {
@@ -487,7 +710,16 @@ export function Leads() {
         source: '',
         score: 0,
         notes: '',
-        tags: ''
+        tags: '',
+        // Campos de enriquecimento
+        address: '',
+        city: '',
+        state: '',
+        zip_code: '',
+        country: '',
+        industry: '',
+        company_size: '',
+        context: ''
       })
       fetchLeads()
       fetchStats()
@@ -503,6 +735,17 @@ export function Leads() {
   }
 
   const handleEdit = (lead: Lead) => {
+    // Helper para formatar data
+    const formatDate = (dateStr: string | null) => {
+      if (!dateStr) return ''
+      try {
+        const date = new Date(dateStr)
+        return date.toISOString().split('T')[0] // YYYY-MM-DD
+      } catch {
+        return ''
+      }
+    }
+
     setFormData({
       name: lead.name,
       email: lead.email || '',
@@ -515,7 +758,44 @@ export function Leads() {
       source: lead.source || '',
       score: lead.score || 0,
       notes: lead.notes || '',
-      tags: lead.tags || ''
+      tags: lead.tags || '',
+      // Campos de enriquecimento
+      address: lead.address || '',
+      city: lead.city || '',
+      state: lead.state || '',
+      zip_code: lead.zip_code || '',
+      country: lead.country || '',
+      industry: lead.industry || '',
+      company_size: lead.company_size || '',
+      context: lead.context || '',
+      // Campos Casa dos Dados
+      razao_social: lead.razao_social || '',
+      nome_fantasia: lead.nome_fantasia || '',
+      cnpj: lead.cnpj || '',
+      data_abertura: formatDate(lead.data_abertura),
+      capital_social: lead.capital_social?.toString() || '',
+      situacao_cadastral: lead.situacao_cadastral || '',
+      data_situacao_cadastral: formatDate(lead.data_situacao_cadastral),
+      motivo_situacao_cadastral: lead.motivo_situacao_cadastral || '',
+      natureza_juridica: lead.natureza_juridica || '',
+      porte: lead.porte || '',
+      logradouro: lead.logradouro || '',
+      numero: lead.numero || '',
+      bairro: lead.bairro || '',
+      cep: lead.cep || '',
+      municipio: lead.municipio || '',
+      uf: lead.uf || '',
+      complemento: lead.complemento || '',
+      cnae_principal_codigo: lead.cnae_principal_codigo || '',
+      cnae_principal_descricao: lead.cnae_principal_descricao || '',
+      cnaes_secundarios_json: lead.cnaes_secundarios_json || '',
+      telefone_empresa: lead.telefone_empresa || '',
+      email_empresa: lead.email_empresa || '',
+      socios_json: lead.socios_json || '',
+      simples_nacional: lead.simples_nacional || false,
+      data_opcao_simples: formatDate(lead.data_opcao_simples),
+      data_exclusao_simples: formatDate(lead.data_exclusao_simples),
+      agent_suggestion: lead.agent_suggestion || ''
     })
     setEditingId(lead.id)
     setShowForm(true)
@@ -637,7 +917,8 @@ export function Leads() {
       <div className="flex items-center justify-between">
       <div>
         <h1 className="text-3xl font-bold">{t('navigation.leads')}</h1>
-          <p className="text-muted-foreground">Gerencie seus leads e oportunidades</p>
+          <p className="text-muted-foreground">{t('leads.description')}</p>
+
         </div>
         <div className="flex gap-2">
           <Button
@@ -647,7 +928,10 @@ export function Leads() {
             <Upload className="mr-2 h-4 w-4" />
             Importar CSV
           </Button>
-          <Button onClick={() => setShowForm(!showForm)}>
+          <Button 
+            onClick={() => setShowForm(!showForm)}
+            className="bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white shadow-md hover:shadow-lg transition-all duration-200"
+          >
             <Plus className="mr-2 h-4 w-4" />
             Novo Lead
           </Button>
@@ -657,12 +941,12 @@ export function Leads() {
       {/* Import Modal */}
       {showImportModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-          <Card className="w-full max-w-2xl max-h-[90vh] overflow-y-auto">
-            <CardHeader>
+          <Card className="w-full max-w-2xl max-h-[90vh] overflow-y-auto border-t-4 border-t-teal-500 bg-gradient-to-br from-teal-50/30 to-white dark:from-teal-950/10 dark:to-background">
+        <CardHeader className="bg-gradient-to-r from-teal-50/50 to-transparent dark:from-teal-950/20">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                  <FileText className="h-5 w-5" />
-                  <CardTitle>Importar Leads do CSV</CardTitle>
+                  <FileText className="h-5 w-5 text-teal-600 dark:text-teal-400" />
+                  <CardTitle className="text-teal-900 dark:text-teal-100">Importar Leads do CSV</CardTitle>
                 </div>
                 <Button
                   variant="ghost"
@@ -678,8 +962,8 @@ export function Leads() {
               <CardDescription>
                 Importe seus leads através de um arquivo CSV. Baixe o template para ver o formato esperado.
               </CardDescription>
-            </CardHeader>
-            <CardContent>
+        </CardHeader>
+        <CardContent>
               <div className="space-y-6">
                 {/* Download Template Section */}
                 <div className="rounded-lg border border-dashed p-6 text-center">
@@ -817,59 +1101,67 @@ export function Leads() {
                   )}
                 </div>
               </div>
-            </CardContent>
-          </Card>
-        </div>
+        </CardContent>
+      </Card>
+    </div>
       )}
 
       {/* Stats Cards */}
       {stats && (
         <div className="grid gap-4 md:grid-cols-4">
-          <Card>
+          <Card className="border-l-4 border-l-blue-500 bg-gradient-to-br from-blue-50/50 to-white dark:from-blue-950/20 dark:to-background">
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Total de Leads</CardTitle>
-              <User className="h-4 w-4 text-muted-foreground" />
+              <CardTitle className="text-sm font-medium text-blue-700 dark:text-blue-300">Total de Leads</CardTitle>
+              <div className="p-2 rounded-lg bg-blue-100 dark:bg-blue-900/30">
+                <User className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+              </div>
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">{stats.total}</div>
+              <div className="text-2xl font-bold text-blue-900 dark:text-blue-100">{stats.total}</div>
             </CardContent>
           </Card>
-          <Card>
+          <Card className="border-l-4 border-l-green-500 bg-gradient-to-br from-green-50/50 to-white dark:from-green-950/20 dark:to-background">
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Atribuídos</CardTitle>
-              <CheckCircle2 className="h-4 w-4 text-muted-foreground" />
+              <CardTitle className="text-sm font-medium text-green-700 dark:text-green-300">Atribuídos</CardTitle>
+              <div className="p-2 rounded-lg bg-green-100 dark:bg-green-900/30">
+                <CheckCircle2 className="h-4 w-4 text-green-600 dark:text-green-400" />
+              </div>
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">{stats.assigned}</div>
+              <div className="text-2xl font-bold text-green-900 dark:text-green-100">{stats.assigned}</div>
             </CardContent>
           </Card>
-          <Card>
+          <Card className="border-l-4 border-l-orange-500 bg-gradient-to-br from-orange-50/50 to-white dark:from-orange-950/20 dark:to-background">
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Não Atribuídos</CardTitle>
-              <XCircle className="h-4 w-4 text-muted-foreground" />
+              <CardTitle className="text-sm font-medium text-orange-700 dark:text-orange-300">Não Atribuídos</CardTitle>
+              <div className="p-2 rounded-lg bg-orange-100 dark:bg-orange-900/30">
+                <XCircle className="h-4 w-4 text-orange-600 dark:text-orange-400" />
+              </div>
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">{stats.unassigned}</div>
+              <div className="text-2xl font-bold text-orange-900 dark:text-orange-100">{stats.unassigned}</div>
             </CardContent>
           </Card>
-          <Card>
+          <Card className="border-l-4 border-l-purple-500 bg-gradient-to-br from-purple-50/50 to-white dark:from-purple-950/20 dark:to-background">
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Score Médio</CardTitle>
-              <TrendingUp className="h-4 w-4 text-muted-foreground" />
+              <CardTitle className="text-sm font-medium text-purple-700 dark:text-purple-300">Score Médio</CardTitle>
+              <div className="p-2 rounded-lg bg-purple-100 dark:bg-purple-900/30">
+                <TrendingUp className="h-4 w-4 text-purple-600 dark:text-purple-400" />
+              </div>
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">{stats.average_score || 0}</div>
+              <div className="text-2xl font-bold text-purple-900 dark:text-purple-100">{stats.average_score || 0}</div>
             </CardContent>
           </Card>
         </div>
       )}
 
       {/* Selection and Filters */}
-      <Card>
-        <CardHeader>
+      <Card className="border-t-4 border-t-indigo-500 bg-gradient-to-br from-indigo-50/30 to-white dark:from-indigo-950/10 dark:to-background">
+        <CardHeader className="bg-gradient-to-r from-indigo-50/50 to-transparent dark:from-indigo-950/20">
           <div className="flex items-center justify-between">
-            <CardTitle className="flex items-center gap-2">
-              <Filter className="h-5 w-5" />
+            <CardTitle className="flex items-center gap-2 text-indigo-900 dark:text-indigo-100">
+              <Filter className="h-5 w-5 text-indigo-600 dark:text-indigo-400" />
               Filtros
             </CardTitle>
             <div className="flex items-center gap-2">
@@ -926,14 +1218,22 @@ export function Leads() {
               </select>
             </div>
           </div>
+          
+          {/* Filtros Avançados */}
+          <AdvancedFilters
+            filters={advancedFilters}
+            onFiltersChange={setAdvancedFilters}
+            logic={filterLogic}
+            onLogicChange={setFilterLogic}
+          />
         </CardContent>
       </Card>
 
       {/* Form */}
       {showForm && (
-        <Card>
-          <CardHeader>
-            <CardTitle>{editingId ? 'Editar Lead' : 'Novo Lead'}</CardTitle>
+        <Card className="border-t-4 border-t-emerald-500 bg-gradient-to-br from-emerald-50/30 to-white dark:from-emerald-950/10 dark:to-background">
+          <CardHeader className="bg-gradient-to-r from-emerald-50/50 to-transparent dark:from-emerald-950/20">
+            <CardTitle className="text-emerald-900 dark:text-emerald-100">{editingId ? 'Editar Lead' : 'Novo Lead'}</CardTitle>
           </CardHeader>
           <CardContent>
             <form onSubmit={handleSubmit} className="space-y-4">
@@ -1022,6 +1322,296 @@ export function Leads() {
                   />
                 </div>
               </div>
+              <div className="grid gap-4 md:grid-cols-2">
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">Endereço</label>
+                  <Input
+                    value={formData.address}
+                    onChange={(e) => setFormData({ ...formData, address: e.target.value })}
+                    placeholder="Rua, número, complemento"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">Cidade</label>
+                  <Input
+                    value={formData.city}
+                    onChange={(e) => setFormData({ ...formData, city: e.target.value })}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">Estado</label>
+                  <Input
+                    value={formData.state}
+                    onChange={(e) => setFormData({ ...formData, state: e.target.value })}
+                    placeholder="SP, RJ, MG..."
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">CEP</label>
+                  <Input
+                    value={formData.zip_code}
+                    onChange={(e) => setFormData({ ...formData, zip_code: e.target.value })}
+                    placeholder="12345-678"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">País</label>
+                  <Input
+                    value={formData.country}
+                    onChange={(e) => setFormData({ ...formData, country: e.target.value })}
+                    placeholder="Brasil"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">Setor/Indústria</label>
+                  <Input
+                    value={formData.industry}
+                    onChange={(e) => setFormData({ ...formData, industry: e.target.value })}
+                    placeholder="Tecnologia, Saúde, Educação..."
+                  />
+                </div>
+                <div className="space-y-2 md:col-span-2">
+                  <label className="text-sm font-medium">Tamanho da Empresa</label>
+                  <Input
+                    value={formData.company_size}
+                    onChange={(e) => setFormData({ ...formData, company_size: e.target.value })}
+                    placeholder="50-200 funcionários, Startup, Grande empresa..."
+                  />
+                </div>
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Contexto da Empresa</label>
+                <Textarea
+                  value={formData.context}
+                  onChange={(e) => setFormData({ ...formData, context: e.target.value })}
+                  rows={6}
+                  placeholder="Resumo sobre a empresa, produtos/serviços, tecnologias utilizadas, dores identificadas, oportunidades de vendas..."
+                />
+                <p className="text-xs text-muted-foreground">
+                  Este campo pode ser preenchido automaticamente quando uma tarefa de pesquisa for concluída.
+                </p>
+              </div>
+
+              {/* Seção Casa dos Dados */}
+              <div className="border-t pt-6 mt-6">
+                <h3 className="text-lg font-semibold mb-4">Dados Fiscais (Casa dos Dados)</h3>
+                <div className="grid gap-4 md:grid-cols-2">
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium">CNPJ</label>
+                    <Input
+                      value={formData.cnpj}
+                      onChange={(e) => setFormData({ ...formData, cnpj: e.target.value })}
+                      placeholder="00.000.000/0000-00"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium">Razão Social</label>
+                    <Input
+                      value={formData.razao_social}
+                      onChange={(e) => setFormData({ ...formData, razao_social: e.target.value })}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium">Nome Fantasia</label>
+                    <Input
+                      value={formData.nome_fantasia}
+                      onChange={(e) => setFormData({ ...formData, nome_fantasia: e.target.value })}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium">Data de Abertura</label>
+                    <Input
+                      type="date"
+                      value={formData.data_abertura}
+                      onChange={(e) => setFormData({ ...formData, data_abertura: e.target.value })}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium">Capital Social (R$)</label>
+                    <Input
+                      type="number"
+                      step="0.01"
+                      value={formData.capital_social}
+                      onChange={(e) => setFormData({ ...formData, capital_social: e.target.value })}
+                      placeholder="0.00"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium">Situação Cadastral</label>
+                    <Input
+                      value={formData.situacao_cadastral}
+                      onChange={(e) => setFormData({ ...formData, situacao_cadastral: e.target.value })}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium">Data Situação Cadastral</label>
+                    <Input
+                      type="date"
+                      value={formData.data_situacao_cadastral}
+                      onChange={(e) => setFormData({ ...formData, data_situacao_cadastral: e.target.value })}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium">Motivo Situação Cadastral</label>
+                    <Input
+                      value={formData.motivo_situacao_cadastral}
+                      onChange={(e) => setFormData({ ...formData, motivo_situacao_cadastral: e.target.value })}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium">Natureza Jurídica</label>
+                    <Input
+                      value={formData.natureza_juridica}
+                      onChange={(e) => setFormData({ ...formData, natureza_juridica: e.target.value })}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium">Porte</label>
+                    <Input
+                      value={formData.porte}
+                      onChange={(e) => setFormData({ ...formData, porte: e.target.value })}
+                      placeholder="ME, EPP, Grande..."
+                    />
+                  </div>
+                </div>
+
+                <h4 className="text-md font-semibold mt-6 mb-4">Endereço Fiscal</h4>
+                <div className="grid gap-4 md:grid-cols-2">
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium">Logradouro</label>
+                    <Input
+                      value={formData.logradouro}
+                      onChange={(e) => setFormData({ ...formData, logradouro: e.target.value })}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium">Número</label>
+                    <Input
+                      value={formData.numero}
+                      onChange={(e) => setFormData({ ...formData, numero: e.target.value })}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium">Complemento</label>
+                    <Input
+                      value={formData.complemento}
+                      onChange={(e) => setFormData({ ...formData, complemento: e.target.value })}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium">Bairro</label>
+                    <Input
+                      value={formData.bairro}
+                      onChange={(e) => setFormData({ ...formData, bairro: e.target.value })}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium">CEP</label>
+                    <Input
+                      value={formData.cep}
+                      onChange={(e) => setFormData({ ...formData, cep: e.target.value })}
+                      placeholder="00000-000"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium">Município</label>
+                    <Input
+                      value={formData.municipio}
+                      onChange={(e) => setFormData({ ...formData, municipio: e.target.value })}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium">UF</label>
+                    <Input
+                      value={formData.uf}
+                      onChange={(e) => setFormData({ ...formData, uf: e.target.value.toUpperCase() })}
+                      placeholder="SP"
+                      maxLength={2}
+                    />
+                  </div>
+                </div>
+
+                <h4 className="text-md font-semibold mt-6 mb-4">CNAE</h4>
+                <div className="grid gap-4 md:grid-cols-2">
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium">CNAE Principal - Código</label>
+                    <Input
+                      value={formData.cnae_principal_codigo}
+                      onChange={(e) => setFormData({ ...formData, cnae_principal_codigo: e.target.value })}
+                    />
+                  </div>
+                  <div className="space-y-2 md:col-span-2">
+                    <label className="text-sm font-medium">CNAE Principal - Descrição</label>
+                    <Input
+                      value={formData.cnae_principal_descricao}
+                      onChange={(e) => setFormData({ ...formData, cnae_principal_descricao: e.target.value })}
+                    />
+                  </div>
+                  <div className="space-y-2 md:col-span-2">
+                    <label className="text-sm font-medium">CNAEs Secundários (JSON)</label>
+                    <Textarea
+                      value={formData.cnaes_secundarios_json}
+                      onChange={(e) => setFormData({ ...formData, cnaes_secundarios_json: e.target.value })}
+                      rows={3}
+                      placeholder='[{"codigo": "1234-5/67", "descricao": "Atividade secundária"}]'
+                    />
+                  </div>
+                </div>
+
+                <h4 className="text-md font-semibold mt-6 mb-4">Contato e Outros</h4>
+                <div className="grid gap-4 md:grid-cols-2">
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium">Telefone da Empresa</label>
+                    <Input
+                      value={formData.telefone_empresa}
+                      onChange={(e) => setFormData({ ...formData, telefone_empresa: e.target.value })}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium">Email da Empresa</label>
+                    <Input
+                      type="email"
+                      value={formData.email_empresa}
+                      onChange={(e) => setFormData({ ...formData, email_empresa: e.target.value })}
+                    />
+                  </div>
+                  <div className="space-y-2 md:col-span-2">
+                    <label className="text-sm font-medium">Sócios (JSON)</label>
+                    <Textarea
+                      value={formData.socios_json}
+                      onChange={(e) => setFormData({ ...formData, socios_json: e.target.value })}
+                      rows={3}
+                      placeholder='[{"nome": "João Silva", "qualificacao": "Sócio-Administrador", "cpf_cnpj": "123.456.789-00"}]'
+                    />
+                  </div>
+                  <div className="space-y-2 flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      checked={formData.simples_nacional}
+                      onChange={(e) => setFormData({ ...formData, simples_nacional: e.target.checked })}
+                      className="h-4 w-4"
+                    />
+                    <label className="text-sm font-medium">Optante do Simples Nacional</label>
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium">Data Opção Simples</label>
+                    <Input
+                      type="date"
+                      value={formData.data_opcao_simples}
+                      onChange={(e) => setFormData({ ...formData, data_opcao_simples: e.target.value })}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium">Data Exclusão Simples</label>
+                    <Input
+                      type="date"
+                      value={formData.data_exclusao_simples}
+                      onChange={(e) => setFormData({ ...formData, data_exclusao_simples: e.target.value })}
+                    />
+                  </div>
+                </div>
+              </div>
+
               <div className="space-y-2">
                 <label className="text-sm font-medium">Notas</label>
                 <Textarea
@@ -1031,10 +1621,16 @@ export function Leads() {
                 />
               </div>
               <div className="flex gap-2">
-                <Button type="submit">Salvar</Button>
+                <Button 
+                  type="submit"
+                  className="bg-gradient-to-r from-emerald-600 to-emerald-700 hover:from-emerald-700 hover:to-emerald-800 text-white shadow-md hover:shadow-lg transition-all duration-200"
+                >
+                  Salvar
+                </Button>
                 <Button
                   type="button"
                   variant="outline"
+                  className="border-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800"
                   onClick={() => {
                     setShowForm(false)
                     setEditingId(null)
@@ -1050,7 +1646,43 @@ export function Leads() {
                       source: '',
                       score: 0,
                       notes: '',
-                      tags: ''
+                      tags: '',
+                      address: '',
+                      city: '',
+                      state: '',
+                      zip_code: '',
+                      country: '',
+                      industry: '',
+                      company_size: '',
+                      context: '',
+                      // Campos Casa dos Dados
+                      razao_social: '',
+                      nome_fantasia: '',
+                      cnpj: '',
+                      data_abertura: '',
+                      capital_social: '',
+                      situacao_cadastral: '',
+                      data_situacao_cadastral: '',
+                      motivo_situacao_cadastral: '',
+                      natureza_juridica: '',
+                      porte: '',
+                      logradouro: '',
+                      numero: '',
+                      bairro: '',
+                      cep: '',
+                      municipio: '',
+                      uf: '',
+                      complemento: '',
+                      cnae_principal_codigo: '',
+                      cnae_principal_descricao: '',
+                      cnaes_secundarios_json: '',
+                      telefone_empresa: '',
+                      email_empresa: '',
+                      socios_json: '',
+                      simples_nacional: false,
+                      data_opcao_simples: '',
+                      data_exclusao_simples: '',
+                      agent_suggestion: ''
                     })
                   }}
                 >
@@ -1058,16 +1690,16 @@ export function Leads() {
                 </Button>
               </div>
             </form>
-          </CardContent>
-        </Card>
+        </CardContent>
+      </Card>
       )}
 
       {/* Leads List */}
       {leads.length === 0 ? (
-        <Card>
+        <Card className="border-dashed border-2 border-slate-300 dark:border-slate-700 bg-gradient-to-br from-slate-50/50 to-white dark:from-slate-950/50 dark:to-background">
           <CardContent className="py-12 text-center">
-            <p className="text-muted-foreground">Nenhum lead encontrado</p>
-            <p className="mt-2 text-sm text-muted-foreground">
+            <p className="text-slate-600 dark:text-slate-400 font-medium">Nenhum lead encontrado</p>
+            <p className="mt-2 text-sm text-slate-500 dark:text-slate-500">
               Crie seu primeiro lead para começar
           </p>
         </CardContent>
@@ -1076,16 +1708,17 @@ export function Leads() {
         <>
           {/* Bulk Actions Bar */}
           {selectedLeads.size > 0 && (
-          <Card className="bg-blue-50 dark:bg-blue-950 border-blue-200 dark:border-blue-800">
+          <Card className="bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-950 dark:to-indigo-950 border-blue-300 dark:border-blue-700 shadow-md">
             <CardContent className="py-3">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-4">
-                  <span className="font-medium">
+                  <span className="font-medium text-blue-900 dark:text-blue-100">
                     {selectedLeads.size} lead(s) selecionado(s)
                   </span>
                   <Button
                     size="sm"
                     variant="outline"
+                    className="border-blue-300 hover:bg-blue-100 dark:hover:bg-blue-900"
                     onClick={() => setSelectedLeads(new Set())}
                   >
                     Limpar Seleção
@@ -1129,7 +1762,7 @@ export function Leads() {
           {leads.map((lead) => (
             <Card 
               key={lead.id}
-              className="cursor-pointer hover:shadow-md transition-shadow"
+              className="cursor-pointer hover:shadow-lg transition-all duration-200 border-l-4 border-l-slate-300 hover:border-l-blue-500 bg-gradient-to-r from-white to-slate-50/50 dark:from-background dark:to-slate-950/50"
               onClick={() => handleOpenLeadDetail(lead)}
             >
               <CardHeader>
@@ -1264,7 +1897,7 @@ export function Leads() {
 
       {/* Pagination */}
       {totalLeads > 0 && (
-        <Card>
+      <Card>
           <CardContent className="py-4">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-4">
@@ -1331,14 +1964,14 @@ export function Leads() {
       {showSequenceModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
           <Card className="w-full max-w-md">
-            <CardHeader>
+        <CardHeader>
               <CardTitle>
                 {selectedLeadId 
                   ? 'Associar Cadência ao Lead'
                   : `Associar Cadência a ${selectedLeads.size} Lead(s)`}
               </CardTitle>
-            </CardHeader>
-            <CardContent>
+        </CardHeader>
+        <CardContent>
               <div className="space-y-4">
                 <p className="text-sm text-muted-foreground">
                   Selecione uma cadência para associar. As tarefas serão criadas automaticamente.
@@ -1415,16 +2048,16 @@ export function Leads() {
                   </Button>
                 </div>
               </div>
-            </CardContent>
-          </Card>
-        </div>
+        </CardContent>
+      </Card>
+    </div>
       )}
 
       {/* Modal de Detalhes do Lead */}
       {showLeadDetailModal && selectedLeadDetail && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <Card className="w-full max-w-4xl max-h-[90vh] overflow-y-auto">
-            <CardHeader>
+          <Card className="w-full max-w-4xl max-h-[90vh] overflow-hidden flex flex-col">
+            <CardHeader className="border-b">
               <div className="flex items-center justify-between">
                 <CardTitle className="text-2xl">Detalhes do Lead</CardTitle>
                 <Button
@@ -1436,296 +2069,534 @@ export function Leads() {
                     setLeadTasks([])
                     setLeadComments([])
                     setNewComment('')
+                    setActiveTab('basicas')
                   }}
                 >
                   <XCircle className="h-5 w-5" />
                 </Button>
               </div>
             </CardHeader>
-            <CardContent className="space-y-6">
-              {/* Informações Básicas */}
-              <div>
-                <h3 className="text-lg font-semibold mb-4">Informações Básicas</h3>
-                <div className="grid gap-4 md:grid-cols-2">
-                  <div>
-                    <label className="text-sm font-medium text-muted-foreground">Nome</label>
-                    <p className="text-base font-medium">{selectedLeadDetail.name}</p>
-                  </div>
-                  <div>
-                    <label className="text-sm font-medium text-muted-foreground">Status</label>
-                    <p>
-                      <span className={`inline-block rounded-full px-2 py-1 text-xs ${statusColors[selectedLeadDetail.status]}`}>
-                        {statusLabels[selectedLeadDetail.status]}
-                      </span>
-                    </p>
-                  </div>
-                  {selectedLeadDetail.email && (
-                    <div>
-                      <label className="text-sm font-medium text-muted-foreground">Email</label>
-                      <p className="text-base">
-                        <a href={`mailto:${selectedLeadDetail.email}`} className="hover:underline flex items-center gap-2">
-                          <Mail className="h-4 w-4" />
-                          {selectedLeadDetail.email}
-                        </a>
-                      </p>
-                    </div>
-                  )}
-                  {selectedLeadDetail.phone && (
-                    <div>
-                      <label className="text-sm font-medium text-muted-foreground">Telefone</label>
-                      <p className="text-base">
-                        <a href={`tel:${selectedLeadDetail.phone}`} className="hover:underline flex items-center gap-2">
-                          <Phone className="h-4 w-4" />
-                          {selectedLeadDetail.phone}
-                        </a>
-                      </p>
-                    </div>
-                  )}
-                  {selectedLeadDetail.company && (
-                    <div>
-                      <label className="text-sm font-medium text-muted-foreground">Empresa</label>
-                      <p className="text-base flex items-center gap-2">
-                        <Building className="h-4 w-4" />
-                        {selectedLeadDetail.company}
-                      </p>
-                    </div>
-                  )}
-                  {selectedLeadDetail.position && (
-                    <div>
-                      <label className="text-sm font-medium text-muted-foreground">Cargo</label>
-                      <p className="text-base">{selectedLeadDetail.position}</p>
-                    </div>
-                  )}
-                  {selectedLeadDetail.website && (
-                    <div>
-                      <label className="text-sm font-medium text-muted-foreground">Site da Empresa</label>
-                      <p className="text-base">
-                        <a href={selectedLeadDetail.website} target="_blank" rel="noopener noreferrer" className="hover:underline flex items-center gap-2">
-                          <LinkIcon className="h-4 w-4" />
-                          {selectedLeadDetail.website}
-                        </a>
-                      </p>
-                    </div>
-                  )}
-                  {selectedLeadDetail.linkedin_url && (
-                    <div>
-                      <label className="text-sm font-medium text-muted-foreground">LinkedIn</label>
-                      <p className="text-base">
-                        <a href={selectedLeadDetail.linkedin_url} target="_blank" rel="noopener noreferrer" className="hover:underline flex items-center gap-2">
-                          <LinkIcon className="h-4 w-4" />
-                          LinkedIn Profile
-                        </a>
-                      </p>
-                    </div>
-                  )}
-                  {selectedLeadDetail.source && (
-                    <div>
-                      <label className="text-sm font-medium text-muted-foreground">Fonte</label>
-                      <p className="text-base">{selectedLeadDetail.source}</p>
-                    </div>
-                  )}
-                  {selectedLeadDetail.score !== null && (
-                    <div>
-                      <label className="text-sm font-medium text-muted-foreground">Score</label>
-                      <p className="text-base flex items-center gap-2">
-                        <TrendingUp className="h-4 w-4" />
-                        {selectedLeadDetail.score}
-                      </p>
-                    </div>
-                  )}
-                  {selectedLeadDetail.tags && (
-                    <div className="md:col-span-2">
-                      <label className="text-sm font-medium text-muted-foreground">Tags</label>
-                      <p className="text-base">{selectedLeadDetail.tags}</p>
-                    </div>
-                  )}
-                </div>
+            
+            {/* Abas */}
+            <div className="border-b px-6">
+              <div className="flex gap-1 overflow-x-auto">
+                <button
+                  onClick={() => setActiveTab('basicas')}
+                  className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
+                    activeTab === 'basicas'
+                      ? 'border-primary text-primary'
+                      : 'border-transparent text-muted-foreground hover:text-foreground'
+                  }`}
+                >
+                  Informações Básicas
+                </button>
+                <button
+                  onClick={() => setActiveTab('endereco')}
+                  className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
+                    activeTab === 'endereco'
+                      ? 'border-primary text-primary'
+                      : 'border-transparent text-muted-foreground hover:text-foreground'
+                  }`}
+                >
+                  Endereço
+                </button>
+                <button
+                  onClick={() => setActiveTab('empresa')}
+                  className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
+                    activeTab === 'empresa'
+                      ? 'border-primary text-primary'
+                      : 'border-transparent text-muted-foreground hover:text-foreground'
+                  }`}
+                >
+                  Empresa
+                </button>
+                <button
+                  onClick={() => setActiveTab('contexto')}
+                  className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
+                    activeTab === 'contexto'
+                      ? 'border-primary text-primary'
+                      : 'border-transparent text-muted-foreground hover:text-foreground'
+                  }`}
+                >
+                  Contexto
+                </button>
+                <button
+                  onClick={() => setActiveTab('notas')}
+                  className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
+                    activeTab === 'notas'
+                      ? 'border-primary text-primary'
+                      : 'border-transparent text-muted-foreground hover:text-foreground'
+                  }`}
+                >
+                  Notas e Comentários
+                </button>
+                <button
+                  onClick={() => setActiveTab('tarefas')}
+                  className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
+                    activeTab === 'tarefas'
+                      ? 'border-primary text-primary'
+                      : 'border-transparent text-muted-foreground hover:text-foreground'
+                  }`}
+                >
+                  Tarefas
+                </button>
+                <button
+                  onClick={() => setActiveTab('historico')}
+                  className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
+                    activeTab === 'historico'
+                      ? 'border-primary text-primary'
+                      : 'border-transparent text-muted-foreground hover:text-foreground'
+                  }`}
+                >
+                  Histórico
+                </button>
               </div>
+            </div>
 
-              {/* Notas */}
-              {selectedLeadDetail.notes && (
-                <div>
-                  <h3 className="text-lg font-semibold mb-4">Notas</h3>
-                  <div className="bg-gray-50 dark:bg-gray-900 p-4 rounded-lg">
-                    <p className="text-sm whitespace-pre-wrap">{selectedLeadDetail.notes}</p>
+            <CardContent className="flex-1 overflow-y-auto p-6">
+              {/* Aba: Informações Básicas */}
+              {activeTab === 'basicas' && (
+                <div className="space-y-4">
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <div>
+                      <label className="text-sm font-medium text-muted-foreground">Nome</label>
+                      <p className="text-base font-medium mt-1">{selectedLeadDetail.name}</p>
+                    </div>
+                    <div>
+                      <label className="text-sm font-medium text-muted-foreground">Status</label>
+                      <p className="mt-1">
+                        <span className={`inline-block rounded-full px-2 py-1 text-xs ${statusColors[selectedLeadDetail.status]}`}>
+                          {statusLabels[selectedLeadDetail.status]}
+                        </span>
+                      </p>
+                    </div>
+                    {selectedLeadDetail.email && (
+                      <div>
+                        <label className="text-sm font-medium text-muted-foreground">Email</label>
+                        <p className="text-base mt-1">
+                          <a href={`mailto:${selectedLeadDetail.email}`} className="hover:underline flex items-center gap-2">
+                            <Mail className="h-4 w-4" />
+                            {selectedLeadDetail.email}
+                          </a>
+                        </p>
+                      </div>
+                    )}
+                    {selectedLeadDetail.phone && (
+                      <div>
+                        <label className="text-sm font-medium text-muted-foreground">Telefone</label>
+                        <p className="text-base mt-1">
+                          <a href={`tel:${selectedLeadDetail.phone}`} className="hover:underline flex items-center gap-2">
+                            <Phone className="h-4 w-4" />
+                            {selectedLeadDetail.phone}
+                          </a>
+                        </p>
+                      </div>
+                    )}
+                    {selectedLeadDetail.source && (
+                      <div>
+                        <label className="text-sm font-medium text-muted-foreground">Fonte</label>
+                        <p className="text-base mt-1">{selectedLeadDetail.source}</p>
+                      </div>
+                    )}
+                    {selectedLeadDetail.score !== null && (
+                      <div>
+                        <label className="text-sm font-medium text-muted-foreground">Score</label>
+                        <p className="text-base mt-1 flex items-center gap-2">
+                          <TrendingUp className="h-4 w-4" />
+                          {selectedLeadDetail.score}
+                        </p>
+                      </div>
+                    )}
+                    {selectedLeadDetail.tags && (
+                      <div className="md:col-span-2">
+                        <label className="text-sm font-medium text-muted-foreground">Tags</label>
+                        <p className="text-base mt-1">{selectedLeadDetail.tags}</p>
+                      </div>
+                    )}
                   </div>
                 </div>
               )}
 
-              {/* Comentários */}
-              <div>
-                <h3 className="text-lg font-semibold mb-4">Comentários</h3>
-                
-                {/* Formulário para adicionar comentário */}
-                <div className="mb-4 space-y-2">
-                  <Textarea
-                    placeholder="Adicione um comentário sobre este lead..."
-                    value={newComment}
-                    onChange={(e) => setNewComment(e.target.value)}
-                    rows={3}
-                    className="w-full"
-                  />
-                  <div className="flex justify-end">
-                    <Button
-                      onClick={handleAddComment}
-                      disabled={!newComment.trim() || addingComment}
-                      size="sm"
-                    >
-                      {addingComment ? 'Adicionando...' : 'Adicionar Comentário'}
-                    </Button>
+              {/* Aba: Endereço */}
+              {activeTab === 'endereco' && (
+                <div className="space-y-4">
+                  {selectedLeadDetail.address ? (
+                    <div>
+                      <label className="text-sm font-medium text-muted-foreground">Endereço Completo</label>
+                      <p className="text-base mt-1">{selectedLeadDetail.address}</p>
+                    </div>
+                  ) : (
+                    <p className="text-sm text-muted-foreground">Nenhum endereço cadastrado.</p>
+                  )}
+                  <div className="grid gap-4 md:grid-cols-2">
+                    {selectedLeadDetail.city && (
+                      <div>
+                        <label className="text-sm font-medium text-muted-foreground">Cidade</label>
+                        <p className="text-base mt-1">{selectedLeadDetail.city}</p>
+                      </div>
+                    )}
+                    {selectedLeadDetail.state && (
+                      <div>
+                        <label className="text-sm font-medium text-muted-foreground">Estado</label>
+                        <p className="text-base mt-1">{selectedLeadDetail.state}</p>
+                      </div>
+                    )}
+                    {selectedLeadDetail.zip_code && (
+                      <div>
+                        <label className="text-sm font-medium text-muted-foreground">CEP</label>
+                        <p className="text-base mt-1">{selectedLeadDetail.zip_code}</p>
+                      </div>
+                    )}
+                    {selectedLeadDetail.country && (
+                      <div>
+                        <label className="text-sm font-medium text-muted-foreground">País</label>
+                        <p className="text-base mt-1">{selectedLeadDetail.country}</p>
+                      </div>
+                    )}
                   </div>
+                  {!selectedLeadDetail.address && !selectedLeadDetail.city && !selectedLeadDetail.state && !selectedLeadDetail.zip_code && !selectedLeadDetail.country && (
+                    <p className="text-sm text-muted-foreground text-center py-8">
+                      Nenhuma informação de endereço disponível. Estes campos podem ser preenchidos automaticamente quando uma tarefa de pesquisa for concluída.
+                    </p>
+                  )}
                 </div>
+              )}
 
-                {/* Lista de comentários */}
-                {loadingComments ? (
-                  <p className="text-sm text-muted-foreground">Carregando comentários...</p>
-                ) : leadComments.length === 0 ? (
-                  <p className="text-sm text-muted-foreground">Nenhum comentário ainda. Seja o primeiro a comentar!</p>
-                ) : (
-                  <div className="space-y-3">
-                    {leadComments.map((comment) => (
-                      <div
-                        key={comment.id}
-                        className="bg-gray-50 dark:bg-gray-900 p-4 rounded-lg border"
-                      >
-                        <div className="flex items-start justify-between mb-2">
-                          <div className="flex-1">
-                            <div className="flex items-center gap-2 mb-1">
-                              <User className="h-4 w-4 text-muted-foreground" />
-                              <span className="font-medium text-sm">
-                                {comment.user_name || comment.user_email || 'Usuário'}
-                              </span>
-                              <span className="text-xs text-muted-foreground">
-                                • {new Date(comment.created_at).toLocaleString('pt-BR')}
-                              </span>
-                            </div>
-                            <p className="text-sm whitespace-pre-wrap mt-2">{comment.comment}</p>
-                          </div>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-6 w-6"
-                            onClick={() => handleDeleteComment(comment.id)}
-                            title="Excluir comentário"
-                          >
-                            <Trash2 className="h-3 w-3" />
-                          </Button>
+              {/* Aba: Empresa */}
+              {activeTab === 'empresa' && (
+                <div className="space-y-4">
+                  <div className="grid gap-4 md:grid-cols-2">
+                    {selectedLeadDetail.company && (
+                      <div>
+                        <label className="text-sm font-medium text-muted-foreground">Empresa</label>
+                        <p className="text-base mt-1 flex items-center gap-2">
+                          <Building className="h-4 w-4" />
+                          {selectedLeadDetail.company}
+                        </p>
+                      </div>
+                    )}
+                    {selectedLeadDetail.position && (
+                      <div>
+                        <label className="text-sm font-medium text-muted-foreground">Cargo</label>
+                        <p className="text-base mt-1">{selectedLeadDetail.position}</p>
+                      </div>
+                    )}
+                    {selectedLeadDetail.industry && (
+                      <div>
+                        <label className="text-sm font-medium text-muted-foreground">Setor/Indústria</label>
+                        <p className="text-base mt-1">{selectedLeadDetail.industry}</p>
+                      </div>
+                    )}
+                    {selectedLeadDetail.company_size && (
+                      <div>
+                        <label className="text-sm font-medium text-muted-foreground">Tamanho da Empresa</label>
+                        <p className="text-base mt-1">{selectedLeadDetail.company_size}</p>
+                      </div>
+                    )}
+                    {selectedLeadDetail.website && (
+                      <div className="md:col-span-2">
+                        <label className="text-sm font-medium text-muted-foreground">Site da Empresa</label>
+                        <p className="text-base mt-1">
+                          <a href={selectedLeadDetail.website} target="_blank" rel="noopener noreferrer" className="hover:underline flex items-center gap-2">
+                            <LinkIcon className="h-4 w-4" />
+                            {selectedLeadDetail.website}
+                          </a>
+                        </p>
+                      </div>
+                    )}
+                    {selectedLeadDetail.linkedin_url && (
+                      <div className="md:col-span-2">
+                        <label className="text-sm font-medium text-muted-foreground">LinkedIn</label>
+                        <p className="text-base mt-1">
+                          <a href={selectedLeadDetail.linkedin_url} target="_blank" rel="noopener noreferrer" className="hover:underline flex items-center gap-2">
+                            <LinkIcon className="h-4 w-4" />
+                            LinkedIn Profile
+                          </a>
+                        </p>
+                      </div>
+                    )}
+                    {selectedLeadDetail.telefone_empresa && (
+                      <div>
+                        <label className="text-sm font-medium text-muted-foreground">Telefone da Empresa</label>
+                        <p className="text-base mt-1">
+                          <a href={`tel:${selectedLeadDetail.telefone_empresa}`} className="hover:underline flex items-center gap-2">
+                            <Phone className="h-4 w-4" />
+                            {selectedLeadDetail.telefone_empresa}
+                          </a>
+                        </p>
+                      </div>
+                    )}
+                    {selectedLeadDetail.email_empresa && (
+                      <div>
+                        <label className="text-sm font-medium text-muted-foreground">Email da Empresa</label>
+                        <p className="text-base mt-1">
+                          <a href={`mailto:${selectedLeadDetail.email_empresa}`} className="hover:underline flex items-center gap-2">
+                            <Mail className="h-4 w-4" />
+                            {selectedLeadDetail.email_empresa}
+                          </a>
+                        </p>
+                      </div>
+                    )}
+                    {selectedLeadDetail.socios_json && (
+                      <div className="md:col-span-2">
+                        <label className="text-sm font-medium text-muted-foreground">Sócios</label>
+                        <div className="mt-2 space-y-2">
+                          {(() => {
+                            try {
+                              const socios = JSON.parse(selectedLeadDetail.socios_json)
+                              if (Array.isArray(socios) && socios.length > 0) {
+                                return socios.map((socio: any, idx: number) => (
+                                  <div key={idx} className="p-3 bg-muted rounded-lg">
+                                    <div className="font-medium">{socio.nome || 'N/A'}</div>
+                                    {socio.qualificacao && (
+                                      <div className="text-sm text-muted-foreground mt-1">
+                                        {socio.qualificacao}
+                                      </div>
+                                    )}
+                                    {socio.cpf_cnpj && (
+                                      <div className="text-xs text-muted-foreground mt-1">
+                                        CPF/CNPJ: {socio.cpf_cnpj}
+                                      </div>
+                                    )}
+                                    {socio.data_entrada && (
+                                      <div className="text-xs text-muted-foreground mt-1">
+                                        Entrada: {socio.data_entrada}
+                                      </div>
+                                    )}
+                                  </div>
+                                ))
+                              }
+                            } catch (e) {
+                              return <p className="text-sm text-muted-foreground">Erro ao processar dados dos sócios</p>
+                            }
+                            return null
+                          })()}
                         </div>
                       </div>
-                    ))}
+                    )}
                   </div>
-                )}
-              </div>
+                </div>
+              )}
 
-              {/* Histórico */}
-              <div>
-                <h3 className="text-lg font-semibold mb-4">Histórico</h3>
-                <div className="space-y-2">
-                  <div className="flex items-center gap-2 text-sm">
-                    <Calendar className="h-4 w-4 text-muted-foreground" />
-                    <span className="text-muted-foreground">Criado em:</span>
-                    <span>{new Date(selectedLeadDetail.created_at).toLocaleString('pt-BR')}</span>
-                  </div>
-                  <div className="flex items-center gap-2 text-sm">
-                    <Clock className="h-4 w-4 text-muted-foreground" />
-                    <span className="text-muted-foreground">Última atualização:</span>
-                    <span>{new Date(selectedLeadDetail.updated_at).toLocaleString('pt-BR')}</span>
-                  </div>
-                  {selectedLeadDetail.last_contact && (
-                    <div className="flex items-center gap-2 text-sm">
-                      <Phone className="h-4 w-4 text-muted-foreground" />
-                      <span className="text-muted-foreground">Último contato:</span>
-                      <span>{new Date(selectedLeadDetail.last_contact).toLocaleString('pt-BR')}</span>
+              {/* Aba: Contexto */}
+              {activeTab === 'contexto' && (
+                <div className="space-y-4">
+                  {selectedLeadDetail.context ? (
+                    <div className="bg-blue-50 dark:bg-blue-950 p-6 rounded-lg border border-blue-200 dark:border-blue-800">
+                      <p className="text-sm whitespace-pre-wrap leading-relaxed">{selectedLeadDetail.context}</p>
                     </div>
-                  )}
-                  {selectedLeadDetail.next_followup && (
-                    <div className="flex items-center gap-2 text-sm">
-                      <Clock className="h-4 w-4 text-muted-foreground" />
-                      <span className="text-muted-foreground">Próximo follow-up:</span>
-                      <span className="font-medium">{new Date(selectedLeadDetail.next_followup).toLocaleString('pt-BR')}</span>
+                  ) : (
+                    <div className="text-center py-12">
+                      <p className="text-sm text-muted-foreground mb-2">Nenhum contexto cadastrado.</p>
+                      <p className="text-xs text-muted-foreground">
+                        Este campo pode ser preenchido automaticamente quando uma tarefa de pesquisa for concluída.
+                      </p>
                     </div>
                   )}
                 </div>
-              </div>
+              )}
 
-              {/* Tarefas */}
-              <div>
-                <h3 className="text-lg font-semibold mb-4">Tarefas</h3>
-                {loadingTasks ? (
-                  <p className="text-sm text-muted-foreground">Carregando tarefas...</p>
-                ) : leadTasks.length === 0 ? (
-                  <p className="text-sm text-muted-foreground">Nenhuma tarefa associada a este lead.</p>
-                ) : (
-                  <div className="space-y-2">
-                    {leadTasks.map((task) => {
-                      const dueDate = new Date(task.due_date)
-                      const isOverdue = dueDate < new Date() && task.status !== 'completed'
-                      const taskTypeLabels: Record<string, string> = {
-                        email: 'Email',
-                        call: 'Ligação',
-                        linkedin: 'LinkedIn',
-                        meeting: 'Reunião',
-                        follow_up: 'Follow-up',
-                        research: 'Pesquisa',
-                        other: 'Outro'
-                      }
-                      const taskStatusLabels: Record<string, string> = {
-                        pending: 'Pendente',
-                        in_progress: 'Em Progresso',
-                        completed: 'Concluída',
-                        cancelled: 'Cancelada'
-                      }
-                      const taskStatusColors: Record<string, string> = {
-                        pending: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200',
-                        in_progress: 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200',
-                        completed: 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200',
-                        cancelled: 'bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-200'
-                      }
-                      
-                      return (
-                        <div
-                          key={task.id}
-                          className={`p-3 rounded-lg border ${
-                            isOverdue ? 'border-red-300 bg-red-50 dark:bg-red-950' : 'bg-gray-50 dark:bg-gray-900'
-                          }`}
+              {/* Aba: Notas e Comentários */}
+              {activeTab === 'notas' && (
+                <div className="space-y-6">
+                  {/* Notas */}
+                  {selectedLeadDetail.notes && (
+                    <div>
+                      <h3 className="text-lg font-semibold mb-4">Notas</h3>
+                      <div className="bg-gray-50 dark:bg-gray-900 p-4 rounded-lg">
+                        <p className="text-sm whitespace-pre-wrap">{selectedLeadDetail.notes}</p>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Comentários */}
+                  <div>
+                    <h3 className="text-lg font-semibold mb-4">Comentários</h3>
+                    
+                    {/* Formulário para adicionar comentário */}
+                    <div className="mb-4 space-y-2">
+                      <Textarea
+                        placeholder="Adicione um comentário sobre este lead..."
+                        value={newComment}
+                        onChange={(e) => setNewComment(e.target.value)}
+                        rows={3}
+                        className="w-full"
+                      />
+                      <div className="flex justify-end">
+                        <Button
+                          onClick={handleAddComment}
+                          disabled={!newComment.trim() || addingComment}
+                          size="sm"
                         >
-                          <div className="flex items-start justify-between">
-                            <div className="flex-1">
-                              <div className="flex items-center gap-2 mb-1">
-                                <span className="font-medium">{task.title}</span>
-                                <span className={`text-xs px-2 py-1 rounded ${taskStatusColors[task.status] || taskStatusColors.pending}`}>
-                                  {taskStatusLabels[task.status] || task.status}
-                                </span>
-                                <span className="text-xs text-muted-foreground">
-                                  {taskTypeLabels[task.type] || task.type}
-                                </span>
-                              </div>
-                              {task.description && (
-                                <p className="text-sm text-muted-foreground mb-2">{task.description}</p>
-                              )}
-                              <div className="flex items-center gap-4 text-xs text-muted-foreground">
-                                <span className="flex items-center gap-1">
-                                  <Clock className="h-3 w-3" />
-                                  Vencimento: {dueDate.toLocaleString('pt-BR')}
-                                </span>
-                                {task.completed_at && (
-                                  <span className="flex items-center gap-1">
-                                    <CheckCircle2 className="h-3 w-3" />
-                                    Concluída em: {new Date(task.completed_at).toLocaleString('pt-BR')}
+                          {addingComment ? 'Adicionando...' : 'Adicionar Comentário'}
+                        </Button>
+                      </div>
+                    </div>
+
+                    {/* Lista de comentários */}
+                    {loadingComments ? (
+                      <p className="text-sm text-muted-foreground">Carregando comentários...</p>
+                    ) : leadComments.length === 0 ? (
+                      <p className="text-sm text-muted-foreground">Nenhum comentário ainda. Seja o primeiro a comentar!</p>
+                    ) : (
+                      <div className="space-y-3">
+                        {leadComments.map((comment) => (
+                          <div
+                            key={comment.id}
+                            className="bg-gray-50 dark:bg-gray-900 p-4 rounded-lg border"
+                          >
+                            <div className="flex items-start justify-between mb-2">
+                              <div className="flex-1">
+                                <div className="flex items-center gap-2 mb-1">
+                                  <User className="h-4 w-4 text-muted-foreground" />
+                                  <span className="font-medium text-sm">
+                                    {comment.user_name || comment.user_email || 'Usuário'}
                                   </span>
+                                  <span className="text-xs text-muted-foreground">
+                                    • {new Date(comment.created_at).toLocaleString('pt-BR')}
+                                  </span>
+                                </div>
+                                <p className="text-sm whitespace-pre-wrap mt-2">{comment.comment}</p>
+                              </div>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-6 w-6"
+                                onClick={() => handleDeleteComment(comment.id)}
+                                title="Excluir comentário"
+                              >
+                                <Trash2 className="h-3 w-3" />
+                              </Button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Aba: Tarefas */}
+              {activeTab === 'tarefas' && (
+                <div className="space-y-4">
+                  {loadingTasks ? (
+                    <p className="text-sm text-muted-foreground">Carregando tarefas...</p>
+                  ) : leadTasks.length === 0 ? (
+                    <p className="text-sm text-muted-foreground text-center py-8">Nenhuma tarefa associada a este lead.</p>
+                  ) : (
+                    <div className="space-y-2">
+                      {leadTasks.map((task) => {
+                        const dueDate = new Date(task.due_date)
+                        const isOverdue = dueDate < new Date() && task.status !== 'completed'
+                        const taskTypeLabels: Record<string, string> = {
+                          email: 'Email',
+                          call: 'Ligação',
+                          linkedin: 'LinkedIn',
+                          meeting: 'Reunião',
+                          follow_up: 'Follow-up',
+                          research: 'Pesquisa',
+                          other: 'Outro'
+                        }
+                        const taskStatusLabels: Record<string, string> = {
+                          pending: 'Pendente',
+                          in_progress: 'Em Progresso',
+                          completed: 'Concluída',
+                          cancelled: 'Cancelada'
+                        }
+                        const taskStatusColors: Record<string, string> = {
+                          pending: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200',
+                          in_progress: 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200',
+                          completed: 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200',
+                          cancelled: 'bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-200'
+                        }
+                        
+                        return (
+                          <div
+                            key={task.id}
+                            className={`p-4 rounded-lg border ${
+                              isOverdue ? 'border-red-300 bg-red-50 dark:bg-red-950' : 'bg-gray-50 dark:bg-gray-900'
+                            }`}
+                          >
+                            <div className="flex items-start justify-between">
+                              <div className="flex-1">
+                                <div className="flex items-center gap-2 mb-2 flex-wrap">
+                                  <span className="font-medium">{task.title}</span>
+                                  <span className={`text-xs px-2 py-1 rounded ${taskStatusColors[task.status] || taskStatusColors.pending}`}>
+                                    {taskStatusLabels[task.status] || task.status}
+                                  </span>
+                                  <span className="text-xs text-muted-foreground">
+                                    {taskTypeLabels[task.type] || task.type}
+                                  </span>
+                                </div>
+                                {task.description && (
+                                  <p className="text-sm text-muted-foreground mb-2">{task.description}</p>
                                 )}
+                                <div className="flex items-center gap-4 text-xs text-muted-foreground">
+                                  <span className="flex items-center gap-1">
+                                    <Clock className="h-3 w-3" />
+                                    Vencimento: {dueDate.toLocaleString('pt-BR')}
+                                  </span>
+                                  {task.completed_at && (
+                                    <span className="flex items-center gap-1">
+                                      <CheckCircle2 className="h-3 w-3" />
+                                      Concluída em: {new Date(task.completed_at).toLocaleString('pt-BR')}
+                                    </span>
+                                  )}
+                                </div>
                               </div>
                             </div>
                           </div>
-                        </div>
-                      )
-                    })}
-                  </div>
-                )}
-              </div>
+                        )
+                      })}
+                    </div>
+                  )}
+                </div>
+              )}
 
-              {/* Ações */}
-              <div className="flex gap-2 pt-4 border-t">
+              {/* Aba: Histórico */}
+              {activeTab === 'historico' && (
+                <div className="space-y-4">
+                  <div className="space-y-3">
+                    <div className="flex items-center gap-3 p-3 bg-gray-50 dark:bg-gray-900 rounded-lg">
+                      <Calendar className="h-5 w-5 text-muted-foreground" />
+                      <div className="flex-1">
+                        <label className="text-sm font-medium text-muted-foreground">Criado em</label>
+                        <p className="text-base">{new Date(selectedLeadDetail.created_at).toLocaleString('pt-BR')}</p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-3 p-3 bg-gray-50 dark:bg-gray-900 rounded-lg">
+                      <Clock className="h-5 w-5 text-muted-foreground" />
+                      <div className="flex-1">
+                        <label className="text-sm font-medium text-muted-foreground">Última atualização</label>
+                        <p className="text-base">{new Date(selectedLeadDetail.updated_at).toLocaleString('pt-BR')}</p>
+                      </div>
+                    </div>
+                    {selectedLeadDetail.last_contact && (
+                      <div className="flex items-center gap-3 p-3 bg-gray-50 dark:bg-gray-900 rounded-lg">
+                        <Phone className="h-5 w-5 text-muted-foreground" />
+                        <div className="flex-1">
+                          <label className="text-sm font-medium text-muted-foreground">Último contato</label>
+                          <p className="text-base">{new Date(selectedLeadDetail.last_contact).toLocaleString('pt-BR')}</p>
+                        </div>
+                      </div>
+                    )}
+                    {selectedLeadDetail.next_followup && (
+                      <div className="flex items-center gap-3 p-3 bg-blue-50 dark:bg-blue-950 rounded-lg border border-blue-200 dark:border-blue-800">
+                        <Clock className="h-5 w-5 text-blue-600 dark:text-blue-400" />
+                        <div className="flex-1">
+                          <label className="text-sm font-medium text-blue-700 dark:text-blue-300">Próximo follow-up</label>
+                          <p className="text-base font-medium">{new Date(selectedLeadDetail.next_followup).toLocaleString('pt-BR')}</p>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+            </CardContent>
+
+            {/* Ações */}
+            <div className="border-t p-6">
+              <div className="flex gap-2">
                 <Button
                   variant="outline"
                   onClick={() => {
@@ -1734,6 +2605,7 @@ export function Leads() {
                       setShowLeadDetailModal(false)
                       setLeadComments([])
                       setNewComment('')
+                      setActiveTab('basicas')
                     }
                   }}
                 >
@@ -1749,6 +2621,7 @@ export function Leads() {
                       setShowLeadDetailModal(false)
                       setLeadComments([])
                       setNewComment('')
+                      setActiveTab('basicas')
                     }
                   }}
                 >
@@ -1764,12 +2637,13 @@ export function Leads() {
                     setLeadTasks([])
                     setLeadComments([])
                     setNewComment('')
+                    setActiveTab('basicas')
                   }}
                 >
                   Fechar
                 </Button>
               </div>
-            </CardContent>
+            </div>
           </Card>
         </div>
       )}

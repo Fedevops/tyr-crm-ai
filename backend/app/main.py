@@ -1,7 +1,24 @@
+import logging
+import sys
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.database import engine, init_db
-from app.routers import auth, users, playbooks, agents, company_profile, debug, leads, sequences, tasks
+from app.routers import auth, users, playbooks, agents, company_profile, debug, leads, sequences, tasks, prospecting
+
+# Configurar logging para garantir que todos os logs apareçam
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.StreamHandler(sys.stdout)
+    ]
+)
+
+# Configurar nível de log para SQLAlchemy (reduzir verbosidade)
+logging.getLogger('sqlalchemy.engine').setLevel(logging.WARNING)
+
+# Configurar nível de log para researcher_agent (mostrar DEBUG também)
+logging.getLogger('app.agents.researcher_agent').setLevel(logging.DEBUG)
 
 app = FastAPI(
     title="TYR CRM AI",
@@ -34,6 +51,7 @@ app.include_router(company_profile.router, prefix="/api/company-profile", tags=[
 app.include_router(leads.router, prefix="/api/leads", tags=["leads"])
 app.include_router(sequences.router, prefix="/api/sequences", tags=["sequences"])
 app.include_router(tasks.router, prefix="/api/tasks", tags=["tasks"])
+app.include_router(prospecting.router, prefix="/api/prospecting", tags=["prospecting"])
 app.include_router(debug.router, prefix="/api/debug", tags=["debug"])
 
 

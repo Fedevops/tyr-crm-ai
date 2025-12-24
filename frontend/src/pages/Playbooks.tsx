@@ -155,16 +155,19 @@ export function Playbooks() {
           <h1 className="text-3xl font-bold">{t('playbooks.title')}</h1>
           <p className="text-muted-foreground">Gerencie seus playbooks de vendas</p>
         </div>
-        <Button onClick={() => setShowForm(!showForm)}>
+        <Button 
+          onClick={() => setShowForm(!showForm)}
+          className="bg-gradient-to-r from-teal-600 to-teal-700 hover:from-teal-700 hover:to-teal-800 text-white shadow-md hover:shadow-lg transition-all duration-200"
+        >
           <Plus className="mr-2 h-4 w-4" />
           {t('playbooks.createNew')}
         </Button>
       </div>
 
       {showForm && (
-        <Card>
-          <CardHeader>
-            <CardTitle>
+        <Card className="border-t-4 border-t-teal-500 bg-gradient-to-br from-teal-50/30 to-white dark:from-teal-950/10 dark:to-background">
+          <CardHeader className="bg-gradient-to-r from-teal-50/50 to-transparent dark:from-teal-950/20">
+            <CardTitle className="text-teal-900 dark:text-teal-100">
               {editingId ? t('common.edit') : t('playbooks.createNew')}
             </CardTitle>
           </CardHeader>
@@ -225,12 +228,15 @@ export function Playbooks() {
       ) : (
         <div className="grid gap-4 md:grid-cols-2">
           {playbooks.map((playbook) => (
-            <Card key={playbook.id}>
+            <Card 
+              key={playbook.id}
+              className="border-l-4 border-l-teal-400 hover:border-l-teal-600 transition-all duration-200 bg-gradient-to-r from-white to-teal-50/30 dark:from-background dark:to-teal-950/20 hover:shadow-lg"
+            >
               <CardHeader>
                 <div className="flex items-start justify-between">
                   <div>
-                    <CardTitle>{playbook.name}</CardTitle>
-                    <CardDescription>{playbook.description}</CardDescription>
+                    <CardTitle className="text-teal-900 dark:text-teal-100">{playbook.name}</CardTitle>
+                    <CardDescription className="text-teal-700/80 dark:text-teal-300/80">{playbook.description}</CardDescription>
                   </div>
                   <div className="flex gap-2">
                     <Button

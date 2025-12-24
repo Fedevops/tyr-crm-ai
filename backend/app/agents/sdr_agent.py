@@ -1,7 +1,7 @@
 import json
 from typing import Dict, Any, TypedDict
 from langgraph.graph import StateGraph, END
-from langchain_openai import ChatOpenAI
+from app.agents.llm_helper import get_llm
 from app.config import settings
 
 # Define the state for the agent
@@ -32,11 +32,7 @@ def research_lead(state: AgentState) -> AgentState:
 
 def generate_approach(state: AgentState) -> AgentState:
     """Generate sales approach based on research and playbook"""
-    llm = ChatOpenAI(
-        model="gpt-4",
-        temperature=0.7,
-        openai_api_key=settings.openai_api_key
-    ) if settings.openai_api_key else None
+    llm = get_llm(temperature=0.7)
     
     if llm:
         prompt = f"""
@@ -76,7 +72,7 @@ def generate_approach(state: AgentState) -> AgentState:
         3. Timing: Reach out via LinkedIn first, then email follow-up
         4. Objections: Be prepared to discuss ROI and implementation timeline
         
-        Note: OpenAI API key not configured. This is a simulated response.
+        Note: LLM não configurado. Configure OpenAI ou Ollama no arquivo .env. Esta é uma resposta simulada.
         """
     
     return state

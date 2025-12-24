@@ -99,61 +99,67 @@ export function Dashboard() {
       </div>
 
       <div className="grid gap-4 md:grid-cols-3">
-        <Card>
+        <Card className="border-l-4 border-l-blue-500 bg-gradient-to-br from-blue-50/50 to-white dark:from-blue-950/20 dark:to-background">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">
+            <CardTitle className="text-sm font-medium text-blue-700 dark:text-blue-300">
               {t('dashboard.totalLeads')}
             </CardTitle>
-            <Users className="h-4 w-4 text-muted-foreground" />
+            <div className="p-2 rounded-lg bg-blue-100 dark:bg-blue-900/30">
+              <Users className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+            </div>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">
+            <div className="text-2xl font-bold text-blue-900 dark:text-blue-100">
               {loading ? '...' : stats.totalLeads}
             </div>
-            <p className="text-xs text-muted-foreground">
+            <p className="text-xs text-blue-700/80 dark:text-blue-300/80">
               {stats.totalLeads === 0 ? 'Sem leads ainda' : `${stats.totalLeads} lead${stats.totalLeads !== 1 ? 's' : ''} cadastrado${stats.totalLeads !== 1 ? 's' : ''}`}
             </p>
           </CardContent>
         </Card>
 
-        <Card>
+        <Card className="border-l-4 border-l-teal-500 bg-gradient-to-br from-teal-50/50 to-white dark:from-teal-950/20 dark:to-background">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">
+            <CardTitle className="text-sm font-medium text-teal-700 dark:text-teal-300">
               {t('dashboard.activePlaybooks')}
             </CardTitle>
-            <BookOpen className="h-4 w-4 text-muted-foreground" />
+            <div className="p-2 rounded-lg bg-teal-100 dark:bg-teal-900/30">
+              <BookOpen className="h-4 w-4 text-teal-600 dark:text-teal-400" />
+            </div>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">
+            <div className="text-2xl font-bold text-teal-900 dark:text-teal-100">
               {loading ? '...' : stats.activePlaybooks}
             </div>
-            <p className="text-xs text-muted-foreground">
+            <p className="text-xs text-teal-700/80 dark:text-teal-300/80">
               {stats.activePlaybooks === 0 ? 'Crie seu primeiro playbook' : `${stats.activePlaybooks} playbook${stats.activePlaybooks !== 1 ? 's' : ''} ativo${stats.activePlaybooks !== 1 ? 's' : ''}`}
             </p>
           </CardContent>
         </Card>
 
-        <Card>
+        <Card className="border-l-4 border-l-purple-500 bg-gradient-to-br from-purple-50/50 to-white dark:from-purple-950/20 dark:to-background">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">
+            <CardTitle className="text-sm font-medium text-purple-700 dark:text-purple-300">
               {t('dashboard.suggestions')}
             </CardTitle>
-            <Sparkles className="h-4 w-4 text-muted-foreground" />
+            <div className="p-2 rounded-lg bg-purple-100 dark:bg-purple-900/30">
+              <Sparkles className="h-4 w-4 text-purple-600 dark:text-purple-400" />
+            </div>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">
+            <div className="text-2xl font-bold text-purple-900 dark:text-purple-100">
               {loading ? '...' : stats.suggestions}
             </div>
-            <p className="text-xs text-muted-foreground">Nenhuma sugestão ainda</p>
+            <p className="text-xs text-purple-700/80 dark:text-purple-300/80">Nenhuma sugestão ainda</p>
           </CardContent>
         </Card>
       </div>
 
       {/* Próximas Tarefas */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Clock className="h-5 w-5" />
+      <Card className="border-t-4 border-t-indigo-500 bg-gradient-to-br from-indigo-50/30 to-white dark:from-indigo-950/10 dark:to-background">
+        <CardHeader className="bg-gradient-to-r from-indigo-50/50 to-transparent dark:from-indigo-950/20">
+          <CardTitle className="flex items-center gap-2 text-indigo-900 dark:text-indigo-100">
+            <Clock className="h-5 w-5 text-indigo-600 dark:text-indigo-400" />
             Próximas Tarefas
           </CardTitle>
         </CardHeader>

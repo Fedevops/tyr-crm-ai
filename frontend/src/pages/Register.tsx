@@ -35,16 +35,33 @@ export function Register() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-background">
-      <Card className="w-full max-w-md">
-        <CardHeader>
-          <CardTitle>{t('auth.registerTitle')}</CardTitle>
-          <CardDescription>{t('auth.registerTitle')}</CardDescription>
-        </CardHeader>
+    <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-purple-50 via-indigo-50 to-blue-50 dark:from-gray-950 dark:via-gray-900 dark:to-gray-950">
+      <div className="w-full max-w-md space-y-6">
+        {/* Logo */}
+        <div className="flex justify-center mb-4">
+          <div className="relative">
+            <img 
+              src="/assets/LOGO AZUL.png" 
+              alt="TYR CRM AI" 
+              className="h-32 w-auto dark:hidden transition-all duration-300 hover:scale-105"
+            />
+            <img 
+              src="/assets/LOGO BRANCO.svg" 
+              alt="TYR CRM AI" 
+              className="h-32 w-auto hidden dark:block transition-all duration-300 hover:scale-105"
+            />
+          </div>
+        </div>
+        
+        <Card className="w-full border-t-4 border-t-purple-500 bg-gradient-to-br from-white to-purple-50/50 dark:from-background dark:to-purple-950/20 shadow-xl">
+          <CardHeader className="bg-gradient-to-r from-purple-50/50 to-transparent dark:from-purple-950/20">
+            <CardTitle className="text-purple-900 dark:text-purple-100 text-center">{t('auth.registerTitle')}</CardTitle>
+            <CardDescription className="text-purple-700/80 dark:text-purple-300/80 text-center">{t('auth.registerTitle')}</CardDescription>
+          </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-4">
             {error && (
-              <div className="rounded-md bg-destructive/10 p-3 text-sm text-destructive">
+              <div className="rounded-md bg-gradient-to-r from-red-50 to-red-100 dark:from-red-950/30 dark:to-red-900/20 border border-red-200 dark:border-red-800 p-3 text-sm text-red-700 dark:text-red-300">
                 {error}
               </div>
             )}
@@ -94,21 +111,27 @@ export function Register() {
                 required
               />
             </div>
-            <Button type="submit" className="w-full" disabled={loading}>
+            <Button 
+              type="submit" 
+              className="w-full bg-gradient-to-r from-purple-600 to-purple-700 hover:from-purple-700 hover:to-purple-800 text-white shadow-md hover:shadow-lg transition-all duration-200" 
+              disabled={loading}
+            >
               {loading ? t('common.loading') : t('auth.register')}
             </Button>
             <div className="text-center text-sm">
               <span className="text-muted-foreground">{t('auth.hasAccount')} </span>
-              <Link to="/login" className="text-primary hover:underline">
+              <Link to="/login" className="text-purple-600 dark:text-purple-400 hover:text-purple-700 dark:hover:text-purple-300 font-medium hover:underline transition-colors">
                 {t('auth.login')}
               </Link>
             </div>
           </form>
         </CardContent>
       </Card>
+      </div>
     </div>
   )
 }
+
 
 
 

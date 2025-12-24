@@ -128,8 +128,11 @@ async def create_task(
             return tasks[0]
     
     # Create single task
+    task_dict = task_data.dict()
+    # Remove assigned_to from dict if present, we'll set it explicitly
+    task_dict.pop('assigned_to', None)
     task = Task(
-        **task_data.dict(),
+        **task_dict,
         tenant_id=current_user.tenant_id,
         assigned_to=task_data.assigned_to or current_user.id
     )
@@ -267,31 +270,272 @@ async def update_task(
     current_user: User = Depends(get_current_active_user)
 ):
     """Update a task"""
+    print(f"🔄 [BACKEND] Recebida requisição PATCH para tarefa {task_id}")
+    print(f"🔍 [BACKEND] Dados recebidos: {task_data.dict()}")
     task = session.get(Task, task_id)
+    print(f"🔍 [BACKEND] Tarefa encontrada: {task is not None}")
+    
     if not task or task.tenant_id != current_user.tenant_id:
+        print(f"❌ [BACKEND] Tarefa não encontrada ou não pertence ao tenant")
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Task not found"
         )
     
+    print(f"🔍 [BACKEND] Tarefa encontrada - ID: {task.id}, Tipo: {task.type}, Status atual: {task.status}")
+    
     update_data = task_data.dict(exclude_unset=True)
+    print(f"🔍 [BACKEND] Dados para atualização: {update_data}")
     
     # If marking as completed, set completed_at
-    if update_data.get("status") == TaskStatus.COMPLETED and not task.completed_at:
-        update_data["completed_at"] = datetime.utcnow()
+    if update_data.get("status") == TaskStatus.COMPLETED:
+        print(f"✅ [BACKEND] Tarefa está sendo marcada como COMPLETED")
+        # Se ainda não estava concluída, marcar como concluída agora
+        if not task.completed_at:
+            update_data["completed_at"] = datetime.utcnow()
+            print(f"✅ [BACKEND] completed_at definido para: {update_data['completed_at']}")
+        
+        # Se for tarefa de pesquisa, acionar agente pesquisador para enriquecer lead
+        print(f"🔍 [DEBUG] Tarefa marcada como concluída. Tipo: {task.type} (tipo: {type(task.type)}), TaskType.RESEARCH: {TaskType.RESEARCH} (tipo: {type(TaskType.RESEARCH)})")
+        print(f"🔍 [DEBUG] Comparação direta: task.type == TaskType.RESEARCH = {task.type == TaskType.RESEARCH}")
+        print(f"🔍 [DEBUG] Comparação string: str(task.type) == 'research' = {str(task.type) == 'research'}")
+        print(f"🔍 [DEBUG] Comparação enum: task.type == TaskType.RESEARCH.value = {task.type == TaskType.RESEARCH.value if hasattr(TaskType.RESEARCH, 'value') else 'N/A'}")
+        
+        # Comparar tanto como enum quanto como string para garantir
+        if task.type == TaskType.RESEARCH or str(task.type).lower() == 'research':
+            print(f"✅ [DEBUG] Tarefa é do tipo RESEARCH. Iniciando pesquisa automática...")
+            lead = session.get(Lead, task.lead_id)
+            print(f"🔍 [DEBUG] Lead encontrado: {lead is not None}, Lead ID: {task.lead_id}")
+            
+            if not lead:
+                # Se não encontrou o lead, tentar buscar novamente após refresh
+                print(f"⚠️ [DEBUG] Lead não encontrado na primeira tentativa. Tentando refresh...")
+                session.refresh(task)
+                lead = session.get(Lead, task.lead_id)
+                print(f"🔍 [DEBUG] Lead após refresh: {lead is not None}")
+            
+            if lead:
+                print(f"🔍 [DEBUG] Lead: {lead.name}, Website: {lead.website}")
+                if not lead.website:
+                    # Se não tem website, adicionar nota na tarefa
+                    print(f"⚠️ [DEBUG] Lead não possui website cadastrado.")
+                    if task.notes:
+                        task.notes += f"\n\n⚠️ Pesquisa automática não executada: Lead não possui website cadastrado."
+                    else:
+                        task.notes = "⚠️ Pesquisa automática não executada: Lead não possui website cadastrado."
+                else:
+                    print(f"✅ [DEBUG] Lead possui website: {lead.website}. Iniciando pesquisa...")
+                    try:
+                        from app.agents.researcher_agent import research_lead_website
+                        print(f"✅ [DEBUG] Módulo researcher_agent importado com sucesso.")
+                        
+                        lead_info = {
+                            'name': lead.name,
+                            'company': lead.company or '',
+                            'position': lead.position or ''
+                        }
+                        
+                        print(f"🔍 [DEBUG] Informações do lead para pesquisa: {lead_info}")
+                        print(f"🔍 [DEBUG] Website a ser pesquisado: {lead.website}")
+                        
+                        # Executar pesquisa do website
+                        print(f"🚀 [DEBUG] Chamando research_lead_website...")
+                        try:
+                            research_result = await research_lead_website(lead.website, lead_info)
+                            print(f"✅ [DEBUG] Pesquisa concluída. Resultado: {research_result.get('success', False)}")
+                            print(f"🔍 [DEBUG] Detalhes do resultado: {research_result}")
+                        except Exception as research_error:
+                            print(f"❌ [DEBUG] Erro ao executar research_lead_website: {research_error}")
+                            import traceback
+                            traceback.print_exc()
+                            research_result = {
+                                'success': False,
+                                'error': f'Erro ao executar pesquisa: {str(research_error)}'
+                            }
+                        
+                        if research_result.get('success'):
+                            enriched_data = research_result.get('enriched_data', {})
+                            fields_updated = []
+                            
+                            # Preencher campos do lead apenas se estiverem vazios
+                            if enriched_data.get('phone') and not lead.phone:
+                                lead.phone = enriched_data['phone']
+                                fields_updated.append('telefone')
+                            
+                            if enriched_data.get('email') and not lead.email:
+                                lead.email = enriched_data['email']
+                                fields_updated.append('email')
+                            
+                            if enriched_data.get('address') and not lead.address:
+                                lead.address = enriched_data['address']
+                                fields_updated.append('endereço')
+                            
+                            if enriched_data.get('city') and not lead.city:
+                                lead.city = enriched_data['city']
+                                fields_updated.append('cidade')
+                            
+                            if enriched_data.get('state') and not lead.state:
+                                lead.state = enriched_data['state']
+                                fields_updated.append('estado')
+                            
+                            if enriched_data.get('zip_code') and not lead.zip_code:
+                                lead.zip_code = enriched_data['zip_code']
+                                fields_updated.append('CEP')
+                            
+                            if enriched_data.get('country') and not lead.country:
+                                lead.country = enriched_data['country']
+                                fields_updated.append('país')
+                            
+                            if enriched_data.get('industry') and not lead.industry:
+                                lead.industry = enriched_data['industry']
+                                fields_updated.append('setor')
+                            
+                            if enriched_data.get('company_size') and not lead.company_size:
+                                lead.company_size = enriched_data['company_size']
+                                fields_updated.append('tamanho da empresa')
+                            
+                            # Contexto sempre atualiza (pode ser melhorado)
+                            if enriched_data.get('context'):
+                                if lead.context:
+                                    # Se já existe contexto, adicionar nova informação
+                                    lead.context = f"{lead.context}\n\n--- Atualização {datetime.utcnow().strftime('%d/%m/%Y %H:%M')} ---\n{enriched_data['context']}"
+                                else:
+                                    lead.context = enriched_data['context']
+                                fields_updated.append('contexto')
+                            
+                            # Adicionar análise às notes se houver
+                            if research_result.get('analysis'):
+                                analysis_summary = json.dumps(research_result.get('analysis', {}), indent=2, ensure_ascii=False)
+                                if lead.notes:
+                                    lead.notes += f"\n\n=== PESQUISA AUTOMÁTICA ({datetime.utcnow().strftime('%d/%m/%Y %H:%M')}) ===\n{analysis_summary}"
+                                else:
+                                    lead.notes = f"=== PESQUISA AUTOMÁTICA ({datetime.utcnow().strftime('%d/%m/%Y %H:%M')}) ===\n{analysis_summary}"
+                            
+                            # Adicionar tag indicando que foi enriquecido
+                            tags = json.loads(lead.tags) if lead.tags else []
+                            if 'enriquecido-automaticamente' not in tags:
+                                tags.append('enriquecido-automaticamente')
+                            lead.tags = json.dumps(tags)
+                            
+                            # Atualizar timestamp de atualização do lead
+                            lead.updated_at = datetime.utcnow()
+                            
+                            session.add(lead)
+                            session.commit()
+                            
+                            # Adicionar resumo na tarefa
+                            method_used = research_result.get('method', 'scraping_direto')
+                            method_label = {
+                                'direct_scraping': 'Scraping Direto',
+                                'google_search': 'Google Search + LLM',
+                                'hunter_io': 'Hunter.io API',
+                                'clearbit': 'Clearbit API'
+                            }.get(method_used, method_used)
+                            
+                            if fields_updated:
+                                research_summary = f"✅ Pesquisa automática concluída em {datetime.utcnow().strftime('%d/%m/%Y %H:%M')} usando {method_label}.\nCampos enriquecidos: {', '.join(fields_updated)}"
+                                if task.notes:
+                                    task.notes = f"{task.notes}\n\n{research_summary}"
+                                else:
+                                    task.notes = research_summary
+                            else:
+                                research_summary = f"✅ Pesquisa automática concluída em {datetime.utcnow().strftime('%d/%m/%Y %H:%M')} usando {method_label}.\nNenhum campo novo foi preenchido (todos já estavam preenchidos)."
+                                if task.notes:
+                                    task.notes = f"{task.notes}\n\n{research_summary}"
+                                else:
+                                    task.notes = research_summary
+                            
+                            print(f"✅ [DEBUG] Pesquisa concluída com sucesso usando método: {method_label}")
+                        else:
+                            # Pesquisa falhou - todas as estratégias foram tentadas
+                            error_msg = research_result.get('error', 'Erro desconhecido')
+                            status_code = research_result.get('status_code')
+                            method_used = research_result.get('method', 'desconhecido')
+                            suggestions = research_result.get('suggestions', [])
+                            
+                            # Mensagem detalhada baseada no método usado
+                            attempted_strategies = research_result.get('attempted_strategies', [])
+                            
+                            if method_used == 'desconhecido' and status_code == 403:
+                                error_note = f"❌ Pesquisa automática falhou após tentar múltiplas estratégias.\n\n"
+                                error_note += f"Estratégia 1 (Scraping Direto): Bloqueado (403 Forbidden)\n\n"
+                                
+                                if attempted_strategies:
+                                    error_note += f"Estratégias tentadas:\n"
+                                    for i, strategy in enumerate(attempted_strategies, 1):
+                                        error_note += f"  {i}. {strategy}\n"
+                                    error_note += "\n"
+                                
+                                if suggestions:
+                                    error_note += "Sugestões para melhorar:\n"
+                                    for i, suggestion in enumerate(suggestions, 1):
+                                        error_note += f"  {i}. {suggestion}\n"
+                                else:
+                                    error_note += "\n⚠️ Nenhuma estratégia alternativa configurada.\n"
+                                    error_note += "Configure Google Search API ou Hunter.io/Clearbit para fallback automático."
+                            else:
+                                error_note = f"❌ Pesquisa automática falhou: {error_msg}"
+                                if method_used != 'desconhecido':
+                                    error_note += f"\nMétodo usado: {method_used}"
+                                if attempted_strategies:
+                                    error_note += f"\nEstratégias tentadas: {', '.join(attempted_strategies)}"
+                            
+                            if task.notes:
+                                task.notes = f"{task.notes}\n\n{error_note}"
+                            else:
+                                task.notes = error_note
+                            
+                            print(f"❌ [DEBUG] Pesquisa falhou. Erro: {error_msg}, Status: {status_code}, Método: {method_used}")
+                    except Exception as e:
+                        print(f"❌ [DEBUG] Erro ao executar pesquisa automática: {e}")
+                        import traceback
+                        traceback.print_exc()
+                        error_note = f"❌ Erro na pesquisa automática: {str(e)}"
+                        if task.notes:
+                            task.notes = f"{task.notes}\n\n{error_note}"
+                        else:
+                            task.notes = error_note
+                        # Garantir que a tarefa seja salva mesmo com erro
+                        session.add(task)
+                        session.commit()
+            else:
+                print(f"❌ [DEBUG] Lead não encontrado. Lead ID: {task.lead_id}")
+                # Adicionar nota na tarefa sobre lead não encontrado
+                error_note = f"⚠️ Pesquisa automática não executada: Lead não encontrado (ID: {task.lead_id})"
+                if task.notes:
+                    task.notes = f"{task.notes}\n\n{error_note}"
+                else:
+                    task.notes = error_note
+        else:
+            print(f"ℹ️ [DEBUG] Tarefa não é do tipo RESEARCH. Tipo atual: {task.type}")
     
     # If changing from completed to another status, clear completed_at
     if update_data.get("status") and update_data["status"] != TaskStatus.COMPLETED:
         if task.status == TaskStatus.COMPLETED:
             update_data["completed_at"] = None
     
+    # Aplicar todas as atualizações na tarefa
     for key, value in update_data.items():
         setattr(task, key, value)
     
     task.updated_at = datetime.utcnow()
-    session.add(task)
-    session.commit()
-    session.refresh(task)
+    
+    # Garantir que a tarefa seja salva
+    try:
+        session.add(task)
+        session.commit()
+        session.refresh(task)
+        print(f"✅ [BACKEND] Tarefa {task.id} salva com sucesso. Status: {task.status}")
+    except Exception as e:
+        print(f"❌ [BACKEND] Erro ao salvar tarefa: {e}")
+        import traceback
+        traceback.print_exc()
+        session.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Erro ao salvar tarefa: {str(e)}"
+        )
+    
     return task
 
 
