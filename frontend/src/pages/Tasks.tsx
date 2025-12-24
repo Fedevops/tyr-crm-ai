@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import api from '@/lib/api'
-import { Plus, CheckCircle2, Clock, AlertCircle, Mail, Phone, Link as LinkIcon, Calendar, Search, X, User } from 'lucide-react'
+import { Plus, CheckCircle2, Clock, AlertCircle, Mail, Phone, Link as LinkIcon, Calendar, Search, X, User, XCircle, Trash2, Edit } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 
 interface Task {
@@ -85,12 +85,37 @@ export function Tasks() {
     owner_id: null as number | null
   })
   const [users, setUsers] = useState<Array<{id: number, full_name: string, email: string}>>([])
+  
+  // Detail modal
+  const [showTaskDetailModal, setShowTaskDetailModal] = useState(false)
+  const [selectedTaskDetail, setSelectedTaskDetail] = useState<Task | null>(null)
+  const [activeTab, setActiveTab] = useState<'basicas' | 'comentarios'>('basicas')
+  const [taskComments, setTaskComments] = useState<any[]>([])
+  const [loadingComments, setLoadingComments] = useState(false)
+  const [newComment, setNewComment] = useState('')
+  const [addingComment, setAddingComment] = useState(false)
+  const [editingTask, setEditingTask] = useState(false)
+  const [editFormData, setEditFormData] = useState({
+    title: '',
+    description: '',
+    status: 'pending' as string,
+    due_date: '',
+    due_time: '09:00',
+    owner_id: null as number | null,
+    notes: ''
+  })
 
   useEffect(() => {
     fetchUsers()
     fetchTasks()
     fetchLeads()
   }, [statusFilter, typeFilter, currentPage, pageSize, searchTerm])
+  
+  useEffect(() => {
+    if (showTaskDetailModal && selectedTaskDetail?.id) {
+      fetchTaskComments(selectedTaskDetail.id)
+    }
+  }, [showTaskDetailModal, selectedTaskDetail?.id])
 
   const fetchUsers = async () => {
     try {
@@ -189,6 +214,101 @@ export function Tasks() {
       console.error('Error fetching tasks:', error)
     } finally {
       setLoading(false)
+    }
+  }
+
+  const handleOpenTaskDetail = (task: Task) => {
+    setSelectedTaskDetail(task)
+    setShowTaskDetailModal(true)
+    setActiveTab('basicas')
+    setEditingTask(false)
+    // Preencher formulário de edição
+    const dueDate = new Date(task.due_date)
+    setEditFormData({
+      title: task.title,
+      description: task.description || '',
+      status: task.status,
+      due_date: dueDate.toISOString().split('T')[0],
+      due_time: dueDate.toTimeString().slice(0, 5),
+      owner_id: task.owner_id,
+      notes: task.notes || ''
+    })
+  }
+
+  const fetchTaskComments = async (taskId: number) => {
+    try {
+      setLoadingComments(true)
+      const response = await api.get(`/api/tasks/${taskId}/comments`)
+      setTaskComments(response.data || [])
+    } catch (error) {
+      console.error('Error fetching task comments:', error)
+      setTaskComments([])
+    } finally {
+      setLoadingComments(false)
+    }
+  }
+
+  const handleAddComment = async () => {
+    if (!selectedTaskDetail || !newComment.trim()) return
+    
+    try {
+      setAddingComment(true)
+      const response = await api.post(`/api/tasks/${selectedTaskDetail.id}/comments`, {
+        comment: newComment.trim()
+      })
+      
+      setTaskComments([response.data, ...taskComments])
+      setNewComment('')
+      
+      const taskResponse = await api.get(`/api/tasks/${selectedTaskDetail.id}`)
+      setSelectedTaskDetail(prev => prev ? { ...prev, updated_at: taskResponse.data.updated_at } : taskResponse.data)
+    } catch (error: any) {
+      console.error('Error adding comment:', error)
+      alert(error.response?.data?.detail || 'Erro ao adicionar comentário')
+    } finally {
+      setAddingComment(false)
+    }
+  }
+
+  const handleDeleteComment = async (commentId: number) => {
+    if (!confirm('Tem certeza que deseja excluir este comentário?')) return
+    
+    try {
+      await api.delete(`/api/tasks/comments/${commentId}`)
+      setTaskComments(prevComments => prevComments.filter(c => c.id !== commentId))
+      
+      if (selectedTaskDetail) {
+        const taskResponse = await api.get(`/api/tasks/${selectedTaskDetail.id}`)
+        setSelectedTaskDetail(prev => prev ? { ...prev, updated_at: taskResponse.data.updated_at } : taskResponse.data)
+      }
+    } catch (error: any) {
+      console.error('Error deleting comment:', error)
+      alert(error.response?.data?.detail || 'Erro ao excluir comentário')
+    }
+  }
+
+  const handleUpdateTask = async () => {
+    if (!selectedTaskDetail) return
+    
+    try {
+      const dueDateTime = new Date(`${editFormData.due_date}T${editFormData.due_time}`)
+      
+      const updateData = {
+        title: editFormData.title,
+        description: editFormData.description || null,
+        status: editFormData.status,
+        due_date: dueDateTime.toISOString(),
+        owner_id: editFormData.owner_id || null,
+        notes: editFormData.notes || null
+      }
+      
+      const response = await api.patch(`/api/tasks/${selectedTaskDetail.id}`, updateData)
+      setSelectedTaskDetail(response.data)
+      setEditingTask(false)
+      fetchTasks() // Recarregar lista
+    } catch (error: any) {
+      console.error('Error updating task:', error)
+      alert(error.response?.data?.detail || 'Erro ao atualizar tarefa')
     }
   }
 
@@ -560,7 +680,8 @@ export function Tasks() {
                 return (
                   <div
                     key={task.id}
-                    className="flex items-center justify-between p-3 rounded-lg bg-red-50 border border-red-200 dark:bg-red-950 dark:border-red-800"
+                    className="flex items-center justify-between p-3 rounded-lg bg-red-50 border border-red-200 dark:bg-red-950 dark:border-red-800 cursor-pointer hover:bg-red-100 dark:hover:bg-red-900 transition-colors"
+                    onClick={() => handleOpenTaskDetail(task)}
                   >
                     <div className="flex-1">
                       <div className="flex items-center gap-2">
@@ -592,7 +713,7 @@ export function Tasks() {
                         Vencida em {formatDate(dueDate)}
                       </p>
                     </div>
-                    <div className="flex gap-2">
+                    <div className="flex gap-2" onClick={(e) => e.stopPropagation()}>
                       <Button
                         size="sm"
                         onClick={() => handleStatusChange(task.id, 'completed')}
@@ -634,11 +755,12 @@ export function Tasks() {
                 return (
                   <div
                     key={task.id}
-                    className={`flex items-center justify-between p-3 rounded-lg border ${
+                    className={`flex items-center justify-between p-3 rounded-lg border cursor-pointer hover:opacity-90 transition-colors ${
                       isToday
-                        ? 'bg-yellow-50 border-yellow-200 dark:bg-yellow-950 dark:border-yellow-800'
-                        : 'bg-gray-50 border-gray-200 dark:bg-gray-900 dark:border-gray-800'
+                        ? 'bg-yellow-50 border-yellow-200 dark:bg-yellow-950 dark:border-yellow-800 hover:bg-yellow-100 dark:hover:bg-yellow-900'
+                        : 'bg-gray-50 border-gray-200 dark:bg-gray-900 dark:border-gray-800 hover:bg-gray-100 dark:hover:bg-gray-800'
                     }`}
+                    onClick={() => handleOpenTaskDetail(task)}
                   >
                     <div className="flex-1">
                       <div className="flex items-center gap-2">
@@ -674,7 +796,7 @@ export function Tasks() {
                         {isToday ? 'Hoje' : formatDate(dueDate)}
                       </p>
                     </div>
-                    <div className="flex gap-2">
+                    <div className="flex gap-2" onClick={(e) => e.stopPropagation()}>
                       <Button
                         size="sm"
                         onClick={() => handleStatusChange(task.id, 'in_progress')}
@@ -712,7 +834,8 @@ export function Tasks() {
               {completedTasks.map((task) => (
                 <div
                   key={task.id}
-                  className="flex items-center justify-between p-2 rounded-lg bg-gray-50 border border-gray-200 dark:bg-gray-900 dark:border-gray-800"
+                  className="flex items-center justify-between p-2 rounded-lg bg-gray-50 border border-gray-200 dark:bg-gray-900 dark:border-gray-800 cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+                  onClick={() => handleOpenTaskDetail(task)}
                 >
                   <div className="flex items-center gap-2">
                     <CheckCircle2 className="h-4 w-4 text-green-500" />
@@ -824,6 +947,325 @@ export function Tasks() {
             </Button>
           </CardContent>
         </Card>
+      )}
+
+      {/* Modal de Detalhes da Tarefa */}
+      {showTaskDetailModal && selectedTaskDetail && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <Card className="w-full max-w-4xl h-[90vh] overflow-hidden flex flex-col">
+            <CardHeader className="border-b flex-shrink-0">
+              <div className="flex items-center justify-between">
+                <CardTitle className="text-2xl">Detalhes da Tarefa</CardTitle>
+                <div className="flex items-center gap-2">
+                  {!editingTask && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setEditingTask(true)}
+                    >
+                      <Edit className="h-4 w-4 mr-2" />
+                      Editar
+                    </Button>
+                  )}
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => {
+                      setShowTaskDetailModal(false)
+                      setSelectedTaskDetail(null)
+                      setActiveTab('basicas')
+                      setEditingTask(false)
+                    }}
+                  >
+                    <XCircle className="h-5 w-5" />
+                  </Button>
+                </div>
+              </div>
+            </CardHeader>
+            
+            {/* Abas */}
+            <div className="border-b px-6 flex-shrink-0">
+              <div className="flex gap-1 overflow-x-auto">
+                <button
+                  onClick={() => setActiveTab('basicas')}
+                  className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
+                    activeTab === 'basicas'
+                      ? 'border-primary text-primary'
+                      : 'border-transparent text-muted-foreground hover:text-foreground'
+                  }`}
+                >
+                  Informações Básicas
+                </button>
+                <button
+                  onClick={() => setActiveTab('comentarios')}
+                  className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
+                    activeTab === 'comentarios'
+                      ? 'border-primary text-primary'
+                      : 'border-transparent text-muted-foreground hover:text-foreground'
+                  }`}
+                >
+                  Comentários
+                </button>
+              </div>
+            </div>
+
+            <CardContent className="flex-1 overflow-y-auto p-6">
+              {/* Aba: Informações Básicas */}
+              {activeTab === 'basicas' && (
+                <div className="space-y-4">
+                  {editingTask ? (
+                    <div className="space-y-4">
+                      <div>
+                        <label className="block text-sm font-medium mb-1">Título *</label>
+                        <Input
+                          value={editFormData.title}
+                          onChange={(e) => setEditFormData({ ...editFormData, title: e.target.value })}
+                          required
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium mb-1">Descrição</label>
+                        <Textarea
+                          value={editFormData.description}
+                          onChange={(e) => setEditFormData({ ...editFormData, description: e.target.value })}
+                          rows={4}
+                        />
+                      </div>
+                      <div className="grid gap-4 md:grid-cols-2">
+                        <div>
+                          <label className="block text-sm font-medium mb-1">Status *</label>
+                          <select
+                            value={editFormData.status}
+                            onChange={(e) => setEditFormData({ ...editFormData, status: e.target.value })}
+                            className="w-full px-3 py-2 border rounded-md"
+                            required
+                          >
+                            <option value="pending">Pendente</option>
+                            <option value="in_progress">Em Progresso</option>
+                            <option value="completed">Concluída</option>
+                            <option value="cancelled">Cancelada</option>
+                          </select>
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium mb-1">Responsável</label>
+                          <select
+                            value={editFormData.owner_id || ''}
+                            onChange={(e) => setEditFormData({ ...editFormData, owner_id: e.target.value ? Number(e.target.value) : null })}
+                            className="w-full px-3 py-2 border rounded-md"
+                          >
+                            <option value="">Sem responsável</option>
+                            {users.map((user) => (
+                              <option key={user.id} value={user.id}>
+                                {user.full_name} ({user.email})
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium mb-1">Data de Vencimento *</label>
+                          <Input
+                            type="date"
+                            value={editFormData.due_date}
+                            onChange={(e) => setEditFormData({ ...editFormData, due_date: e.target.value })}
+                            required
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium mb-1">Horário</label>
+                          <Input
+                            type="time"
+                            value={editFormData.due_time}
+                            onChange={(e) => setEditFormData({ ...editFormData, due_time: e.target.value })}
+                          />
+                        </div>
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium mb-1">Notas</label>
+                        <Textarea
+                          value={editFormData.notes}
+                          onChange={(e) => setEditFormData({ ...editFormData, notes: e.target.value })}
+                          rows={3}
+                        />
+                      </div>
+                      <div className="flex gap-2 pt-4">
+                        <Button onClick={handleUpdateTask}>
+                          Salvar Alterações
+                        </Button>
+                        <Button
+                          variant="outline"
+                          onClick={() => {
+                            setEditingTask(false)
+                            // Restaurar dados originais
+                            const dueDate = new Date(selectedTaskDetail.due_date)
+                            setEditFormData({
+                              title: selectedTaskDetail.title,
+                              description: selectedTaskDetail.description || '',
+                              status: selectedTaskDetail.status,
+                              due_date: dueDate.toISOString().split('T')[0],
+                              due_time: dueDate.toTimeString().slice(0, 5),
+                              owner_id: selectedTaskDetail.owner_id,
+                              notes: selectedTaskDetail.notes || ''
+                            })
+                          }}
+                        >
+                          Cancelar
+                        </Button>
+                      </div>
+                    </div>
+                  ) : (
+                    <>
+                      <div className="grid gap-4 md:grid-cols-2">
+                        <div>
+                          <label className="text-sm font-medium text-muted-foreground">Título</label>
+                          <p className="text-base font-medium mt-1">{selectedTaskDetail.title}</p>
+                        </div>
+                        <div>
+                          <label className="text-sm font-medium text-muted-foreground">Status</label>
+                          <p className="mt-1">
+                            <span className={`text-xs px-2 py-1 rounded ${
+                              selectedTaskDetail.status === 'completed' ? 'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-200' :
+                              selectedTaskDetail.status === 'in_progress' ? 'bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-200' :
+                              selectedTaskDetail.status === 'cancelled' ? 'bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-200' :
+                              'bg-yellow-100 text-yellow-700 dark:bg-yellow-900 dark:text-yellow-200'
+                            }`}>
+                              {selectedTaskDetail.status === 'pending' ? 'Pendente' :
+                               selectedTaskDetail.status === 'in_progress' ? 'Em Progresso' :
+                               selectedTaskDetail.status === 'completed' ? 'Concluída' : 'Cancelada'}
+                            </span>
+                          </p>
+                        </div>
+                        <div>
+                          <label className="text-sm font-medium text-muted-foreground">Tipo</label>
+                          <p className="text-base mt-1 flex items-center gap-2">
+                            {getTypeIcon(selectedTaskDetail.type)}
+                            <span className="capitalize">{selectedTaskDetail.type}</span>
+                          </p>
+                        </div>
+                        <div>
+                          <label className="text-sm font-medium text-muted-foreground">Data de Vencimento</label>
+                          <p className="text-base mt-1 flex items-center gap-2">
+                            <Calendar className="h-4 w-4" />
+                            {formatDate(new Date(selectedTaskDetail.due_date))}
+                          </p>
+                        </div>
+                        {selectedTaskDetail.owner && (
+                          <div>
+                            <label className="text-sm font-medium text-muted-foreground">Responsável</label>
+                            <p className="text-base mt-1 flex items-center gap-2">
+                              <User className="h-4 w-4" />
+                              {selectedTaskDetail.owner.full_name}
+                            </p>
+                          </div>
+                        )}
+                        {selectedTaskDetail.lead && (
+                          <div>
+                            <label className="text-sm font-medium text-muted-foreground">Lead</label>
+                            <p className="text-base mt-1">{selectedTaskDetail.lead.name}</p>
+                            {selectedTaskDetail.lead.company && (
+                              <p className="text-sm text-muted-foreground">{selectedTaskDetail.lead.company}</p>
+                            )}
+                          </div>
+                        )}
+                        {selectedTaskDetail.completed_at && (
+                          <div>
+                            <label className="text-sm font-medium text-muted-foreground">Concluída em</label>
+                            <p className="text-base mt-1 flex items-center gap-2">
+                              <Calendar className="h-4 w-4" />
+                              {formatDate(new Date(selectedTaskDetail.completed_at))}
+                            </p>
+                          </div>
+                        )}
+                      </div>
+                      {selectedTaskDetail.description && (
+                        <div className="mt-4">
+                          <label className="text-sm font-medium text-muted-foreground">Descrição</label>
+                          <p className="text-base mt-1 whitespace-pre-wrap">{selectedTaskDetail.description}</p>
+                        </div>
+                      )}
+                      {selectedTaskDetail.notes && (
+                        <div className="mt-4">
+                          <label className="text-sm font-medium text-muted-foreground">Notas</label>
+                          <div className="mt-1 p-4 bg-gray-50 dark:bg-gray-900 rounded-lg">
+                            <p className="text-base whitespace-pre-wrap">{selectedTaskDetail.notes}</p>
+                          </div>
+                        </div>
+                      )}
+                    </>
+                  )}
+                </div>
+              )}
+
+              {/* Aba: Comentários */}
+              {activeTab === 'comentarios' && (
+                <div className="space-y-6">
+                  <div>
+                    <h3 className="text-lg font-semibold mb-4">Comentários</h3>
+                    
+                    {/* Formulário para adicionar comentário */}
+                    <div className="mb-4 space-y-2">
+                      <Textarea
+                        placeholder="Adicione um comentário sobre esta tarefa..."
+                        value={newComment}
+                        onChange={(e) => setNewComment(e.target.value)}
+                        rows={3}
+                        className="w-full"
+                      />
+                      <div className="flex justify-end">
+                        <Button
+                          onClick={handleAddComment}
+                          disabled={!newComment.trim() || addingComment}
+                          size="sm"
+                        >
+                          {addingComment ? 'Adicionando...' : 'Adicionar Comentário'}
+                        </Button>
+                      </div>
+                    </div>
+
+                    {/* Lista de comentários */}
+                    {loadingComments ? (
+                      <p className="text-sm text-muted-foreground">Carregando comentários...</p>
+                    ) : taskComments.length === 0 ? (
+                      <p className="text-sm text-muted-foreground">Nenhum comentário ainda. Seja o primeiro a comentar!</p>
+                    ) : (
+                      <div className="space-y-3">
+                        {taskComments.map((comment) => (
+                          <div
+                            key={comment.id}
+                            className="bg-gray-50 dark:bg-gray-900 p-4 rounded-lg border"
+                          >
+                            <div className="flex items-start justify-between mb-2">
+                              <div className="flex-1">
+                                <div className="flex items-center gap-2 mb-1">
+                                  <User className="h-4 w-4 text-muted-foreground" />
+                                  <span className="font-medium text-sm">
+                                    {comment.user_name || comment.user_email || 'Usuário'}
+                                  </span>
+                                  <span className="text-xs text-muted-foreground">
+                                    • {new Date(comment.created_at).toLocaleString('pt-BR')}
+                                  </span>
+                                </div>
+                                <p className="text-sm whitespace-pre-wrap mt-2">{comment.comment}</p>
+                              </div>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-6 w-6"
+                                onClick={() => handleDeleteComment(comment.id)}
+                                title="Excluir comentário"
+                              >
+                                <Trash2 className="h-3 w-3" />
+                              </Button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </div>
       )}
     </div>
   )

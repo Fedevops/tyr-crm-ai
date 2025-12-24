@@ -406,6 +406,9 @@ class Task(SQLModel, table=True):
     notes: Optional[str] = None
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)
+    
+    # Relationships
+    comments: List["TaskComment"] = Relationship(back_populates="task")
 
 
 class TaskCreate(SQLModel):
@@ -467,6 +470,96 @@ class LeadCommentResponse(SQLModel):
     id: int
     tenant_id: int
     lead_id: int
+    user_id: int
+    comment: str
+    created_at: datetime
+    updated_at: datetime
+    user_name: Optional[str] = None
+    user_email: Optional[str] = None
+
+
+# Comentários para Opportunities
+class OpportunityComment(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    tenant_id: int = Field(foreign_key="tenant.id", index=True)
+    opportunity_id: int = Field(foreign_key="opportunity.id", index=True)
+    user_id: int = Field(foreign_key="user.id", index=True)
+    comment: str
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+
+    opportunity: Optional["Opportunity"] = Relationship(back_populates="comments")
+    user: Optional[User] = Relationship()
+
+
+class OpportunityCommentCreate(SQLModel):
+    comment: str
+
+
+class OpportunityCommentResponse(SQLModel):
+    id: int
+    tenant_id: int
+    opportunity_id: int
+    user_id: int
+    comment: str
+    created_at: datetime
+    updated_at: datetime
+    user_name: Optional[str] = None
+    user_email: Optional[str] = None
+
+
+# Comentários para Tasks
+class TaskComment(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    tenant_id: int = Field(foreign_key="tenant.id", index=True)
+    task_id: int = Field(foreign_key="task.id", index=True)
+    user_id: int = Field(foreign_key="user.id", index=True)
+    comment: str
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+
+    task: Optional["Task"] = Relationship(back_populates="comments")
+    user: Optional[User] = Relationship()
+
+
+class TaskCommentCreate(SQLModel):
+    comment: str
+
+
+class TaskCommentResponse(SQLModel):
+    id: int
+    tenant_id: int
+    task_id: int
+    user_id: int
+    comment: str
+    created_at: datetime
+    updated_at: datetime
+    user_name: Optional[str] = None
+    user_email: Optional[str] = None
+
+
+# Comentários para Proposals
+class ProposalComment(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    tenant_id: int = Field(foreign_key="tenant.id", index=True)
+    proposal_id: int = Field(foreign_key="proposal.id", index=True)
+    user_id: int = Field(foreign_key="user.id", index=True)
+    comment: str
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+
+    proposal: Optional["Proposal"] = Relationship(back_populates="comments")
+    user: Optional[User] = Relationship()
+
+
+class ProposalCommentCreate(SQLModel):
+    comment: str
+
+
+class ProposalCommentResponse(SQLModel):
+    id: int
+    tenant_id: int
+    proposal_id: int
     user_id: int
     comment: str
     created_at: datetime
@@ -711,6 +804,7 @@ class Opportunity(SQLModel, table=True):
     contact: Optional["Contact"] = Relationship(back_populates="opportunities")
     stage: Optional["SalesStage"] = Relationship(back_populates="opportunities")
     proposals: List["Proposal"] = Relationship(back_populates="opportunity")
+    comments: List["OpportunityComment"] = Relationship(back_populates="opportunity")
 
 
 class OpportunityCreate(SQLModel):
@@ -781,6 +875,7 @@ class Proposal(SQLModel, table=True):
     
     # Relationships
     opportunity: Optional["Opportunity"] = Relationship(back_populates="proposals")
+    comments: List["ProposalComment"] = Relationship(back_populates="proposal")
 
 
 class ProposalCreate(SQLModel):

@@ -25,21 +25,22 @@ interface AdvancedFiltersProps {
   onFiltersChange: (filters: Filter[]) => void
   logic: 'AND' | 'OR'
   onLogicChange: (logic: 'AND' | 'OR') => void
+  endpoint?: string
 }
 
-export function AdvancedFilters({ filters, onFiltersChange, logic, onLogicChange }: AdvancedFiltersProps) {
+export function AdvancedFilters({ filters, onFiltersChange, logic, onLogicChange, endpoint = '/api/leads/filter-fields' }: AdvancedFiltersProps) {
   const [showFilters, setShowFilters] = useState(false)
   const [fields, setFields] = useState<FilterField[]>([])
   const [loadingFields, setLoadingFields] = useState(false)
 
   useEffect(() => {
     fetchFields()
-  }, [])
+  }, [endpoint])
 
   const fetchFields = async () => {
     try {
       setLoadingFields(true)
-      const response = await api.get('/api/leads/filter-fields')
+      const response = await api.get(endpoint)
       setFields(response.data.fields || [])
     } catch (error) {
       console.error('Error fetching filter fields:', error)

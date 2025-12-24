@@ -1,16 +1,55 @@
-from typing import List, Optional
+from typing import List, Optional, Dict, Union
 from datetime import datetime
-from fastapi import APIRouter, Depends, HTTPException, status, Query
-from sqlmodel import Session, select, and_
+from fastapi import APIRouter, Depends, HTTPException, status, Query, Body
+from sqlmodel import Session, select, and_, or_, func
+from pydantic import BaseModel, Field
 from app.database import get_session
 from app.models import (
     Proposal, ProposalCreate, ProposalResponse, ProposalStatus,
-    Opportunity, User
+    Opportunity, User,
+    ProposalComment, ProposalCommentCreate, ProposalCommentResponse
 )
 from app.dependencies import get_current_active_user, apply_ownership_filter, ensure_ownership, require_ownership
 from app.services.audit_service import log_create, log_update, log_status_change, log_delete
+import logging
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
+# Modelos para filtros avançados
+class ProposalFilter(BaseModel):
+    field: str
+    operator: str
+    value: Optional[Union[str, int, float, bool, List]] = None
+    value2: Optional[Union[str, int, float]] = None
+
+class ProposalFiltersRequest(BaseModel):
+    filters: List[ProposalFilter] = Field(default_factory=list)
+    logic: str = Field("AND", description="Lógica de combinação: 'AND' ou 'OR'")
+    search: Optional[str] = None
+    skip: int = 0
+    limit: int = 100
+
+# Mapeamento de campos e seus tipos
+PROPOSAL_FIELD_TYPES: Dict[str, str] = {
+    "id": "number",
+    "opportunity_id": "number",
+    "owner_id": "number",
+    "created_by_id": "number",
+    "amount": "number",
+    "created_at": "date",
+    "updated_at": "date",
+    "sent_at": "date",
+    "accepted_at": "date",
+    "rejected_at": "date",
+    "valid_until": "date",
+    "status": "dropdown",
+    "currency": "dropdown",
+}
+
+def get_proposal_field_type(field_name: str) -> str:
+    return PROPOSAL_FIELD_TYPES.get(field_name, "string")
 
 
 @router.post("", response_model=ProposalResponse)
@@ -93,6 +132,207 @@ async def get_proposals(
     
     proposals = session.exec(query).all()
     return proposals
+
+
+@router.post("/filter", response_model=List[ProposalResponse])
+async def filter_proposals(
+    filters_request: ProposalFiltersRequest = Body(...),
+    session: Session = Depends(get_session),
+    current_user: User = Depends(get_current_active_user)
+):
+    """Get proposals with advanced filters"""
+    # Base query for counting
+    count_query = select(func.count(Proposal.id))
+    count_query = apply_ownership_filter(count_query, Proposal, current_user)
+    
+    # Query for data
+    query = select(Proposal)
+    query = apply_ownership_filter(query, Proposal, current_user)
+    
+    # Aplicar filtros avançados
+    filter_conditions = []
+    
+    if filters_request.filters:
+        for filter_obj in filters_request.filters:
+            try:
+                if not hasattr(Proposal, filter_obj.field):
+                    logger.warning(f"Campo '{filter_obj.field}' não existe no modelo Proposal")
+                    continue
+                
+                field = getattr(Proposal, filter_obj.field)
+                field_type = get_proposal_field_type(filter_obj.field)
+                operator = filter_obj.operator
+                value = filter_obj.value
+                value2 = filter_obj.value2
+                
+                if value is None and operator not in ["is_null", "is_not_null"]:
+                    continue
+                
+                if operator == "equals":
+                    if field_type == "string":
+                        if value:
+                            filter_conditions.append(field.ilike(f"{value}"))
+                    else:
+                        filter_conditions.append(field == value)
+                elif operator == "not_equals":
+                    if field_type == "string":
+                        if value:
+                            filter_conditions.append(~field.ilike(f"{value}"))
+                    else:
+                        filter_conditions.append(field != value)
+                elif operator == "greater_than":
+                    if value is not None:
+                        filter_conditions.append(field > value)
+                elif operator == "less_than":
+                    if value is not None:
+                        filter_conditions.append(field < value)
+                elif operator == "greater_than_or_equal":
+                    if value is not None:
+                        filter_conditions.append(field >= value)
+                elif operator == "less_than_or_equal":
+                    if value is not None:
+                        filter_conditions.append(field <= value)
+                elif operator == "between":
+                    if value is not None and value2 is not None:
+                        filter_conditions.append(and_(field >= value, field <= value2))
+                elif operator == "contains":
+                    if value:
+                        filter_conditions.append(field.ilike(f"%{value}%"))
+                elif operator == "not_contains":
+                    if value:
+                        filter_conditions.append(~field.ilike(f"%{value}%"))
+                elif operator == "starts_with":
+                    if value:
+                        filter_conditions.append(field.ilike(f"{value}%"))
+                elif operator == "ends_with":
+                    if value:
+                        filter_conditions.append(field.ilike(f"%{value}"))
+                elif operator == "is_null":
+                    filter_conditions.append(field.is_(None))
+                elif operator == "is_not_null":
+                    filter_conditions.append(field.isnot(None))
+                elif operator == "in":
+                    if value:
+                        if not isinstance(value, list):
+                            value = [value]
+                        filter_conditions.append(field.in_(value))
+                elif operator == "not_in":
+                    if value:
+                        if not isinstance(value, list):
+                            value = [value]
+                        filter_conditions.append(~field.in_(value))
+            except Exception as e:
+                logger.error(f"Erro ao aplicar filtro {filter_obj.field}: {e}", exc_info=True)
+                continue
+    
+    if filters_request.search:
+        search_filter = or_(
+            Proposal.title.ilike(f"%{filters_request.search}%"),
+            Proposal.content.ilike(f"%{filters_request.search}%"),
+            Proposal.notes.ilike(f"%{filters_request.search}%")
+        )
+        filter_conditions.append(search_filter)
+    
+    if filter_conditions:
+        if filters_request.logic.upper() == "OR":
+            combined_filter = or_(*filter_conditions)
+        else:
+            combined_filter = and_(*filter_conditions)
+        
+        query = query.where(combined_filter)
+        count_query = count_query.where(combined_filter)
+    
+    # Ordenar por data de criação (mais recente primeiro)
+    query = query.order_by(Proposal.created_at.desc())
+    
+    # Aplicar paginação
+    query = query.offset(filters_request.skip).limit(filters_request.limit)
+    
+    proposals = session.exec(query).all()
+    return proposals
+
+
+@router.get("/filter-fields")
+async def get_proposal_filter_fields(
+    session: Session = Depends(get_session),
+    current_user: User = Depends(get_current_active_user)
+):
+    """Get available filter fields for proposals"""
+    fields_info = []
+    
+    # Campos disponíveis para filtro
+    filterable_fields = {
+        "id": "ID",
+        "title": "Título",
+        "status": "Status",
+        "amount": "Valor",
+        "currency": "Moeda",
+        "opportunity_id": "ID da Oportunidade",
+        "owner_id": "Responsável",
+        "valid_until": "Válida até",
+        "created_at": "Data de Criação",
+        "updated_at": "Data de Atualização",
+        "sent_at": "Data de Envio",
+        "accepted_at": "Data de Aceitação",
+        "rejected_at": "Data de Rejeição",
+    }
+    
+    for field_name, label in filterable_fields.items():
+        field_type = get_proposal_field_type(field_name)
+        
+        if field_type == "number":
+            operators = [
+                {"value": "equals", "label": "Igual a"},
+                {"value": "not_equals", "label": "Diferente de"},
+                {"value": "greater_than", "label": "Maior que"},
+                {"value": "less_than", "label": "Menor que"},
+                {"value": "greater_than_or_equal", "label": "Maior ou igual a"},
+                {"value": "less_than_or_equal", "label": "Menor ou igual a"},
+                {"value": "between", "label": "Entre"},
+                {"value": "is_null", "label": "É nulo"},
+                {"value": "is_not_null", "label": "Não é nulo"},
+            ]
+        elif field_type == "date":
+            operators = [
+                {"value": "equals", "label": "Igual a"},
+                {"value": "not_equals", "label": "Diferente de"},
+                {"value": "greater_than", "label": "Depois de"},
+                {"value": "less_than", "label": "Antes de"},
+                {"value": "greater_than_or_equal", "label": "Depois ou igual a"},
+                {"value": "less_than_or_equal", "label": "Antes ou igual a"},
+                {"value": "between", "label": "Entre"},
+                {"value": "is_null", "label": "É nulo"},
+                {"value": "is_not_null", "label": "Não é nulo"},
+            ]
+        elif field_type == "dropdown":
+            operators = [
+                {"value": "equals", "label": "Igual a"},
+                {"value": "not_equals", "label": "Diferente de"},
+                {"value": "in", "label": "Está em"},
+                {"value": "not_in", "label": "Não está em"},
+                {"value": "is_null", "label": "É nulo"},
+                {"value": "is_not_null", "label": "Não é nulo"},
+            ]
+        else:  # string
+            operators = [
+                {"value": "equals", "label": "Igual a"},
+                {"value": "not_equals", "label": "Diferente de"},
+                {"value": "contains", "label": "Contém"},
+                {"value": "not_contains", "label": "Não contém"},
+                {"value": "starts_with", "label": "Começa com"},
+                {"value": "ends_with", "label": "Termina com"},
+                {"value": "is_null", "label": "É nulo"},
+                {"value": "is_not_null", "label": "Não é nulo"},
+            ]
+        
+        fields_info.append({
+            "field": field_name,
+            "type": field_type,
+            "label": label,
+            "operators": operators
+        })
+    
+    return {"fields": fields_info}
 
 
 @router.get("/{proposal_id}", response_model=ProposalResponse)
@@ -318,4 +558,127 @@ async def reject_proposal(
     log_status_change(session, current_user, "Proposal", proposal_id, old_status.value, ProposalStatus.REJECTED.value)
     
     return proposal
+
+
+@router.post("/{proposal_id}/comments", response_model=ProposalCommentResponse)
+async def create_proposal_comment(
+    proposal_id: int,
+    comment_data: ProposalCommentCreate,
+    session: Session = Depends(get_session),
+    current_user: User = Depends(get_current_active_user)
+):
+    """Create a comment on a proposal"""
+    # Verify proposal access
+    proposal = session.get(Proposal, proposal_id)
+    if not proposal:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Proposal not found"
+        )
+    require_ownership(proposal, current_user)
+    
+    # Create comment
+    comment = ProposalComment(
+        tenant_id=current_user.tenant_id,
+        proposal_id=proposal_id,
+        user_id=current_user.id,
+        comment=comment_data.comment
+    )
+    session.add(comment)
+    session.commit()
+    session.refresh(comment)
+    
+    # Update proposal's updated_at
+    proposal.updated_at = datetime.utcnow()
+    session.add(proposal)
+    session.commit()
+    
+    # Get user info for response
+    user = session.get(User, current_user.id)
+    response = ProposalCommentResponse(
+        id=comment.id,
+        tenant_id=comment.tenant_id,
+        proposal_id=comment.proposal_id,
+        user_id=comment.user_id,
+        comment=comment.comment,
+        created_at=comment.created_at,
+        updated_at=comment.updated_at,
+        user_name=user.full_name if user else None,
+        user_email=user.email if user else None
+    )
+    
+    return response
+
+
+@router.get("/{proposal_id}/comments", response_model=List[ProposalCommentResponse])
+async def get_proposal_comments(
+    proposal_id: int,
+    session: Session = Depends(get_session),
+    current_user: User = Depends(get_current_active_user)
+):
+    """Get all comments for a proposal"""
+    # Verify proposal access
+    proposal = session.get(Proposal, proposal_id)
+    if not proposal:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Proposal not found"
+        )
+    require_ownership(proposal, current_user)
+    
+    # Get comments
+    comments = session.exec(
+        select(ProposalComment)
+        .where(
+            and_(
+                ProposalComment.proposal_id == proposal_id,
+                ProposalComment.tenant_id == current_user.tenant_id
+            )
+        )
+        .order_by(ProposalComment.created_at.desc())
+    ).all()
+    
+    # Get user info for each comment
+    result = []
+    for comment in comments:
+        user = session.get(User, comment.user_id)
+        result.append(ProposalCommentResponse(
+            id=comment.id,
+            tenant_id=comment.tenant_id,
+            proposal_id=comment.proposal_id,
+            user_id=comment.user_id,
+            comment=comment.comment,
+            created_at=comment.created_at,
+            updated_at=comment.updated_at,
+            user_name=user.full_name if user else None,
+            user_email=user.email if user else None
+        ))
+    
+    return result
+
+
+@router.delete("/comments/{comment_id}")
+async def delete_proposal_comment(
+    comment_id: int,
+    session: Session = Depends(get_session),
+    current_user: User = Depends(get_current_active_user)
+):
+    """Delete a comment on a proposal"""
+    comment = session.get(ProposalComment, comment_id)
+    if not comment or comment.tenant_id != current_user.tenant_id:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Comment not found"
+        )
+    
+    # Only allow deletion by comment owner or admin
+    if comment.user_id != current_user.id and current_user.role.value != "admin":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You can only delete your own comments"
+        )
+    
+    session.delete(comment)
+    session.commit()
+    return {"message": "Comment deleted successfully"}
 

@@ -1076,13 +1076,33 @@ async def update_lead(
             setattr(lead, key, value)
     
     # Se owner_id foi especificado, atualizar (mas validar acesso)
-    if lead_dict.get("owner_id"):
-        # Admin pode atribuir a qualquer usuário do tenant
+    if lead_dict.get("owner_id") is not None:
+        new_owner_id = lead_dict["owner_id"]
+        # Verificar se o usuário existe e pertence ao mesmo tenant
+        if new_owner_id:
+            user = session.get(User, new_owner_id)
+            if not user or user.tenant_id != current_user.tenant_id:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Invalid user"
+                )
+        # Admin pode atribuir a qualquer usuário do tenant ou remover (None)
         if current_user.role.value == "admin":
-            lead.owner_id = lead_dict["owner_id"]
+            lead.owner_id = new_owner_id
         # Usuário normal só pode atribuir a si mesmo
-        elif lead_dict["owner_id"] == current_user.id:
-            lead.owner_id = lead_dict["owner_id"]
+        elif new_owner_id == current_user.id:
+            lead.owner_id = new_owner_id
+        elif new_owner_id is None:
+            # Não permitir remover owner (sempre deve ter um)
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Owner is required. You can reassign to another user."
+            )
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="You can only assign leads to yourself"
+            )
     
     session.add(lead)
     session.commit()

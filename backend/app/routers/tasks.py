@@ -3,10 +3,12 @@ import json
 from datetime import datetime, timedelta
 from fastapi import APIRouter, Depends, HTTPException, status, Query, Response
 from sqlmodel import Session, select, and_, or_, func
+from typing import List
 from app.database import get_session
 from app.models import (
     Task, TaskCreate, TaskUpdate, TaskResponse, TaskType, TaskStatus,
-    Lead, Sequence, User
+    Lead, Sequence, User,
+    TaskComment, TaskCommentCreate, TaskCommentResponse
 )
 from app.dependencies import get_current_active_user, apply_ownership_filter, ensure_ownership, require_ownership
 
@@ -585,4 +587,127 @@ async def delete_task(
     session.delete(task)
     session.commit()
     return {"message": "Task deleted successfully"}
+
+
+@router.post("/{task_id}/comments", response_model=TaskCommentResponse)
+async def create_task_comment(
+    task_id: int,
+    comment_data: TaskCommentCreate,
+    session: Session = Depends(get_session),
+    current_user: User = Depends(get_current_active_user)
+):
+    """Create a comment on a task"""
+    # Verify task access
+    task = session.get(Task, task_id)
+    if not task:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Task not found"
+        )
+    require_ownership(task, current_user)
+    
+    # Create comment
+    comment = TaskComment(
+        tenant_id=current_user.tenant_id,
+        task_id=task_id,
+        user_id=current_user.id,
+        comment=comment_data.comment
+    )
+    session.add(comment)
+    session.commit()
+    session.refresh(comment)
+    
+    # Update task's updated_at
+    task.updated_at = datetime.utcnow()
+    session.add(task)
+    session.commit()
+    
+    # Get user info for response
+    user = session.get(User, current_user.id)
+    response = TaskCommentResponse(
+        id=comment.id,
+        tenant_id=comment.tenant_id,
+        task_id=comment.task_id,
+        user_id=comment.user_id,
+        comment=comment.comment,
+        created_at=comment.created_at,
+        updated_at=comment.updated_at,
+        user_name=user.full_name if user else None,
+        user_email=user.email if user else None
+    )
+    
+    return response
+
+
+@router.get("/{task_id}/comments", response_model=List[TaskCommentResponse])
+async def get_task_comments(
+    task_id: int,
+    session: Session = Depends(get_session),
+    current_user: User = Depends(get_current_active_user)
+):
+    """Get all comments for a task"""
+    # Verify task access
+    task = session.get(Task, task_id)
+    if not task:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Task not found"
+        )
+    require_ownership(task, current_user)
+    
+    # Get comments
+    comments = session.exec(
+        select(TaskComment)
+        .where(
+            and_(
+                TaskComment.task_id == task_id,
+                TaskComment.tenant_id == current_user.tenant_id
+            )
+        )
+        .order_by(TaskComment.created_at.desc())
+    ).all()
+    
+    # Get user info for each comment
+    result = []
+    for comment in comments:
+        user = session.get(User, comment.user_id)
+        result.append(TaskCommentResponse(
+            id=comment.id,
+            tenant_id=comment.tenant_id,
+            task_id=comment.task_id,
+            user_id=comment.user_id,
+            comment=comment.comment,
+            created_at=comment.created_at,
+            updated_at=comment.updated_at,
+            user_name=user.full_name if user else None,
+            user_email=user.email if user else None
+        ))
+    
+    return result
+
+
+@router.delete("/comments/{comment_id}")
+async def delete_task_comment(
+    comment_id: int,
+    session: Session = Depends(get_session),
+    current_user: User = Depends(get_current_active_user)
+):
+    """Delete a comment on a task"""
+    comment = session.get(TaskComment, comment_id)
+    if not comment or comment.tenant_id != current_user.tenant_id:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Comment not found"
+        )
+    
+    # Only allow deletion by comment owner or admin
+    if comment.user_id != current_user.id and current_user.role.value != "admin":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You can only delete your own comments"
+        )
+    
+    session.delete(comment)
+    session.commit()
+    return {"message": "Comment deleted successfully"}
 

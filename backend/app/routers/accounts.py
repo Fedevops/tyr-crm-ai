@@ -1,12 +1,44 @@
-from typing import List, Optional
-from fastapi import APIRouter, Depends, HTTPException, status, Query
+from typing import List, Optional, Dict, Union
+from datetime import datetime
+from fastapi import APIRouter, Depends, HTTPException, status, Query, Body
+from fastapi.responses import JSONResponse
 from sqlmodel import Session, select, and_, or_, func
+from pydantic import BaseModel, Field
 from app.database import get_session
 from app.models import Account, AccountCreate, AccountResponse, User
 from app.dependencies import get_current_active_user, apply_ownership_filter, ensure_ownership, require_ownership
 from app.services.audit_service import log_create, log_update, log_delete
+import logging
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
+# Modelos para filtros avançados
+class AccountFilter(BaseModel):
+    field: str
+    operator: str
+    value: Optional[Union[str, int, float, bool, List]] = None
+    value2: Optional[Union[str, int, float]] = None
+
+class AccountFiltersRequest(BaseModel):
+    filters: List[AccountFilter] = Field(default_factory=list)
+    logic: str = Field("AND", description="Lógica de combinação: 'AND' ou 'OR'")
+    search: Optional[str] = None
+    skip: int = 0
+    limit: int = 100
+
+# Mapeamento de campos e seus tipos
+ACCOUNT_FIELD_TYPES: Dict[str, str] = {
+    "id": "number",
+    "owner_id": "number",
+    "created_by_id": "number",
+    "created_at": "date",
+    "updated_at": "date",
+}
+
+def get_account_field_type(field_name: str) -> str:
+    return ACCOUNT_FIELD_TYPES.get(field_name, "string")
 
 
 @router.post("", response_model=AccountResponse)
@@ -48,6 +80,136 @@ async def create_account(
     log_create(session, current_user, "Account", account.id)
     
     return account
+
+
+@router.post("/filter", response_model=List[AccountResponse])
+async def filter_accounts(
+    filters_request: AccountFiltersRequest = Body(...),
+    session: Session = Depends(get_session),
+    current_user: User = Depends(get_current_active_user)
+):
+    """Get accounts with advanced filters"""
+    # Base query for counting
+    count_query = select(func.count(Account.id))
+    count_query = apply_ownership_filter(count_query, Account, current_user)
+    
+    # Query for data
+    query = select(Account)
+    query = apply_ownership_filter(query, Account, current_user)
+    
+    # Aplicar filtros avançados
+    filter_conditions = []
+    
+    if filters_request.filters:
+        for filter_obj in filters_request.filters:
+            try:
+                if not hasattr(Account, filter_obj.field):
+                    logger.warning(f"Campo '{filter_obj.field}' não existe no modelo Account")
+                    continue
+                
+                field = getattr(Account, filter_obj.field)
+                field_type = get_account_field_type(filter_obj.field)
+                operator = filter_obj.operator
+                value = filter_obj.value
+                value2 = filter_obj.value2
+                
+                if value is None and operator not in ["is_null", "is_not_null"]:
+                    continue
+                
+                if operator == "equals":
+                    if field_type == "string":
+                        if value:
+                            filter_conditions.append(field.ilike(f"{value}"))
+                    else:
+                        filter_conditions.append(field == value)
+                elif operator == "not_equals":
+                    if field_type == "string":
+                        if value:
+                            filter_conditions.append(~field.ilike(f"{value}"))
+                    else:
+                        filter_conditions.append(field != value)
+                elif operator == "greater_than":
+                    if value is not None:
+                        filter_conditions.append(field > value)
+                elif operator == "less_than":
+                    if value is not None:
+                        filter_conditions.append(field < value)
+                elif operator == "greater_than_or_equal":
+                    if value is not None:
+                        filter_conditions.append(field >= value)
+                elif operator == "less_than_or_equal":
+                    if value is not None:
+                        filter_conditions.append(field <= value)
+                elif operator == "between":
+                    if value is not None and value2 is not None:
+                        filter_conditions.append(and_(field >= value, field <= value2))
+                elif operator == "contains":
+                    if value:
+                        filter_conditions.append(field.ilike(f"%{value}%"))
+                elif operator == "not_contains":
+                    if value:
+                        filter_conditions.append(~field.ilike(f"%{value}%"))
+                elif operator == "starts_with":
+                    if value:
+                        filter_conditions.append(field.ilike(f"{value}%"))
+                elif operator == "ends_with":
+                    if value:
+                        filter_conditions.append(field.ilike(f"%{value}"))
+                elif operator == "is_null":
+                    filter_conditions.append(field.is_(None))
+                elif operator == "is_not_null":
+                    filter_conditions.append(field.isnot(None))
+                elif operator == "in":
+                    if value:
+                        if not isinstance(value, list):
+                            value = [value]
+                        filter_conditions.append(field.in_(value))
+                elif operator == "not_in":
+                    if value:
+                        if not isinstance(value, list):
+                            value = [value]
+                        filter_conditions.append(~field.in_(value))
+            except Exception as e:
+                logger.error(f"Erro ao aplicar filtro {filter_obj.field}: {e}", exc_info=True)
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Erro ao aplicar filtro no campo '{filter_obj.field}': {str(e)}"
+                )
+    
+    if filters_request.search:
+        search_filter = or_(
+            Account.name.ilike(f"%{filters_request.search}%"),
+            Account.cnpj.ilike(f"%{filters_request.search}%"),
+            Account.email.ilike(f"%{filters_request.search}%")
+        )
+        filter_conditions.append(search_filter)
+    
+    if filter_conditions:
+        if filters_request.logic.upper() == "OR":
+            combined_filter = or_(*filter_conditions)
+        else:
+            combined_filter = and_(*filter_conditions)
+        query = query.where(combined_filter)
+        count_query = count_query.where(combined_filter)
+    
+    query = query.order_by(Account.name.asc())
+    
+    total_count = session.exec(count_query).one()
+    query = query.offset(filters_request.skip).limit(filters_request.limit)
+    
+    accounts = session.exec(query).all()
+    
+    accounts_data = []
+    for account in accounts:
+        acc_dict = account.dict()
+        for key, value in acc_dict.items():
+            if isinstance(value, datetime):
+                acc_dict[key] = value.isoformat()
+        accounts_data.append(acc_dict)
+    
+    response = JSONResponse(content=accounts_data)
+    response.headers["X-Total-Count"] = str(total_count)
+    return response
 
 
 @router.get("", response_model=List[AccountResponse])

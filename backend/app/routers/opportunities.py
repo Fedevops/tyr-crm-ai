@@ -1,16 +1,56 @@
-from typing import List, Optional
+from typing import List, Optional, Dict, Union
 from datetime import datetime
-from fastapi import APIRouter, Depends, HTTPException, status, Query
-from sqlmodel import Session, select, and_, func
+from fastapi import APIRouter, Depends, HTTPException, status, Query, Body
+from fastapi.responses import JSONResponse
+from sqlmodel import Session, select, and_, or_, func
+from pydantic import BaseModel, Field
 from app.database import get_session
 from app.models import (
     Opportunity, OpportunityCreate, OpportunityResponse, OpportunityStatus,
-    Account, Contact, SalesStage, SalesFunnel, User
+    Account, Contact, SalesStage, SalesFunnel, User,
+    OpportunityComment, OpportunityCommentCreate, OpportunityCommentResponse
 )
 from app.dependencies import get_current_active_user, apply_ownership_filter, ensure_ownership, require_ownership
 from app.services.audit_service import log_create, log_update, log_status_change, log_stage_change, log_delete
+import logging
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
+# Modelos para filtros avançados
+class OpportunityFilter(BaseModel):
+    field: str
+    operator: str
+    value: Optional[Union[str, int, float, bool, List]] = None
+    value2: Optional[Union[str, int, float]] = None
+
+class OpportunityFiltersRequest(BaseModel):
+    filters: List[OpportunityFilter] = Field(default_factory=list)
+    logic: str = Field("AND", description="Lógica de combinação: 'AND' ou 'OR'")
+    search: Optional[str] = None
+    skip: int = 0
+    limit: int = 100
+
+# Mapeamento de campos e seus tipos
+OPPORTUNITY_FIELD_TYPES: Dict[str, str] = {
+    "id": "number",
+    "account_id": "number",
+    "contact_id": "number",
+    "stage_id": "number",
+    "owner_id": "number",
+    "created_by_id": "number",
+    "amount": "number",
+    "probability": "number",
+    "expected_close_date": "date",
+    "actual_close_date": "date",
+    "created_at": "date",
+    "updated_at": "date",
+    "status": "enum",
+}
+
+def get_opportunity_field_type(field_name: str) -> str:
+    return OPPORTUNITY_FIELD_TYPES.get(field_name, "string")
 
 
 @router.post("", response_model=OpportunityResponse)
@@ -76,9 +116,136 @@ async def create_opportunity(
     return opportunity
 
 
+@router.post("/filter", response_model=List[OpportunityResponse])
+async def filter_opportunities(
+    filters_request: OpportunityFiltersRequest = Body(...),
+    session: Session = Depends(get_session),
+    current_user: User = Depends(get_current_active_user)
+):
+    """Get opportunities with advanced filters"""
+    count_query = select(func.count(Opportunity.id))
+    count_query = apply_ownership_filter(count_query, Opportunity, current_user)
+    
+    query = select(Opportunity)
+    query = apply_ownership_filter(query, Opportunity, current_user)
+    
+    filter_conditions = []
+    
+    if filters_request.filters:
+        for filter_obj in filters_request.filters:
+            try:
+                if not hasattr(Opportunity, filter_obj.field):
+                    logger.warning(f"Campo '{filter_obj.field}' não existe no modelo Opportunity")
+                    continue
+                
+                field = getattr(Opportunity, filter_obj.field)
+                field_type = get_opportunity_field_type(filter_obj.field)
+                operator = filter_obj.operator
+                value = filter_obj.value
+                value2 = filter_obj.value2
+                
+                if value is None and operator not in ["is_null", "is_not_null"]:
+                    continue
+                
+                if operator == "equals":
+                    if field_type == "string":
+                        if value:
+                            filter_conditions.append(field.ilike(f"{value}"))
+                    else:
+                        filter_conditions.append(field == value)
+                elif operator == "not_equals":
+                    if field_type == "string":
+                        if value:
+                            filter_conditions.append(~field.ilike(f"{value}"))
+                    else:
+                        filter_conditions.append(field != value)
+                elif operator == "greater_than":
+                    if value is not None:
+                        filter_conditions.append(field > value)
+                elif operator == "less_than":
+                    if value is not None:
+                        filter_conditions.append(field < value)
+                elif operator == "greater_than_or_equal":
+                    if value is not None:
+                        filter_conditions.append(field >= value)
+                elif operator == "less_than_or_equal":
+                    if value is not None:
+                        filter_conditions.append(field <= value)
+                elif operator == "between":
+                    if value is not None and value2 is not None:
+                        filter_conditions.append(and_(field >= value, field <= value2))
+                elif operator == "contains":
+                    if value:
+                        filter_conditions.append(field.ilike(f"%{value}%"))
+                elif operator == "not_contains":
+                    if value:
+                        filter_conditions.append(~field.ilike(f"%{value}%"))
+                elif operator == "starts_with":
+                    if value:
+                        filter_conditions.append(field.ilike(f"{value}%"))
+                elif operator == "ends_with":
+                    if value:
+                        filter_conditions.append(field.ilike(f"%{value}"))
+                elif operator == "is_null":
+                    filter_conditions.append(field.is_(None))
+                elif operator == "is_not_null":
+                    filter_conditions.append(field.isnot(None))
+                elif operator == "in":
+                    if value:
+                        if not isinstance(value, list):
+                            value = [value]
+                        filter_conditions.append(field.in_(value))
+                elif operator == "not_in":
+                    if value:
+                        if not isinstance(value, list):
+                            value = [value]
+                        filter_conditions.append(~field.in_(value))
+            except Exception as e:
+                logger.error(f"Erro ao aplicar filtro {filter_obj.field}: {e}", exc_info=True)
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Erro ao aplicar filtro no campo '{filter_obj.field}': {str(e)}"
+                )
+    
+    if filters_request.search:
+        search_filter = or_(
+            Opportunity.name.ilike(f"%{filters_request.search}%"),
+            Opportunity.description.ilike(f"%{filters_request.search}%")
+        )
+        filter_conditions.append(search_filter)
+    
+    if filter_conditions:
+        if filters_request.logic.upper() == "OR":
+            combined_filter = or_(*filter_conditions)
+        else:
+            combined_filter = and_(*filter_conditions)
+        query = query.where(combined_filter)
+        count_query = count_query.where(combined_filter)
+    
+    query = query.order_by(Opportunity.created_at.desc())
+    
+    total_count = session.exec(count_query).one()
+    query = query.offset(filters_request.skip).limit(filters_request.limit)
+    
+    opportunities = session.exec(query).all()
+    
+    opportunities_data = []
+    for opp in opportunities:
+        opp_dict = opp.dict()
+        for key, value in opp_dict.items():
+            if isinstance(value, datetime):
+                opp_dict[key] = value.isoformat()
+        opportunities_data.append(opp_dict)
+    
+    response = JSONResponse(content=opportunities_data)
+    response.headers["X-Total-Count"] = str(total_count)
+    return response
+
+
 @router.get("", response_model=List[OpportunityResponse])
 async def get_opportunities(
     account_id: Optional[int] = Query(None, description="Filter by account"),
+    contact_id: Optional[int] = Query(None, description="Filter by contact"),
     stage_id: Optional[int] = Query(None, description="Filter by stage"),
     funnel_id: Optional[int] = Query(None, description="Filter by funnel"),
     status_filter: Optional[OpportunityStatus] = Query(None, description="Filter by status"),
@@ -98,6 +265,9 @@ async def get_opportunities(
     
     if account_id:
         filters.append(Opportunity.account_id == account_id)
+    
+    if contact_id:
+        filters.append(Opportunity.contact_id == contact_id)
     
     if stage_id:
         filters.append(Opportunity.stage_id == stage_id)
@@ -396,4 +566,127 @@ async def get_opportunities_by_funnel(
     
     opportunities = session.exec(query).all()
     return opportunities
+
+
+@router.post("/{opportunity_id}/comments", response_model=OpportunityCommentResponse)
+async def create_opportunity_comment(
+    opportunity_id: int,
+    comment_data: OpportunityCommentCreate,
+    session: Session = Depends(get_session),
+    current_user: User = Depends(get_current_active_user)
+):
+    """Create a comment on an opportunity"""
+    # Verify opportunity access
+    opportunity = session.get(Opportunity, opportunity_id)
+    if not opportunity:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Opportunity not found"
+        )
+    require_ownership(opportunity, current_user)
+    
+    # Create comment
+    comment = OpportunityComment(
+        tenant_id=current_user.tenant_id,
+        opportunity_id=opportunity_id,
+        user_id=current_user.id,
+        comment=comment_data.comment
+    )
+    session.add(comment)
+    session.commit()
+    session.refresh(comment)
+    
+    # Update opportunity's updated_at
+    opportunity.updated_at = datetime.utcnow()
+    session.add(opportunity)
+    session.commit()
+    
+    # Get user info for response
+    user = session.get(User, current_user.id)
+    response = OpportunityCommentResponse(
+        id=comment.id,
+        tenant_id=comment.tenant_id,
+        opportunity_id=comment.opportunity_id,
+        user_id=comment.user_id,
+        comment=comment.comment,
+        created_at=comment.created_at,
+        updated_at=comment.updated_at,
+        user_name=user.full_name if user else None,
+        user_email=user.email if user else None
+    )
+    
+    return response
+
+
+@router.get("/{opportunity_id}/comments", response_model=List[OpportunityCommentResponse])
+async def get_opportunity_comments(
+    opportunity_id: int,
+    session: Session = Depends(get_session),
+    current_user: User = Depends(get_current_active_user)
+):
+    """Get all comments for an opportunity"""
+    # Verify opportunity access
+    opportunity = session.get(Opportunity, opportunity_id)
+    if not opportunity:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Opportunity not found"
+        )
+    require_ownership(opportunity, current_user)
+    
+    # Get comments
+    comments = session.exec(
+        select(OpportunityComment)
+        .where(
+            and_(
+                OpportunityComment.opportunity_id == opportunity_id,
+                OpportunityComment.tenant_id == current_user.tenant_id
+            )
+        )
+        .order_by(OpportunityComment.created_at.desc())
+    ).all()
+    
+    # Get user info for each comment
+    result = []
+    for comment in comments:
+        user = session.get(User, comment.user_id)
+        result.append(OpportunityCommentResponse(
+            id=comment.id,
+            tenant_id=comment.tenant_id,
+            opportunity_id=comment.opportunity_id,
+            user_id=comment.user_id,
+            comment=comment.comment,
+            created_at=comment.created_at,
+            updated_at=comment.updated_at,
+            user_name=user.full_name if user else None,
+            user_email=user.email if user else None
+        ))
+    
+    return result
+
+
+@router.delete("/comments/{comment_id}")
+async def delete_opportunity_comment(
+    comment_id: int,
+    session: Session = Depends(get_session),
+    current_user: User = Depends(get_current_active_user)
+):
+    """Delete a comment on an opportunity"""
+    comment = session.get(OpportunityComment, comment_id)
+    if not comment or comment.tenant_id != current_user.tenant_id:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Comment not found"
+        )
+    
+    # Only allow deletion by comment owner or admin
+    if comment.user_id != current_user.id and current_user.role.value != "admin":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You can only delete your own comments"
+        )
+    
+    session.delete(comment)
+    session.commit()
+    return {"message": "Comment deleted successfully"}
 

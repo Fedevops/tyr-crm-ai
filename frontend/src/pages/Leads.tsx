@@ -2104,8 +2104,8 @@ export function Leads() {
       {/* Modal de Detalhes do Lead */}
       {showLeadDetailModal && selectedLeadDetail && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <Card className="w-full max-w-4xl max-h-[90vh] overflow-hidden flex flex-col">
-            <CardHeader className="border-b">
+          <Card className="w-full max-w-4xl h-[90vh] overflow-hidden flex flex-col">
+            <CardHeader className="border-b flex-shrink-0">
               <div className="flex items-center justify-between">
                 <CardTitle className="text-2xl">Detalhes do Lead</CardTitle>
                 <Button
@@ -2126,7 +2126,7 @@ export function Leads() {
             </CardHeader>
             
             {/* Abas */}
-            <div className="border-b px-6">
+            <div className="border-b px-6 flex-shrink-0">
               <div className="flex gap-1 overflow-x-auto">
                 <button
                   onClick={() => setActiveTab('basicas')}
