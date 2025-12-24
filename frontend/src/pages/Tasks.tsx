@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import api from '@/lib/api'
-import { Plus, CheckCircle2, Clock, AlertCircle, Mail, Phone, Link as LinkIcon, Calendar, Search, X } from 'lucide-react'
+import { Plus, CheckCircle2, Clock, AlertCircle, Mail, Phone, Link as LinkIcon, Calendar, Search, X, User } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 
 interface Task {
@@ -13,6 +13,12 @@ interface Task {
   lead_id: number
   sequence_id: number | null
   assigned_to: number | null
+  owner_id: number | null
+  owner?: {
+    id: number
+    full_name: string
+    email: string
+  }
   type: string
   title: string
   description: string | null
@@ -75,13 +81,25 @@ export function Tasks() {
     title: '',
     description: '',
     due_date: '',
-    due_time: '09:00'
+    due_time: '09:00',
+    owner_id: null as number | null
   })
+  const [users, setUsers] = useState<Array<{id: number, full_name: string, email: string}>>([])
 
   useEffect(() => {
+    fetchUsers()
     fetchTasks()
     fetchLeads()
   }, [statusFilter, typeFilter, currentPage, pageSize, searchTerm])
+
+  const fetchUsers = async () => {
+    try {
+      const response = await api.get('/api/users')
+      setUsers(response.data)
+    } catch (error) {
+      console.error('Error fetching users:', error)
+    }
+  }
 
   const fetchLeads = async () => {
     try {
@@ -233,7 +251,8 @@ export function Tasks() {
         type: formData.type,
         title: formData.title,
         description: formData.description || null,
-        due_date: dueDateTime.toISOString()
+        due_date: dueDateTime.toISOString(),
+        owner_id: formData.owner_id || null
       }
 
       await api.post('/api/tasks', taskData)
@@ -245,7 +264,8 @@ export function Tasks() {
         title: '',
         description: '',
         due_date: '',
-        due_time: '09:00'
+        due_time: '09:00',
+        owner_id: null
       })
       setShowForm(false)
       fetchTasks()
@@ -400,6 +420,21 @@ export function Tasks() {
                   />
                 </div>
               </div>
+              <div>
+                <label className="block text-sm font-medium mb-1">Responsável</label>
+                <select
+                  value={formData.owner_id || ''}
+                  onChange={(e) => setFormData({ ...formData, owner_id: e.target.value ? parseInt(e.target.value) : null })}
+                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background"
+                >
+                  <option value="">Sem responsável</option>
+                  {users.map((user) => (
+                    <option key={user.id} value={user.id}>
+                      {user.full_name} ({user.email})
+                    </option>
+                  ))}
+                </select>
+              </div>
               <div className="flex gap-2 pt-4">
                 <Button 
                   type="submit"
@@ -541,6 +576,18 @@ export function Tasks() {
                           {task.lead.company && ` - ${task.lead.company}`}
                         </p>
                       )}
+                      {task.owner && (
+                        <p className="text-xs text-muted-foreground mt-1 flex items-center gap-1">
+                          <User className="h-3 w-3" />
+                          Responsável: {task.owner.full_name}
+                        </p>
+                      )}
+                      {task.owner_id && !task.owner && (
+                        <p className="text-xs text-muted-foreground mt-1 flex items-center gap-1">
+                          <User className="h-3 w-3" />
+                          Responsável: {users.find(u => u.id === task.owner_id)?.full_name || `ID: ${task.owner_id}`}
+                        </p>
+                      )}
                       <p className="text-xs text-red-600 dark:text-red-400 mt-1">
                         Vencida em {formatDate(dueDate)}
                       </p>
@@ -607,6 +654,18 @@ export function Tasks() {
                           {task.lead.company && ` - ${task.lead.company}`}
                         </p>
                       )}
+                      {task.owner && (
+                        <p className="text-xs text-muted-foreground mt-1 flex items-center gap-1">
+                          <User className="h-3 w-3" />
+                          Responsável: {task.owner.full_name}
+                        </p>
+                      )}
+                      {task.owner_id && !task.owner && (
+                        <p className="text-xs text-muted-foreground mt-1 flex items-center gap-1">
+                          <User className="h-3 w-3" />
+                          Responsável: {users.find(u => u.id === task.owner_id)?.full_name || `ID: ${task.owner_id}`}
+                        </p>
+                      )}
                       <p className={`text-xs mt-1 ${
                         isToday
                           ? 'text-yellow-600 dark:text-yellow-400 font-medium'
@@ -661,6 +720,18 @@ export function Tasks() {
                     {task.lead && (
                       <span className="text-xs text-muted-foreground">
                         - {task.lead.name}
+                      </span>
+                    )}
+                    {task.owner && (
+                      <span className="text-xs text-muted-foreground flex items-center gap-1">
+                        <User className="h-3 w-3" />
+                        {task.owner.full_name}
+                      </span>
+                    )}
+                    {task.owner_id && !task.owner && (
+                      <span className="text-xs text-muted-foreground flex items-center gap-1">
+                        <User className="h-3 w-3" />
+                        {users.find(u => u.id === task.owner_id)?.full_name || `ID: ${task.owner_id}`}
                       </span>
                     )}
                   </div>

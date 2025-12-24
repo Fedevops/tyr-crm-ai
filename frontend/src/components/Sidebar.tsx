@@ -1,6 +1,6 @@
 import { Link, useLocation } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
-import { LayoutDashboard, BookOpen, Users, Settings, LogOut, ListChecks, Workflow, Search } from 'lucide-react'
+import { LayoutDashboard, BookOpen, Users, Settings, LogOut, ListChecks, Workflow, Search, Building2, UserCircle, TrendingUp, FileText, Filter, History } from 'lucide-react'
 import { useAuth } from '@/contexts/AuthContext'
 import { Button } from './ui/button'
 import { cn } from '@/lib/utils'
@@ -9,9 +9,15 @@ const navigation = [
   { name: 'dashboard', href: '/dashboard', icon: LayoutDashboard },
   { name: 'prospecting', href: '/prospecting', icon: Search },
   { name: 'leads', href: '/leads', icon: Users },
+  { name: 'accounts', href: '/accounts', icon: Building2 },
+  { name: 'contacts', href: '/contacts', icon: UserCircle },
+  { name: 'opportunities', href: '/opportunities', icon: TrendingUp },
+  { name: 'proposals', href: '/proposals', icon: FileText },
+  { name: 'sales-funnels', href: '/sales-funnels', icon: Filter },
   { name: 'tasks', href: '/tasks', icon: ListChecks },
   { name: 'sequences', href: '/sequences', icon: Workflow },
   { name: 'playbooks', href: '/playbooks', icon: BookOpen },
+  { name: 'audit-log', href: '/audit-log', icon: History },
   { name: 'settings', href: '/settings', icon: Settings },
 ]
 

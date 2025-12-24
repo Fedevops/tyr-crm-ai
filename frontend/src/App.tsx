@@ -13,6 +13,12 @@ import { Tasks } from './pages/Tasks'
 import { Prospecting } from './pages/Prospecting'
 import { Settings } from './pages/Settings'
 import { OnboardingWizard } from './pages/OnboardingWizard'
+import { Accounts } from './pages/Accounts'
+import { Contacts } from './pages/Contacts'
+import { Opportunities } from './pages/Opportunities'
+import { Proposals } from './pages/Proposals'
+import { SalesFunnels } from './pages/SalesFunnels'
+import { AuditLog } from './pages/AuditLog'
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { isAuthenticated, loading } = useAuth()
@@ -117,6 +123,66 @@ function AppRoutes() {
           <ProtectedRoute>
             <Layout>
               <Prospecting />
+            </Layout>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/accounts"
+        element={
+          <ProtectedRoute>
+            <Layout>
+              <Accounts />
+            </Layout>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/contacts"
+        element={
+          <ProtectedRoute>
+            <Layout>
+              <Contacts />
+            </Layout>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/opportunities"
+        element={
+          <ProtectedRoute>
+            <Layout>
+              <Opportunities />
+            </Layout>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/proposals"
+        element={
+          <ProtectedRoute>
+            <Layout>
+              <Proposals />
+            </Layout>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/sales-funnels"
+        element={
+          <ProtectedRoute>
+            <Layout>
+              <SalesFunnels />
+            </Layout>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/audit-log"
+        element={
+          <ProtectedRoute>
+            <Layout>
+              <AuditLog />
             </Layout>
           </ProtectedRoute>
         }

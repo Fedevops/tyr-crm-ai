@@ -27,10 +27,16 @@
     "dashboard": "Dashboard",
     "playbooks": "Playbooks",
     "leads": "Leads",
-    "settings": "Settings",
-    "prospecting": "Prospecting",
+    "accounts": "Accounts",
+    "contacts": "Contacts",
+    "opportunities": "Opportunities",
+    "proposals": "Proposals",
+    "sales-funnels": "Sales Funnels",
     "tasks": "Tasks",
-    "sequences": "Sequences"
+    "sequences": "Sequences",
+    "audit-log": "Audit Log",
+    "settings": "Settings",
+    "prospecting": "Prospecting"
   },
   "dashboard": {
     "title": "Dashboard",

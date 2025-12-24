@@ -11,10 +11,12 @@ from sqlmodel import Session, select, or_, and_, func
 from pydantic import BaseModel, Field
 from app.database import get_session
 from app.models import (
-    Lead, LeadCreate, LeadResponse, LeadStatus, User,
-    LeadComment, LeadCommentCreate, LeadCommentResponse
+    Lead, LeadCreate, LeadResponse, LeadStatus, User, UserRole,
+    LeadComment, LeadCommentCreate, LeadCommentResponse,
+    Account, AccountCreate, Contact, ContactCreate, Opportunity, OpportunityCreate, SalesStage
 )
-from app.dependencies import get_current_active_user
+from app.dependencies import get_current_active_user, apply_ownership_filter, ensure_ownership, require_ownership, check_ownership
+from app.services.audit_service import log_convert
 from app.services.enrichment_service import enrich_lead
 import pandas as pd
 import logging
@@ -222,8 +224,16 @@ async def create_lead(
     current_user: User = Depends(get_current_active_user)
 ):
     """Create a new lead for the current tenant"""
+    # Preparar dados com ownership
+    lead_dict = lead_data.dict()
+    lead_dict = ensure_ownership(lead_dict, current_user)
+    
+    # Se assigned_to foi fornecido mas owner_id não, usar assigned_to como owner_id
+    if lead_dict.get("assigned_to") and not lead_dict.get("owner_id"):
+        lead_dict["owner_id"] = lead_dict["assigned_to"]
+    
     lead = Lead(
-        **lead_data.dict(),
+        **lead_dict,
         tenant_id=current_user.tenant_id
     )
     session.add(lead)
@@ -241,11 +251,13 @@ async def filter_leads(
     """Get leads with advanced filters"""
     logger.info(f"🔍 [FILTERS] Recebida requisição de filtros: {len(filters_request.filters)} filtro(s), lógica={filters_request.logic}")
     
-    # Base query for counting
-    count_query = select(func.count(Lead.id)).where(Lead.tenant_id == current_user.tenant_id)
+    # Base query for counting - aplicar filtro de ownership
+    count_query = select(func.count(Lead.id))
+    count_query = apply_ownership_filter(count_query, Lead, current_user)
     
-    # Query for data
-    query = select(Lead).where(Lead.tenant_id == current_user.tenant_id)
+    # Query for data - aplicar filtro de ownership
+    query = select(Lead)
+    query = apply_ownership_filter(query, Lead, current_user)
     
     # Aplicar filtros avançados
     filter_conditions = []
@@ -429,11 +441,13 @@ async def get_leads(
     current_user: User = Depends(get_current_active_user)
 ):
     """Get all leads for the current tenant with filters (legacy endpoint)"""
-    # Base query for counting
-    count_query = select(func.count(Lead.id)).where(Lead.tenant_id == current_user.tenant_id)
+    # Base query for counting - aplicar filtro de ownership
+    count_query = select(func.count(Lead.id))
+    count_query = apply_ownership_filter(count_query, Lead, current_user)
     
-    # Query for data
-    query = select(Lead).where(Lead.tenant_id == current_user.tenant_id)
+    # Query for data - aplicar filtro de ownership
+    query = select(Lead)
+    query = apply_ownership_filter(query, Lead, current_user)
     
     # Apply filters
     filters = []
@@ -497,13 +511,53 @@ async def get_leads(
     return response
 
 
+@router.get("/debug/ownership", response_model=dict)
+async def debug_ownership(
+    session: Session = Depends(get_session),
+    current_user: User = Depends(get_current_active_user)
+):
+    """Debug endpoint para verificar ownership dos leads"""
+    from sqlmodel import text
+    
+    # Total de leads no tenant
+    total_query = text("SELECT COUNT(*) FROM lead WHERE tenant_id = :tenant_id")
+    total = session.exec(total_query.params(tenant_id=current_user.tenant_id)).first()
+    
+    # Leads sem owner_id
+    null_owner_query = text("SELECT COUNT(*) FROM lead WHERE tenant_id = :tenant_id AND owner_id IS NULL")
+    null_owner = session.exec(null_owner_query.params(tenant_id=current_user.tenant_id)).first()
+    
+    # Leads do usuário atual
+    user_leads_query = text("SELECT COUNT(*) FROM lead WHERE tenant_id = :tenant_id AND owner_id = :user_id")
+    user_leads = session.exec(user_leads_query.params(tenant_id=current_user.tenant_id, user_id=current_user.id)).first()
+    
+    # Leads que o usuário pode ver (com filtro de ownership)
+    query = select(Lead)
+    query = apply_ownership_filter(query, Lead, current_user)
+    accessible_leads = len(session.exec(query).all())
+    
+    return {
+        "user_id": current_user.id,
+        "user_email": current_user.email,
+        "user_role": current_user.role.value,
+        "tenant_id": current_user.tenant_id,
+        "total_leads_in_tenant": total[0] if total else 0,
+        "leads_without_owner_id": null_owner[0] if null_owner else 0,
+        "leads_owned_by_user": user_leads[0] if user_leads else 0,
+        "leads_accessible_to_user": accessible_leads,
+        "is_admin": current_user.role == UserRole.ADMIN
+    }
+
+
 @router.get("/stats/summary", response_model=dict)
 async def get_leads_stats(
     session: Session = Depends(get_session),
     current_user: User = Depends(get_current_active_user)
 ):
     """Get leads statistics for the current tenant"""
-    query = select(Lead).where(Lead.tenant_id == current_user.tenant_id)
+    # Aplicar filtro de ownership
+    query = select(Lead)
+    query = apply_ownership_filter(query, Lead, current_user)
     all_leads = session.exec(query).all()
     
     stats = {
@@ -990,11 +1044,12 @@ async def get_lead(
 ):
     """Get a specific lead"""
     lead = session.get(Lead, lead_id)
-    if not lead or lead.tenant_id != current_user.tenant_id:
+    if not lead:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Lead not found"
         )
+    require_ownership(lead, current_user)
     return lead
 
 
@@ -1007,14 +1062,27 @@ async def update_lead(
 ):
     """Update a lead"""
     lead = session.get(Lead, lead_id)
-    if not lead or lead.tenant_id != current_user.tenant_id:
+    if not lead:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Lead not found"
         )
+    require_ownership(lead, current_user)
     
-    for key, value in lead_data.dict().items():
-        setattr(lead, key, value)
+    # Atualizar campos, mas manter ownership e tenant
+    lead_dict = lead_data.dict()
+    for key, value in lead_dict.items():
+        if key not in ['owner_id', 'created_by_id', 'tenant_id']:
+            setattr(lead, key, value)
+    
+    # Se owner_id foi especificado, atualizar (mas validar acesso)
+    if lead_dict.get("owner_id"):
+        # Admin pode atribuir a qualquer usuário do tenant
+        if current_user.role.value == "admin":
+            lead.owner_id = lead_dict["owner_id"]
+        # Usuário normal só pode atribuir a si mesmo
+        elif lead_dict["owner_id"] == current_user.id:
+            lead.owner_id = lead_dict["owner_id"]
     
     session.add(lead)
     session.commit()
@@ -1030,11 +1098,12 @@ async def delete_lead(
 ):
     """Delete a lead"""
     lead = session.get(Lead, lead_id)
-    if not lead or lead.tenant_id != current_user.tenant_id:
+    if not lead:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Lead not found"
         )
+    require_ownership(lead, current_user)
     
     session.delete(lead)
     session.commit()
@@ -1049,13 +1118,14 @@ async def create_lead_comment(
     current_user: User = Depends(get_current_active_user)
 ):
     """Create a comment on a lead"""
-    # Verify lead belongs to tenant
+    # Verify lead access
     lead = session.get(Lead, lead_id)
-    if not lead or lead.tenant_id != current_user.tenant_id:
+    if not lead:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Lead not found"
         )
+    require_ownership(lead, current_user)
     
     # Create comment
     comment = LeadComment(
@@ -1097,13 +1167,14 @@ async def get_lead_comments(
     current_user: User = Depends(get_current_active_user)
 ):
     """Get all comments for a lead"""
-    # Verify lead belongs to tenant
+    # Verify lead access
     lead = session.get(Lead, lead_id)
-    if not lead or lead.tenant_id != current_user.tenant_id:
+    if not lead:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Lead not found"
         )
+    require_ownership(lead, current_user)
     
     # Get comments
     comments = session.exec(
@@ -1171,11 +1242,12 @@ async def update_lead_status(
 ):
     """Update lead status"""
     lead = session.get(Lead, lead_id)
-    if not lead or lead.tenant_id != current_user.tenant_id:
+    if not lead:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Lead not found"
         )
+    require_ownership(lead, current_user)
     
     lead.status = new_status
     session.add(lead)
@@ -1193,11 +1265,12 @@ async def assign_lead(
 ):
     """Assign or unassign a lead to a user"""
     lead = session.get(Lead, lead_id)
-    if not lead or lead.tenant_id != current_user.tenant_id:
+    if not lead:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Lead not found"
         )
+    require_ownership(lead, current_user)
     
     if user_id:
         # Verify user belongs to same tenant
@@ -1207,12 +1280,205 @@ async def assign_lead(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Invalid user"
             )
-        lead.assigned_to = user_id
+        # Admin pode atribuir a qualquer usuário, usuário normal só a si mesmo
+        if current_user.role.value == "admin" or user_id == current_user.id:
+            lead.owner_id = user_id
+            lead.assigned_to = user_id  # Manter compatibilidade
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="You can only assign leads to yourself"
+            )
     else:
-        lead.assigned_to = None
+        # Não permitir remover owner (sempre deve ter um)
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Owner is required. You can reassign to another user."
+        )
     
     session.add(lead)
     session.commit()
     session.refresh(lead)
     return lead
+
+
+@router.post("/{lead_id}/convert-to-account", response_model=dict)
+async def convert_lead_to_account(
+    lead_id: int,
+    session: Session = Depends(get_session),
+    current_user: User = Depends(get_current_active_user)
+):
+    """Convert a lead to an account"""
+    lead = session.get(Lead, lead_id)
+    if not lead:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Lead not found"
+        )
+    require_ownership(lead, current_user)
+    
+    # Verificar se já existe account com o mesmo CNPJ
+    account = None
+    if lead.cnpj:
+        account = session.exec(
+            select(Account).where(
+                and_(
+                    Account.tenant_id == current_user.tenant_id,
+                    Account.cnpj == lead.cnpj
+                )
+            )
+        ).first()
+    
+    if not account:
+        # Criar nova account
+        account_data = AccountCreate(
+            name=lead.company or lead.name or lead.razao_social or "Empresa sem nome",
+            website=lead.website,
+            phone=lead.phone or lead.telefone_empresa,
+            email=lead.email or lead.email_empresa,
+            industry=lead.industry,
+            company_size=lead.company_size,
+            address=lead.address or (f"{lead.logradouro or ''} {lead.numero or ''}".strip() if lead.logradouro else None),
+            city=lead.city or lead.municipio,
+            state=lead.state or lead.uf,
+            zip_code=lead.zip_code or lead.cep,
+            country=lead.country or "Brasil",
+            description=lead.context or lead.notes,
+            cnpj=lead.cnpj,
+            razao_social=lead.razao_social,
+            nome_fantasia=lead.nome_fantasia,
+            owner_id=lead.owner_id
+        )
+        
+        acc_dict = account_data.dict()
+        acc_dict = ensure_ownership(acc_dict, current_user)
+        
+        account = Account(
+            **acc_dict,
+            tenant_id=current_user.tenant_id
+        )
+        session.add(account)
+        session.commit()
+        session.refresh(account)
+    
+    # Atualizar lead com account_id
+    lead.account_id = account.id
+    session.add(lead)
+    session.commit()
+    
+    # Registrar auditoria
+    log_convert(session, current_user, "Lead", lead_id, "Account", account.id)
+    
+    return {
+        "message": "Lead converted to account successfully",
+        "account_id": account.id,
+        "account": account
+    }
+
+
+@router.post("/{lead_id}/convert-to-opportunity", response_model=dict)
+async def convert_lead_to_opportunity(
+    lead_id: int,
+    stage_id: Optional[int] = Query(None),
+    amount: Optional[float] = Query(None),
+    session: Session = Depends(get_session),
+    current_user: User = Depends(get_current_active_user)
+):
+    """Convert a lead to an opportunity"""
+    lead = session.get(Lead, lead_id)
+    if not lead:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Lead not found"
+        )
+    require_ownership(lead, current_user)
+    
+    # Verificar se lead tem account, se não, criar
+    account = None
+    if lead.account_id:
+        account = session.get(Account, lead.account_id)
+        require_ownership(account, current_user)
+    else:
+        # Converter para account primeiro
+        convert_result = await convert_lead_to_account(lead_id, session, current_user)
+        account = convert_result["account"]
+    
+    # Buscar funil padrão e primeiro estágio se stage_id não fornecido
+    if not stage_id:
+        from app.models import SalesFunnel
+        default_funnel = session.exec(
+            select(SalesFunnel).where(
+                and_(
+                    SalesFunnel.tenant_id == current_user.tenant_id,
+                    SalesFunnel.is_default == True
+                )
+            )
+        ).first()
+        
+        if not default_funnel:
+            # Buscar qualquer funil do tenant
+            default_funnel = session.exec(
+                select(SalesFunnel).where(SalesFunnel.tenant_id == current_user.tenant_id)
+            ).first()
+        
+        if default_funnel:
+            stages = session.exec(
+                select(SalesStage).where(
+                    SalesStage.funnel_id == default_funnel.id
+                ).order_by(SalesStage.order)
+            ).all()
+            if stages:
+                stage_id = stages[0].id
+            else:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="No sales stages found. Please create a sales funnel with stages first."
+                )
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="No sales funnel found. Please create a sales funnel first."
+            )
+    
+    # Verificar se stage existe
+    stage = session.get(SalesStage, stage_id)
+    if not stage:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Sales stage not found"
+        )
+    
+    # Criar opportunity
+    opportunity_data = OpportunityCreate(
+        account_id=account.id,
+        contact_id=lead.contact_id,
+        stage_id=stage_id,
+        name=f"Oportunidade: {lead.name or lead.company or 'Sem nome'}",
+        description=lead.context or lead.notes,
+        amount=amount,
+        currency="BRL",
+        expected_close_date=None,
+        probability=stage.probability,
+        notes=f"Convertido do lead #{lead_id}"
+    )
+    
+    opp_dict = opportunity_data.dict()
+    opp_dict = ensure_ownership(opp_dict, current_user)
+    
+    opportunity = Opportunity(
+        **opp_dict,
+        tenant_id=current_user.tenant_id
+    )
+    session.add(opportunity)
+    session.commit()
+    session.refresh(opportunity)
+    
+    # Registrar auditoria
+    log_convert(session, current_user, "Lead", lead_id, "Opportunity", opportunity.id)
+    
+    return {
+        "message": "Lead converted to opportunity successfully",
+        "opportunity_id": opportunity.id,
+        "opportunity": opportunity
+    }
 

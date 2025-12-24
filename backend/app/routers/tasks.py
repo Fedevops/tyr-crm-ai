@@ -8,7 +8,7 @@ from app.models import (
     Task, TaskCreate, TaskUpdate, TaskResponse, TaskType, TaskStatus,
     Lead, Sequence, User
 )
-from app.dependencies import get_current_active_user
+from app.dependencies import get_current_active_user, apply_ownership_filter, ensure_ownership, require_ownership
 
 router = APIRouter()
 
@@ -106,13 +106,14 @@ async def create_task(
     current_user: User = Depends(get_current_active_user)
 ):
     """Create a new task"""
-    # Verify lead belongs to tenant
+    # Verify lead access
     lead = session.get(Lead, task_data.lead_id)
-    if not lead or lead.tenant_id != current_user.tenant_id:
+    if not lead:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Lead not found"
         )
+    require_ownership(lead, current_user)
     
     # If sequence_id is provided, generate tasks from sequence
     if task_data.sequence_id:
@@ -121,20 +122,28 @@ async def create_task(
             lead_id=task_data.lead_id,
             sequence_id=task_data.sequence_id,
             tenant_id=current_user.tenant_id,
-            assigned_to=task_data.assigned_to or current_user.id
+            assigned_to=task_data.assigned_to or task_data.owner_id or current_user.id
         )
         if tasks:
+            # Atualizar ownership das tasks geradas
+            for task in tasks:
+                task.owner_id = task_data.owner_id or current_user.id
+                task.created_by_id = current_user.id
+            session.commit()
             session.refresh(tasks[0])
             return tasks[0]
     
     # Create single task
     task_dict = task_data.dict()
-    # Remove assigned_to from dict if present, we'll set it explicitly
-    task_dict.pop('assigned_to', None)
+    task_dict = ensure_ownership(task_dict, current_user)
+    
+    # Se assigned_to foi fornecido mas owner_id não, usar assigned_to como owner_id
+    if task_dict.get("assigned_to") and not task_dict.get("owner_id"):
+        task_dict["owner_id"] = task_dict["assigned_to"]
+    
     task = Task(
         **task_dict,
-        tenant_id=current_user.tenant_id,
-        assigned_to=task_data.assigned_to or current_user.id
+        tenant_id=current_user.tenant_id
     )
     session.add(task)
     session.commit()
@@ -155,8 +164,9 @@ async def get_tasks(
     current_user: User = Depends(get_current_active_user)
 ):
     """Get tasks for the current tenant with filters and pagination"""
-    # Base query
-    base_query = select(Task).where(Task.tenant_id == current_user.tenant_id)
+    # Base query - aplicar filtro de ownership
+    base_query = select(Task)
+    base_query = apply_ownership_filter(base_query, Task, current_user)
     
     filters = []
     
@@ -164,7 +174,8 @@ async def get_tasks(
         filters.append(Task.lead_id == lead_id)
     
     if assigned_to:
-        filters.append(Task.assigned_to == assigned_to)
+        # Filtrar por assigned_to (deprecated) ou owner_id
+        filters.append(or_(Task.assigned_to == assigned_to, Task.owner_id == assigned_to))
     
     if status:
         filters.append(Task.status == status)
@@ -179,8 +190,9 @@ async def get_tasks(
     if filters:
         base_query = base_query.where(and_(*filters))
     
-    # Count total tasks - use the same base query for consistency
-    count_query = select(func.count(Task.id)).where(Task.tenant_id == current_user.tenant_id)
+    # Count total tasks - aplicar filtro de ownership
+    count_query = select(func.count(Task.id))
+    count_query = apply_ownership_filter(count_query, Task, current_user)
     if filters:
         count_query = count_query.where(and_(*filters))
     total_count = session.exec(count_query).one() or 0
@@ -224,26 +236,40 @@ async def get_upcoming_tasks(
     current_user: User = Depends(get_current_active_user)
 ):
     """Get upcoming tasks within the next N days"""
-    now = datetime.utcnow()
-    future_date = now + timedelta(days=days)
-    
-    query = select(Task).where(
-        and_(
-            Task.tenant_id == current_user.tenant_id,
-            Task.due_date >= now,
-            Task.due_date <= future_date,
-            Task.status != TaskStatus.COMPLETED,
-            Task.status != TaskStatus.CANCELLED
+    try:
+        now = datetime.utcnow()
+        future_date = now + timedelta(days=days)
+        
+        query = select(Task)
+        query = apply_ownership_filter(query, Task, current_user)
+        query = query.where(
+            and_(
+                Task.due_date >= now,
+                Task.due_date <= future_date,
+                Task.status != TaskStatus.COMPLETED,
+                Task.status != TaskStatus.CANCELLED
+            )
         )
-    )
-    
-    if assigned_to:
-        query = query.where(Task.assigned_to == assigned_to)
-    
-    query = query.order_by(Task.due_date.asc())
-    
-    tasks = session.exec(query).all()
-    return tasks
+        
+        if assigned_to:
+            # Filtrar por assigned_to (deprecated) ou owner_id
+            query = query.where(or_(
+                Task.assigned_to == assigned_to,
+                Task.owner_id == assigned_to
+            ))
+        
+        query = query.order_by(Task.due_date.asc())
+        
+        tasks = session.exec(query).all()
+        return tasks
+    except Exception as e:
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.error(f"Error fetching upcoming tasks: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error fetching upcoming tasks: {str(e)}"
+        )
 
 
 @router.get("/{task_id}", response_model=TaskResponse)
@@ -254,11 +280,12 @@ async def get_task(
 ):
     """Get a specific task"""
     task = session.get(Task, task_id)
-    if not task or task.tenant_id != current_user.tenant_id:
+    if not task:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Task not found"
         )
+    require_ownership(task, current_user)
     return task
 
 
@@ -275,12 +302,13 @@ async def update_task(
     task = session.get(Task, task_id)
     print(f"🔍 [BACKEND] Tarefa encontrada: {task is not None}")
     
-    if not task or task.tenant_id != current_user.tenant_id:
-        print(f"❌ [BACKEND] Tarefa não encontrada ou não pertence ao tenant")
+    if not task:
+        print(f"❌ [BACKEND] Tarefa não encontrada")
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Task not found"
         )
+    require_ownership(task, current_user)
     
     print(f"🔍 [BACKEND] Tarefa encontrada - ID: {task.id}, Tipo: {task.type}, Status atual: {task.status}")
     
@@ -547,11 +575,12 @@ async def delete_task(
 ):
     """Delete a task"""
     task = session.get(Task, task_id)
-    if not task or task.tenant_id != current_user.tenant_id:
+    if not task:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Task not found"
         )
+    require_ownership(task, current_user)
     
     session.delete(task)
     session.commit()

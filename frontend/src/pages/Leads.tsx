@@ -51,6 +51,12 @@ interface Lead {
   source: string | null
   score: number | null
   assigned_to: number | null
+  owner_id: number | null
+  owner?: {
+    id: number
+    full_name: string
+    email: string
+  }
   notes: string | null
   tags: string | null
   last_contact: string | null
@@ -143,6 +149,7 @@ export function Leads() {
   const [loadingComments, setLoadingComments] = useState(false)
   const [newComment, setNewComment] = useState('')
   const [addingComment, setAddingComment] = useState(false)
+  const [users, setUsers] = useState<Array<{id: number, full_name: string, email: string}>>([])
   
   // Selection and pagination
   const [selectedLeads, setSelectedLeads] = useState<Set<number>>(new Set())
@@ -212,13 +219,24 @@ export function Leads() {
     simples_nacional: false,
     data_opcao_simples: '',
     data_exclusao_simples: '',
-    agent_suggestion: ''
+    agent_suggestion: '',
+    owner_id: null as number | null
   })
 
   useEffect(() => {
+    fetchUsers()
     fetchLeads()
     fetchStats()
   }, [statusFilter, sourceFilter, searchTerm, currentPage, pageSize, advancedFilters, filterLogic])
+
+  const fetchUsers = async () => {
+    try {
+      const response = await api.get('/api/users')
+      setUsers(response.data)
+    } catch (error) {
+      console.error('Error fetching users:', error)
+    }
+  }
 
   useEffect(() => {
     if (showSequenceModal) {
@@ -687,7 +705,8 @@ export function Leads() {
         simples_nacional: formData.simples_nacional || null,
         data_opcao_simples: formData.data_opcao_simples ? new Date(formData.data_opcao_simples).toISOString() : null,
         data_exclusao_simples: formData.data_exclusao_simples ? new Date(formData.data_exclusao_simples).toISOString() : null,
-        agent_suggestion: formData.agent_suggestion || null
+        agent_suggestion: formData.agent_suggestion || null,
+        owner_id: formData.owner_id || null
       }
 
       if (editingId) {
@@ -719,7 +738,8 @@ export function Leads() {
         country: '',
         industry: '',
         company_size: '',
-        context: ''
+        context: '',
+        owner_id: null
       })
       fetchLeads()
       fetchStats()
@@ -795,7 +815,8 @@ export function Leads() {
       simples_nacional: lead.simples_nacional || false,
       data_opcao_simples: formatDate(lead.data_opcao_simples),
       data_exclusao_simples: formatDate(lead.data_exclusao_simples),
-      agent_suggestion: lead.agent_suggestion || ''
+      agent_suggestion: lead.agent_suggestion || '',
+      owner_id: lead.owner_id || null
     })
     setEditingId(lead.id)
     setShowForm(true)
@@ -1321,6 +1342,21 @@ export function Leads() {
                     onChange={(e) => setFormData({ ...formData, score: parseInt(e.target.value) || 0 })}
                   />
                 </div>
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">Responsável</label>
+                  <select
+                    value={formData.owner_id || ''}
+                    onChange={(e) => setFormData({ ...formData, owner_id: e.target.value ? parseInt(e.target.value) : null })}
+                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background"
+                  >
+                    <option value="">Sem responsável</option>
+                    {users.map((user) => (
+                      <option key={user.id} value={user.id}>
+                        {user.full_name} ({user.email})
+                      </option>
+                    ))}
+                  </select>
+                </div>
               </div>
               <div className="grid gap-4 md:grid-cols-2">
                 <div className="space-y-2">
@@ -1828,6 +1864,18 @@ export function Leads() {
                       )}
                       {lead.source && (
                         <div className="text-sm">Fonte: {lead.source}</div>
+                      )}
+                      {lead.owner && (
+                        <div className="flex items-center gap-2 text-sm">
+                          <User className="h-4 w-4" />
+                          <span>Responsável: {lead.owner.full_name}</span>
+                        </div>
+                      )}
+                      {lead.owner_id && !lead.owner && (
+                        <div className="flex items-center gap-2 text-sm">
+                          <User className="h-4 w-4" />
+                          <span>Responsável: {users.find(u => u.id === lead.owner_id)?.full_name || `ID: ${lead.owner_id}`}</span>
+                        </div>
                       )}
                       {lead.next_followup && (
                         <div className="flex items-center gap-2 text-sm">

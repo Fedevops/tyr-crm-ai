@@ -160,7 +160,11 @@ class Lead(SQLModel, table=True):
     status: LeadStatus = LeadStatus.NEW
     source: Optional[str] = None  # origem do lead (website, linkedin, referral, etc)
     score: Optional[int] = Field(default=0)  # score de qualificação (0-100)
-    assigned_to: Optional[int] = Field(foreign_key="user.id", default=None)  # SDR/comercial responsável
+    assigned_to: Optional[int] = Field(foreign_key="user.id", default=None)  # DEPRECATED: usar owner_id
+    owner_id: Optional[int] = Field(foreign_key="user.id", index=True, default=None)  # OBRIGATÓRIO: dono do registro (opcional temporariamente para compatibilidade com leads existentes)
+    created_by_id: Optional[int] = Field(foreign_key="user.id", index=True, default=None)  # OBRIGATÓRIO: quem criou (opcional temporariamente para compatibilidade com leads existentes)
+    account_id: Optional[int] = Field(foreign_key="account.id", default=None)  # Opcional: empresa relacionada
+    contact_id: Optional[int] = Field(foreign_key="contact.id", default=None)  # Opcional: contato relacionado
     notes: Optional[str] = None
     tags: Optional[str] = None  # JSON string com tags
     last_contact: Optional[datetime] = None
@@ -219,7 +223,10 @@ class LeadCreate(SQLModel):
     status: Optional[LeadStatus] = LeadStatus.NEW
     source: Optional[str] = None
     score: Optional[int] = 0
-    assigned_to: Optional[int] = None
+    assigned_to: Optional[int] = None  # DEPRECATED: usar owner_id
+    owner_id: Optional[int] = None  # Se não especificado, será preenchido com created_by_id
+    account_id: Optional[int] = None  # Opcional: empresa relacionada
+    contact_id: Optional[int] = None  # Opcional: contato relacionado
     notes: Optional[str] = None
     tags: Optional[str] = None
     last_contact: Optional[datetime] = None
@@ -276,7 +283,11 @@ class LeadResponse(SQLModel):
     status: LeadStatus
     source: Optional[str]
     score: Optional[int]
-    assigned_to: Optional[int]
+    assigned_to: Optional[int]  # DEPRECATED
+    owner_id: int
+    created_by_id: int
+    account_id: Optional[int]
+    contact_id: Optional[int]
     notes: Optional[str]
     tags: Optional[str]
     last_contact: Optional[datetime]
@@ -383,7 +394,9 @@ class Task(SQLModel, table=True):
     tenant_id: int = Field(foreign_key="tenant.id", index=True)
     lead_id: int = Field(foreign_key="lead.id", index=True)
     sequence_id: Optional[int] = Field(foreign_key="sequence.id", default=None)
-    assigned_to: Optional[int] = Field(foreign_key="user.id", default=None)
+    assigned_to: Optional[int] = Field(foreign_key="user.id", default=None)  # DEPRECATED: usar owner_id
+    owner_id: Optional[int] = Field(foreign_key="user.id", index=True, default=None)  # OBRIGATÓRIO: dono do registro (opcional temporariamente para compatibilidade)
+    created_by_id: Optional[int] = Field(foreign_key="user.id", index=True, default=None)  # OBRIGATÓRIO: quem criou (opcional temporariamente para compatibilidade)
     type: TaskType
     title: str
     description: Optional[str] = None
@@ -398,7 +411,8 @@ class Task(SQLModel, table=True):
 class TaskCreate(SQLModel):
     lead_id: int
     sequence_id: Optional[int] = None
-    assigned_to: Optional[int] = None
+    assigned_to: Optional[int] = None  # DEPRECATED: usar owner_id
+    owner_id: Optional[int] = None  # Se não especificado, será preenchido com created_by_id
     type: TaskType
     title: str
     description: Optional[str] = None
@@ -418,7 +432,9 @@ class TaskResponse(SQLModel):
     tenant_id: int
     lead_id: int
     sequence_id: Optional[int]
-    assigned_to: Optional[int]
+    assigned_to: Optional[int]  # DEPRECATED
+    owner_id: int
+    created_by_id: int
     type: TaskType
     title: str
     description: Optional[str]
@@ -455,5 +471,389 @@ class LeadCommentResponse(SQLModel):
     comment: str
     created_at: datetime
     updated_at: datetime
+    user_name: Optional[str] = None
+    user_email: Optional[str] = None
+
+
+# ==================== NOVOS MODELOS CRM ====================
+
+class Account(SQLModel, table=True):
+    """Empresas/Organizações"""
+    id: Optional[int] = Field(default=None, primary_key=True)
+    tenant_id: int = Field(foreign_key="tenant.id", index=True)
+    name: str  # Nome da empresa
+    website: Optional[str] = None
+    phone: Optional[str] = None
+    email: Optional[str] = None
+    industry: Optional[str] = None
+    company_size: Optional[str] = None
+    address: Optional[str] = None
+    city: Optional[str] = None
+    state: Optional[str] = None
+    zip_code: Optional[str] = None
+    country: Optional[str] = None
+    description: Optional[str] = None
+    # Campos Casa dos Dados (opcional, pode ser preenchido via enriquecimento)
+    cnpj: Optional[str] = Field(default=None, unique=True, index=True)
+    razao_social: Optional[str] = None
+    nome_fantasia: Optional[str] = None
+    # Ownership
+    owner_id: int = Field(foreign_key="user.id", index=True)
+    created_by_id: int = Field(foreign_key="user.id", index=True)
+    # Timestamps
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    
+    # Relationships
+    contacts: List["Contact"] = Relationship(back_populates="account")
+    opportunities: List["Opportunity"] = Relationship(back_populates="account")
+
+
+class AccountCreate(SQLModel):
+    name: str
+    website: Optional[str] = None
+    phone: Optional[str] = None
+    email: Optional[str] = None
+    industry: Optional[str] = None
+    company_size: Optional[str] = None
+    address: Optional[str] = None
+    city: Optional[str] = None
+    state: Optional[str] = None
+    zip_code: Optional[str] = None
+    country: Optional[str] = None
+    description: Optional[str] = None
+    cnpj: Optional[str] = None
+    razao_social: Optional[str] = None
+    nome_fantasia: Optional[str] = None
+    owner_id: Optional[int] = None  # Se não especificado, será preenchido com created_by_id
+
+
+class AccountResponse(SQLModel):
+    id: int
+    tenant_id: int
+    name: str
+    website: Optional[str]
+    phone: Optional[str]
+    email: Optional[str]
+    industry: Optional[str]
+    company_size: Optional[str]
+    address: Optional[str]
+    city: Optional[str]
+    state: Optional[str]
+    zip_code: Optional[str]
+    country: Optional[str]
+    description: Optional[str]
+    cnpj: Optional[str]
+    razao_social: Optional[str]
+    nome_fantasia: Optional[str]
+    owner_id: int
+    created_by_id: int
+    created_at: datetime
+    updated_at: datetime
+
+
+class Contact(SQLModel, table=True):
+    """Contatos/Pessoas"""
+    id: Optional[int] = Field(default=None, primary_key=True)
+    tenant_id: int = Field(foreign_key="tenant.id", index=True)
+    account_id: Optional[int] = Field(foreign_key="account.id", default=None)  # Opcional
+    first_name: str
+    last_name: str
+    email: Optional[str] = None
+    phone: Optional[str] = None
+    mobile: Optional[str] = None
+    position: Optional[str] = None
+    department: Optional[str] = None
+    linkedin_url: Optional[str] = None
+    notes: Optional[str] = None
+    # Ownership
+    owner_id: int = Field(foreign_key="user.id", index=True)
+    created_by_id: int = Field(foreign_key="user.id", index=True)
+    # Timestamps
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    
+    # Relationships
+    account: Optional["Account"] = Relationship(back_populates="contacts")
+    opportunities: List["Opportunity"] = Relationship(back_populates="contact")
+
+
+class ContactCreate(SQLModel):
+    account_id: Optional[int] = None
+    first_name: str
+    last_name: str
+    email: Optional[str] = None
+    phone: Optional[str] = None
+    mobile: Optional[str] = None
+    position: Optional[str] = None
+    department: Optional[str] = None
+    linkedin_url: Optional[str] = None
+    notes: Optional[str] = None
+    owner_id: Optional[int] = None  # Se não especificado, será preenchido com created_by_id
+
+
+class ContactResponse(SQLModel):
+    id: int
+    tenant_id: int
+    account_id: Optional[int]
+    first_name: str
+    last_name: str
+    email: Optional[str]
+    phone: Optional[str]
+    mobile: Optional[str]
+    position: Optional[str]
+    department: Optional[str]
+    linkedin_url: Optional[str]
+    notes: Optional[str]
+    owner_id: int
+    created_by_id: int
+    created_at: datetime
+    updated_at: datetime
+
+
+class SalesFunnel(SQLModel, table=True):
+    """Funil de Vendas Parametrizável"""
+    id: Optional[int] = Field(default=None, primary_key=True)
+    tenant_id: int = Field(foreign_key="tenant.id", index=True)
+    name: str
+    description: Optional[str] = None
+    is_default: bool = Field(default=False)
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    
+    # Relationships
+    stages: List["SalesStage"] = Relationship(back_populates="funnel")
+
+
+class SalesFunnelCreate(SQLModel):
+    name: str
+    description: Optional[str] = None
+    is_default: Optional[bool] = False
+
+
+class SalesFunnelResponse(SQLModel):
+    id: int
+    tenant_id: int
+    name: str
+    description: Optional[str]
+    is_default: bool
+    created_at: datetime
+    updated_at: datetime
+
+
+class SalesStage(SQLModel, table=True):
+    """Estágios do Funil de Vendas"""
+    id: Optional[int] = Field(default=None, primary_key=True)
+    funnel_id: int = Field(foreign_key="salesfunnel.id", index=True)
+    name: str
+    description: Optional[str] = None
+    order: int  # Ordem no funil (1, 2, 3, ...)
+    probability: int = Field(default=0, ge=0, le=100)  # Probabilidade de fechamento (0-100)
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    
+    # Relationships
+    funnel: Optional["SalesFunnel"] = Relationship(back_populates="stages")
+    opportunities: List["Opportunity"] = Relationship(back_populates="stage")
+
+
+class SalesStageCreate(SQLModel):
+    funnel_id: Optional[int] = None  # Opcional: vem do path parameter
+    name: str
+    description: Optional[str] = None
+    order: int
+    probability: int = Field(default=0, ge=0, le=100)
+
+
+class SalesStageResponse(SQLModel):
+    id: int
+    funnel_id: int
+    name: str
+    description: Optional[str]
+    order: int
+    probability: int
+    created_at: datetime
+    updated_at: datetime
+
+
+class OpportunityStatus(str, Enum):
+    OPEN = "open"
+    WON = "won"
+    LOST = "lost"
+    ON_HOLD = "on_hold"
+
+
+class Opportunity(SQLModel, table=True):
+    """Oportunidades de Negócio"""
+    id: Optional[int] = Field(default=None, primary_key=True)
+    tenant_id: int = Field(foreign_key="tenant.id", index=True)
+    account_id: int = Field(foreign_key="account.id", index=True)
+    contact_id: Optional[int] = Field(foreign_key="contact.id", default=None)
+    stage_id: int = Field(foreign_key="salesstage.id", index=True)
+    name: str  # Nome da oportunidade
+    description: Optional[str] = None
+    amount: Optional[float] = None  # Valor da oportunidade
+    currency: str = Field(default="BRL")
+    expected_close_date: Optional[datetime] = None
+    actual_close_date: Optional[datetime] = None
+    status: OpportunityStatus = OpportunityStatus.OPEN
+    probability: Optional[int] = Field(default=None, ge=0, le=100)  # Pode sobrescrever a do stage
+    notes: Optional[str] = None
+    # Ownership
+    owner_id: int = Field(foreign_key="user.id", index=True)
+    created_by_id: int = Field(foreign_key="user.id", index=True)
+    # Timestamps
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    
+    # Relationships
+    account: Optional["Account"] = Relationship(back_populates="opportunities")
+    contact: Optional["Contact"] = Relationship(back_populates="opportunities")
+    stage: Optional["SalesStage"] = Relationship(back_populates="opportunities")
+    proposals: List["Proposal"] = Relationship(back_populates="opportunity")
+
+
+class OpportunityCreate(SQLModel):
+    account_id: int
+    contact_id: Optional[int] = None
+    stage_id: int
+    name: str
+    description: Optional[str] = None
+    amount: Optional[float] = None
+    currency: Optional[str] = "BRL"
+    expected_close_date: Optional[datetime] = None
+    probability: Optional[int] = Field(default=None, ge=0, le=100)
+    notes: Optional[str] = None
+    owner_id: Optional[int] = None  # Se não especificado, será preenchido com created_by_id
+
+
+class OpportunityResponse(SQLModel):
+    id: int
+    tenant_id: int
+    account_id: int
+    contact_id: Optional[int]
+    stage_id: int
+    name: str
+    description: Optional[str]
+    amount: Optional[float]
+    currency: str
+    expected_close_date: Optional[datetime]
+    actual_close_date: Optional[datetime]
+    status: OpportunityStatus
+    probability: Optional[int]
+    notes: Optional[str]
+    owner_id: int
+    created_by_id: int
+    created_at: datetime
+    updated_at: datetime
+
+
+class ProposalStatus(str, Enum):
+    DRAFT = "draft"
+    SENT = "sent"
+    ACCEPTED = "accepted"
+    REJECTED = "rejected"
+    EXPIRED = "expired"
+
+
+class Proposal(SQLModel, table=True):
+    """Propostas Comerciais"""
+    id: Optional[int] = Field(default=None, primary_key=True)
+    tenant_id: int = Field(foreign_key="tenant.id", index=True)
+    opportunity_id: int = Field(foreign_key="opportunity.id", index=True)
+    title: str
+    content: str  # Conteúdo da proposta (texto ou HTML)
+    amount: float
+    currency: str = Field(default="BRL")
+    valid_until: Optional[datetime] = None
+    status: ProposalStatus = ProposalStatus.DRAFT
+    sent_at: Optional[datetime] = None
+    accepted_at: Optional[datetime] = None
+    rejected_at: Optional[datetime] = None
+    rejection_reason: Optional[str] = None
+    notes: Optional[str] = None
+    # Ownership
+    owner_id: int = Field(foreign_key="user.id", index=True)
+    created_by_id: int = Field(foreign_key="user.id", index=True)
+    # Timestamps
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    
+    # Relationships
+    opportunity: Optional["Opportunity"] = Relationship(back_populates="proposals")
+
+
+class ProposalCreate(SQLModel):
+    opportunity_id: int
+    title: str
+    content: str
+    amount: float
+    currency: Optional[str] = "BRL"
+    valid_until: Optional[datetime] = None
+    notes: Optional[str] = None
+    owner_id: Optional[int] = None  # Se não especificado, será preenchido com created_by_id
+
+
+class ProposalResponse(SQLModel):
+    id: int
+    tenant_id: int
+    opportunity_id: int
+    title: str
+    content: str
+    amount: float
+    currency: str
+    valid_until: Optional[datetime]
+    status: ProposalStatus
+    sent_at: Optional[datetime]
+    accepted_at: Optional[datetime]
+    rejected_at: Optional[datetime]
+    rejection_reason: Optional[str]
+    notes: Optional[str]
+    owner_id: int
+    created_by_id: int
+    created_at: datetime
+    updated_at: datetime
+
+
+class AuditAction(str, Enum):
+    CREATE = "create"
+    UPDATE = "update"
+    DELETE = "delete"
+    ASSIGN = "assign"
+    STATUS_CHANGE = "status_change"
+    STAGE_CHANGE = "stage_change"
+    CONVERT = "convert"
+
+
+class AuditLog(SQLModel, table=True):
+    """Sistema de Auditoria"""
+    id: Optional[int] = Field(default=None, primary_key=True)
+    tenant_id: int = Field(foreign_key="tenant.id", index=True)
+    user_id: int = Field(foreign_key="user.id", index=True)  # Quem fez a ação
+    entity_type: str  # Lead, Account, Contact, Opportunity, Proposal, Task, etc.
+    entity_id: int
+    action: AuditAction
+    field_name: Optional[str] = None  # Campo alterado (para UPDATE)
+    old_value: Optional[str] = None  # Valor antigo
+    new_value: Optional[str] = None  # Valor novo
+    metadata_json: Optional[str] = Field(default=None, description="JSON string com dados adicionais")  # Renomeado para evitar conflito com SQLAlchemy.metadata
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    
+    # Relationships
+    user: Optional[User] = Relationship()
+
+
+class AuditLogResponse(SQLModel):
+    id: int
+    tenant_id: int
+    user_id: int
+    entity_type: str
+    entity_id: int
+    action: AuditAction
+    field_name: Optional[str]
+    old_value: Optional[str]
+    new_value: Optional[str]
+    metadata_json: Optional[str]
+    created_at: datetime
     user_name: Optional[str] = None
     user_email: Optional[str] = None

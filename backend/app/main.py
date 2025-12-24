@@ -1,9 +1,12 @@
 import logging
 import sys
-from fastapi import FastAPI
+from fastapi import FastAPI, Request, status
+from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.exceptions import RequestValidationError
+from starlette.exceptions import HTTPException as StarletteHTTPException
 from app.database import engine, init_db
-from app.routers import auth, users, playbooks, agents, company_profile, debug, leads, sequences, tasks, prospecting
+from app.routers import auth, users, playbooks, agents, company_profile, debug, leads, sequences, tasks, prospecting, audit, sales_funnel, opportunities, proposals, accounts, contacts, dashboard
 
 # Configurar logging para garantir que todos os logs apareçam
 logging.basicConfig(
@@ -26,7 +29,7 @@ app = FastAPI(
     version="1.0.0"
 )
 
-# CORS middleware
+# CORS middleware - DEVE SER ADICIONADO ANTES DE QUALQUER OUTRO MIDDLEWARE
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
@@ -42,6 +45,31 @@ app.add_middleware(
     expose_headers=["X-Total-Count"],
 )
 
+# Exception handlers para garantir que CORS seja aplicado mesmo em erros
+@app.exception_handler(StarletteHTTPException)
+async def http_exception_handler(request: Request, exc: StarletteHTTPException):
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={"detail": exc.detail},
+        headers={
+            "Access-Control-Allow-Origin": request.headers.get("origin", "*"),
+            "Access-Control-Allow-Credentials": "true",
+        }
+    )
+
+@app.exception_handler(Exception)
+async def general_exception_handler(request: Request, exc: Exception):
+    logger = logging.getLogger(__name__)
+    logger.error(f"Unhandled exception: {exc}", exc_info=True)
+    return JSONResponse(
+        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        content={"detail": f"Internal server error: {str(exc)}"},
+        headers={
+            "Access-Control-Allow-Origin": request.headers.get("origin", "*"),
+            "Access-Control-Allow-Credentials": "true",
+        }
+    )
+
 # Include routers
 app.include_router(auth.router, prefix="/api/auth", tags=["auth"])
 app.include_router(users.router, prefix="/api/users", tags=["users"])
@@ -52,6 +80,13 @@ app.include_router(leads.router, prefix="/api/leads", tags=["leads"])
 app.include_router(sequences.router, prefix="/api/sequences", tags=["sequences"])
 app.include_router(tasks.router, prefix="/api/tasks", tags=["tasks"])
 app.include_router(prospecting.router, prefix="/api/prospecting", tags=["prospecting"])
+app.include_router(audit.router, prefix="/api/audit", tags=["audit"])
+app.include_router(sales_funnel.router, prefix="/api/sales-funnels", tags=["sales-funnels"])
+app.include_router(opportunities.router, prefix="/api/opportunities", tags=["opportunities"])
+app.include_router(proposals.router, prefix="/api/proposals", tags=["proposals"])
+app.include_router(accounts.router, prefix="/api/accounts", tags=["accounts"])
+app.include_router(contacts.router, prefix="/api/contacts", tags=["contacts"])
+app.include_router(dashboard.router, prefix="/api/dashboard", tags=["dashboard"])
 app.include_router(debug.router, prefix="/api/debug", tags=["debug"])
 
 
