@@ -1,6 +1,6 @@
 import { Link, useLocation } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
-import { LayoutDashboard, BookOpen, Users, Settings, LogOut, ListChecks, Workflow, Search, Building2, UserCircle, TrendingUp, FileText, Filter, History } from 'lucide-react'
+import { LayoutDashboard, BookOpen, Users, Settings, LogOut, ListChecks, Workflow, Search, Building2, UserCircle, TrendingUp, FileText, Filter, History, Target } from 'lucide-react'
 import { useAuth } from '@/contexts/AuthContext'
 import { Button } from './ui/button'
 import { cn } from '@/lib/utils'
@@ -17,6 +17,7 @@ const navigation = [
   { name: 'tasks', href: '/tasks', icon: ListChecks },
   { name: 'sequences', href: '/sequences', icon: Workflow },
   { name: 'playbooks', href: '/playbooks', icon: BookOpen },
+  { name: 'kpi', href: '/kpi', icon: Target },
   { name: 'audit-log', href: '/audit-log', icon: History },
   { name: 'settings', href: '/settings', icon: Settings },
 ]

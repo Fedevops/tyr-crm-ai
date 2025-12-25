@@ -952,3 +952,103 @@ class AuditLogResponse(SQLModel):
     created_at: datetime
     user_name: Optional[str] = None
     user_email: Optional[str] = None
+
+
+# ==================== KPI / GOALS MODELS ====================
+
+class GoalMetricType(str, Enum):
+    TASKS_COMPLETED = "tasks_completed"
+    LEADS_CREATED = "leads_created"
+    REVENUE_GENERATED = "revenue_generated"
+    CALLS_MADE = "calls_made"
+
+
+class GoalPeriod(str, Enum):
+    MONTHLY = "monthly"
+    WEEKLY = "weekly"
+
+
+class GoalStatus(str, Enum):
+    ON_TRACK = "on_track"
+    AT_RISK = "at_risk"
+    COMPLETED = "completed"
+
+
+class Goal(SQLModel, table=True):
+    """Metas de Performance (KPIs)"""
+    id: Optional[int] = Field(default=None, primary_key=True)
+    tenant_id: int = Field(foreign_key="tenant.id", index=True)
+    user_id: int = Field(foreign_key="user.id", index=True)
+    title: str
+    metric_type: GoalMetricType
+    target_value: float
+    current_value: float = Field(default=0.0)
+    period: GoalPeriod
+    status: GoalStatus = Field(default=GoalStatus.ON_TRACK)
+    is_visible_on_wallboard: bool = Field(default=False)
+    period_start: datetime
+    period_end: datetime
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class GoalCreate(SQLModel):
+    title: str
+    metric_type: GoalMetricType
+    target_value: float
+    period: GoalPeriod
+    is_visible_on_wallboard: bool = False
+
+
+class GoalUpdate(SQLModel):
+    title: Optional[str] = None
+    target_value: Optional[float] = None
+    period: Optional[GoalPeriod] = None
+    is_visible_on_wallboard: Optional[bool] = None
+
+
+class GoalResponse(SQLModel):
+    id: int
+    tenant_id: int
+    user_id: int
+    title: str
+    metric_type: str
+    target_value: float
+    current_value: float
+    period: str
+    status: str
+    is_visible_on_wallboard: bool
+    period_start: datetime
+    period_end: datetime
+    created_at: datetime
+    updated_at: datetime
+
+
+class ActivityLog(SQLModel, table=True):
+    """Log de Atividades para Rastreamento de KPIs"""
+    id: Optional[int] = Field(default=None, primary_key=True)
+    tenant_id: int = Field(foreign_key="tenant.id", index=True)
+    user_id: int = Field(foreign_key="user.id", index=True)
+    metric_type: GoalMetricType
+    value: float
+    entity_type: Optional[str] = None  # 'Task', 'Opportunity', 'Lead', etc.
+    entity_id: Optional[int] = None
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class ActivityLogResponse(SQLModel):
+    id: int
+    tenant_id: int
+    user_id: int
+    metric_type: str
+    value: float
+    entity_type: Optional[str]
+    entity_id: Optional[int]
+    created_at: datetime
+
+
+class TrackActivityRequest(SQLModel):
+    metric_type: GoalMetricType
+    value: float
+    entity_type: Optional[str] = None
+    entity_id: Optional[int] = None

@@ -12,6 +12,8 @@ from app.models import (
 )
 from app.dependencies import get_current_active_user, apply_ownership_filter, ensure_ownership, require_ownership
 from app.services.audit_service import log_create, log_update, log_status_change, log_stage_change, log_delete
+from app.services.kpi_service import track_kpi_activity
+from app.models import GoalMetricType
 import logging
 
 logger = logging.getLogger(__name__)
@@ -480,6 +482,26 @@ async def update_opportunity_status(
     
     # Registrar mudança de status
     log_status_change(session, current_user, "Opportunity", opportunity_id, old_status.value, new_status.value)
+    
+    # Track KPI activity if opportunity was won
+    if new_status == OpportunityStatus.WON and old_status != OpportunityStatus.WON:
+        try:
+            revenue_amount = opportunity.amount or 0.0
+            completed_goals = track_kpi_activity(
+                session=session,
+                user_id=current_user.id,
+                tenant_id=current_user.tenant_id,
+                metric_type=GoalMetricType.REVENUE_GENERATED,
+                value=revenue_amount,
+                entity_type='Opportunity',
+                entity_id=opportunity.id
+            )
+            session.commit()
+            if completed_goals:
+                logger.info(f"🎯 [KPI] {len(completed_goals)} goal(s) completed by opportunity win")
+        except Exception as kpi_error:
+            logger.warning(f"⚠️ [KPI] Error tracking activity: {kpi_error}")
+            # Não falhar a operação principal se o tracking falhar
     
     return opportunity
 

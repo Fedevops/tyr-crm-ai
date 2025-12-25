@@ -11,6 +11,8 @@ from app.models import (
     TaskComment, TaskCommentCreate, TaskCommentResponse
 )
 from app.dependencies import get_current_active_user, apply_ownership_filter, ensure_ownership, require_ownership
+from app.services.kpi_service import track_kpi_activity
+from app.models import GoalMetricType
 
 router = APIRouter()
 
@@ -321,6 +323,7 @@ async def update_task(
     if update_data.get("status") == TaskStatus.COMPLETED:
         print(f"✅ [BACKEND] Tarefa está sendo marcada como COMPLETED")
         # Se ainda não estava concluída, marcar como concluída agora
+        was_not_completed = task.status != TaskStatus.COMPLETED
         if not task.completed_at:
             update_data["completed_at"] = datetime.utcnow()
             print(f"✅ [BACKEND] completed_at definido para: {update_data['completed_at']}")
@@ -556,6 +559,25 @@ async def update_task(
         session.commit()
         session.refresh(task)
         print(f"✅ [BACKEND] Tarefa {task.id} salva com sucesso. Status: {task.status}")
+        
+        # Track KPI activity if task was just completed
+        if was_not_completed and task.status == TaskStatus.COMPLETED:
+            try:
+                completed_goals = track_kpi_activity(
+                    session=session,
+                    user_id=current_user.id,
+                    tenant_id=current_user.tenant_id,
+                    metric_type=GoalMetricType.TASKS_COMPLETED,
+                    value=1.0,
+                    entity_type='Task',
+                    entity_id=task.id
+                )
+                session.commit()
+                if completed_goals:
+                    print(f"🎯 [KPI] {len(completed_goals)} goal(s) completed by task completion")
+            except Exception as kpi_error:
+                print(f"⚠️ [KPI] Error tracking activity: {kpi_error}")
+                # Não falhar a operação principal se o tracking falhar
     except Exception as e:
         print(f"❌ [BACKEND] Erro ao salvar tarefa: {e}")
         import traceback

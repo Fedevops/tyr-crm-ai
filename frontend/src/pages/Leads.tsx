@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 import api from '@/lib/api'
+import { useKPI } from '@/contexts/KPIContext'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -128,6 +129,7 @@ const statusColors: Record<LeadStatus, string> = {
 
 export function Leads() {
   const { t } = useTranslation()
+  const { trackActivity } = useKPI()
   const [leads, setLeads] = useState<Lead[]>([])
   const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
@@ -709,10 +711,17 @@ export function Leads() {
         owner_id: formData.owner_id || null
       }
 
+      let response
       if (editingId) {
-        await api.put(`/api/leads/${editingId}`, data)
+        response = await api.put(`/api/leads/${editingId}`, data)
       } else {
-        await api.post('/api/leads', data)
+        response = await api.post('/api/leads', data)
+        // Track KPI activity for new lead creation
+        if (response.data?.id) {
+          trackActivity('leads_created', 1, 'Lead', response.data.id).catch((err) => {
+            console.error('Error tracking KPI activity:', err)
+          })
+        }
       }
       
       setShowForm(false)

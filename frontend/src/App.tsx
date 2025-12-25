@@ -1,6 +1,7 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { AuthProvider, useAuth } from './contexts/AuthContext'
 import { ThemeProvider } from './contexts/ThemeContext'
+import { KPIProvider } from './contexts/KPIContext'
 import { Sidebar } from './components/Sidebar'
 import { Header } from './components/Header'
 import { Login } from './pages/Login'
@@ -19,6 +20,7 @@ import { Opportunities } from './pages/Opportunities'
 import { Proposals } from './pages/Proposals'
 import { SalesFunnels } from './pages/SalesFunnels'
 import { AuditLog } from './pages/AuditLog'
+import { KPIOverview } from './pages/KPI/KPIOverview'
 import { Toaster } from './components/ui/toaster'
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
@@ -198,6 +200,16 @@ function AppRoutes() {
           </ProtectedRoute>
         }
       />
+      <Route
+        path="/kpi"
+        element={
+          <ProtectedRoute>
+            <Layout>
+              <KPIOverview />
+            </Layout>
+          </ProtectedRoute>
+        }
+      />
       <Route path="/" element={<Navigate to="/dashboard" />} />
     </Routes>
   )
@@ -207,10 +219,12 @@ function App() {
   return (
     <ThemeProvider>
       <AuthProvider>
-        <BrowserRouter>
-          <AppRoutes />
-          <Toaster />
-        </BrowserRouter>
+        <KPIProvider>
+          <BrowserRouter>
+            <AppRoutes />
+            <Toaster />
+          </BrowserRouter>
+        </KPIProvider>
       </AuthProvider>
     </ThemeProvider>
   )

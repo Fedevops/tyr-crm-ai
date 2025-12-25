@@ -6,7 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.exceptions import RequestValidationError
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from app.database import engine, init_db
-from app.routers import auth, users, playbooks, agents, company_profile, debug, leads, sequences, tasks, prospecting, audit, sales_funnel, opportunities, proposals, accounts, contacts, dashboard, settings
+from app.routers import auth, users, playbooks, agents, company_profile, debug, leads, sequences, tasks, prospecting, audit, sales_funnel, opportunities, proposals, accounts, contacts, dashboard, settings, kpi
 
 # Configurar logging para garantir que todos os logs apareçam
 logging.basicConfig(
@@ -89,6 +89,7 @@ app.include_router(contacts.router, prefix="/api/contacts", tags=["contacts"])
 app.include_router(dashboard.router, prefix="/api/dashboard", tags=["dashboard"])
 app.include_router(debug.router, prefix="/api/debug", tags=["debug"])
 app.include_router(settings.router, prefix="/api/settings", tags=["settings"])
+app.include_router(kpi.router, prefix="/api/kpi", tags=["kpi"])
 
 
 @app.on_event("startup")

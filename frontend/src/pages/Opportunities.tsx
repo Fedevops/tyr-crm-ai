@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 import api from '@/lib/api'
+import { useKPI } from '@/contexts/KPIContext'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -74,6 +75,7 @@ interface SalesFunnel {
 
 export function Opportunities() {
   const { t } = useTranslation()
+  const { trackActivity } = useKPI()
   const [opportunities, setOpportunities] = useState<Opportunity[]>([])
   const [accounts, setAccounts] = useState<Account[]>([])
   const [contacts, setContacts] = useState<Contact[]>([])
@@ -563,7 +565,18 @@ export function Opportunities() {
 
   const handleStatusChange = async (id: number, newStatus: 'open' | 'won' | 'lost' | 'on_hold') => {
     try {
+      const opportunity = opportunities.find(opp => opp.id === id)
+      const wasWon = newStatus === 'won' && opportunity?.status !== 'won'
+      
       await api.patch(`/api/opportunities/${id}/status?new_status=${newStatus}`)
+      
+      // Track KPI activity if opportunity was won
+      if (wasWon && opportunity?.amount) {
+        trackActivity('revenue_generated', opportunity.amount, 'Opportunity', id).catch((err) => {
+          console.error('Error tracking KPI activity:', err)
+        })
+      }
+      
       fetchOpportunities()
     } catch (error: any) {
       console.error('Error updating status:', error)

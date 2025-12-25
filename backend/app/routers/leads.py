@@ -18,6 +18,8 @@ from app.models import (
 from app.dependencies import get_current_active_user, apply_ownership_filter, ensure_ownership, require_ownership, check_ownership
 from app.services.audit_service import log_convert
 from app.services.enrichment_service import enrich_lead
+from app.services.kpi_service import track_kpi_activity
+from app.models import GoalMetricType
 import pandas as pd
 import logging
 
@@ -239,6 +241,25 @@ async def create_lead(
     session.add(lead)
     session.commit()
     session.refresh(lead)
+    
+    # Track KPI activity for lead creation
+    try:
+        completed_goals = track_kpi_activity(
+            session=session,
+            user_id=current_user.id,
+            tenant_id=current_user.tenant_id,
+            metric_type=GoalMetricType.LEADS_CREATED,
+            value=1.0,
+            entity_type='Lead',
+            entity_id=lead.id
+        )
+        session.commit()
+        if completed_goals:
+            logger.info(f"🎯 [KPI] {len(completed_goals)} goal(s) completed by lead creation")
+    except Exception as kpi_error:
+        logger.warning(f"⚠️ [KPI] Error tracking activity: {kpi_error}")
+        # Não falhar a operação principal se o tracking falhar
+    
     return lead
 
 

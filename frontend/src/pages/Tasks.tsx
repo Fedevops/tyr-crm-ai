@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import api from '@/lib/api'
+import { useKPI } from '@/contexts/KPIContext'
 import { Plus, CheckCircle2, Clock, AlertCircle, Mail, Phone, Link as LinkIcon, Calendar, Search, X, User, XCircle, Trash2, Edit } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 
@@ -65,6 +66,7 @@ interface Lead {
 export function Tasks() {
   const { t } = useTranslation()
   const navigate = useNavigate()
+  const { trackActivity } = useKPI()
   const [tasks, setTasks] = useState<Task[]>([])
   const [loading, setLoading] = useState(true)
   const [statusFilter, setStatusFilter] = useState<string>('all')
@@ -337,6 +339,14 @@ export function Tasks() {
       // Recarregar tarefas para obter dados atualizados (incluindo notes da pesquisa)
       await fetchTasks()
       
+      // Track KPI activity if task was completed
+      const task = tasks.find(t => t.id === taskId)
+      if (newStatus === 'completed' && task && task.status !== 'completed') {
+        trackActivity('tasks_completed', 1, 'Task', taskId).catch((err) => {
+          console.error('Error tracking KPI activity:', err)
+        })
+      }
+
       // Feedback visual
       if (newStatus === 'completed' && response.data?.type === 'research') {
         console.log('✅ [FRONTEND] Tarefa de pesquisa concluída. Verifique as notas para ver o resultado da pesquisa automática.')
