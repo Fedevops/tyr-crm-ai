@@ -176,3 +176,4 @@ docker-compose logs -f backend | grep RAPIDAPI
 Se nada funcionar, tente uma API diferente do RapidAPI. Existem várias APIs de LinkedIn disponíveis, e algumas podem ser mais confiáveis que outras.
 
 
+

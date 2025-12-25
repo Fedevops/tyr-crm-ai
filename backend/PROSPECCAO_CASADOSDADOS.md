@@ -95,3 +95,4 @@ Se o erro 403 persistir:
 4. Confirme se há restrições de IP ou rate limiting
 
 
+
