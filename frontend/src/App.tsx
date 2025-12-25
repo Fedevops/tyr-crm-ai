@@ -11,7 +11,7 @@ import { Leads } from './pages/Leads'
 import { Sequences } from './pages/Sequences'
 import { Tasks } from './pages/Tasks'
 import { Prospecting } from './pages/Prospecting'
-import { Settings } from './pages/Settings'
+import { SettingsHub } from './pages/Settings/SettingsHub'
 import { OnboardingWizard } from './pages/OnboardingWizard'
 import { Accounts } from './pages/Accounts'
 import { Contacts } from './pages/Contacts'
@@ -19,6 +19,7 @@ import { Opportunities } from './pages/Opportunities'
 import { Proposals } from './pages/Proposals'
 import { SalesFunnels } from './pages/SalesFunnels'
 import { AuditLog } from './pages/AuditLog'
+import { Toaster } from './components/ui/toaster'
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { isAuthenticated, loading } = useAuth()
@@ -192,7 +193,7 @@ function AppRoutes() {
         element={
           <ProtectedRoute>
             <Layout>
-              <Settings />
+              <SettingsHub />
             </Layout>
           </ProtectedRoute>
         }
@@ -208,6 +209,7 @@ function App() {
       <AuthProvider>
         <BrowserRouter>
           <AppRoutes />
+          <Toaster />
         </BrowserRouter>
       </AuthProvider>
     </ThemeProvider>
