@@ -23,3 +23,4 @@ lxml>=4.9.0
 googlesearch-python>=1.2.3
 pandas>=2.0.0
 httpx>=0.25.0
+python-socketio[asyncio]>=5.10.0

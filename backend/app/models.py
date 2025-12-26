@@ -1,4 +1,4 @@
-from sqlmodel import SQLModel, Field, Relationship
+from sqlmodel import SQLModel, Field, Relationship, Column, JSON
 from typing import Optional, List
 from datetime import datetime
 from enum import Enum
@@ -436,8 +436,8 @@ class TaskResponse(SQLModel):
     lead_id: int
     sequence_id: Optional[int]
     assigned_to: Optional[int]  # DEPRECATED
-    owner_id: int
-    created_by_id: int
+    owner_id: Optional[int]
+    created_by_id: Optional[int]
     type: TaskType
     title: str
     description: Optional[str]
@@ -1052,3 +1052,165 @@ class TrackActivityRequest(SQLModel):
     value: float
     entity_type: Optional[str] = None
     entity_id: Optional[int] = None
+
+
+# ==================== LIVE PULSE MODELS ====================
+
+class VisitorStatus(str, Enum):
+    NAVIGATING = "navigating"
+    IN_CHAT = "in_chat"
+    IDLE = "idle"
+
+
+class Visitor(SQLModel, table=True):
+    """Visitantes rastreados em tempo real"""
+    id: Optional[int] = Field(default=None, primary_key=True)
+    tenant_id: int = Field(foreign_key="tenant.id", index=True)
+    visitor_id: str = Field(unique=True, index=True)  # UUID único do visitante
+    ip: Optional[str] = None
+    latitude: Optional[float] = None
+    longitude: Optional[float] = None
+    city: Optional[str] = None
+    country: Optional[str] = None
+    current_page: Optional[str] = None
+    duration: int = Field(default=0)  # Tempo em segundos
+    status: VisitorStatus = Field(default=VisitorStatus.NAVIGATING)
+    name: Optional[str] = None
+    email: Optional[str] = None
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    last_activity_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class VisitorCreate(SQLModel):
+    visitor_id: Optional[str] = None  # Se não fornecido, será gerado
+    ip: Optional[str] = None
+    latitude: Optional[float] = None
+    longitude: Optional[float] = None
+    city: Optional[str] = None
+    country: Optional[str] = None
+    current_page: Optional[str] = None
+
+
+class VisitorUpdate(SQLModel):
+    current_page: Optional[str] = None
+    latitude: Optional[float] = None
+    longitude: Optional[float] = None
+    name: Optional[str] = None
+    email: Optional[str] = None
+
+
+class VisitorResponse(SQLModel):
+    id: int
+    tenant_id: int
+    visitor_id: str
+    ip: Optional[str]
+    latitude: Optional[float]
+    longitude: Optional[float]
+    city: Optional[str]
+    country: Optional[str]
+    current_page: Optional[str]
+    duration: int
+    status: str
+    name: Optional[str]
+    email: Optional[str]
+    created_at: datetime
+    updated_at: datetime
+    last_activity_at: datetime
+
+
+class ChatMessageSenderType(str, Enum):
+    VISITOR = "visitor"
+    OPERATOR = "operator"
+
+
+class ChatMessage(SQLModel, table=True):
+    """Mensagens do chat em tempo real"""
+    id: Optional[int] = Field(default=None, primary_key=True)
+    tenant_id: int = Field(foreign_key="tenant.id", index=True)
+    visitor_id: str = Field(foreign_key="visitor.visitor_id", index=True)
+    sender_type: ChatMessageSenderType
+    user_id: Optional[int] = Field(foreign_key="user.id", default=None)  # Se operador
+    message: str
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class ChatMessageCreate(SQLModel):
+    message: str
+
+
+class ChatMessageResponse(SQLModel):
+    id: int
+    tenant_id: int
+    visitor_id: str
+    sender_type: str
+    user_id: Optional[int]
+    message: str
+    created_at: datetime
+    user_name: Optional[str] = None
+    user_email: Optional[str] = None
+
+
+class ConvertToLeadRequest(SQLModel):
+    name: str
+    email: str
+    phone: Optional[str] = None
+    company: Optional[str] = None
+    notes: Optional[str] = None
+
+
+# ==================== VISIT REPORTS ====================
+
+class VisitReport(SQLModel, table=True):
+    """Relatório de visita após o visitante sair do site"""
+    id: Optional[int] = Field(default=None, primary_key=True)
+    tenant_id: int = Field(foreign_key="tenant.id", index=True)
+    visitor_id: str = Field(index=True)  # Referência ao visitor_id (não FK para permitir histórico)
+    ip: Optional[str] = None
+    latitude: Optional[float] = None
+    longitude: Optional[float] = None
+    city: Optional[str] = None
+    country: Optional[str] = None
+    name: Optional[str] = None
+    email: Optional[str] = None
+    pages_visited: List[str] = Field(default_factory=list, sa_column=Column(JSON))  # Lista de páginas visitadas
+    total_duration: int = Field(default=0)  # Duração total em segundos
+    chat_initiated: bool = Field(default=False)  # Se iniciou chat
+    messages_count: int = Field(default=0)  # Número de mensagens trocadas
+    converted_to_lead: bool = Field(default=False)  # Se foi convertido em lead
+    lead_id: Optional[int] = Field(foreign_key="lead.id", default=None)
+    started_at: datetime = Field(default_factory=datetime.utcnow)
+    ended_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class VisitReportCreate(SQLModel):
+    visitor_id: str
+    pages_visited: List[str] = Field(default_factory=list)
+    total_duration: int
+    chat_initiated: bool = False
+    messages_count: int = 0
+    converted_to_lead: bool = False
+    lead_id: Optional[int] = None
+
+
+class VisitReportResponse(SQLModel):
+    id: int
+    tenant_id: int
+    visitor_id: str
+    ip: Optional[str]
+    latitude: Optional[float]
+    longitude: Optional[float]
+    city: Optional[str]
+    country: Optional[str]
+    name: Optional[str]
+    email: Optional[str]
+    pages_visited: List[str]
+    total_duration: int
+    chat_initiated: bool
+    messages_count: int
+    converted_to_lead: bool
+    lead_id: Optional[int]
+    started_at: datetime
+    ended_at: datetime
+    created_at: datetime

@@ -2,6 +2,20 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Leaflet custom styles for dark theme */
+.leaflet-container {
+  background: #0f172a !important;
+}
+
+.leaflet-popup-content-wrapper {
+  background: white !important;
+  border-radius: 8px !important;
+}
+
+.leaflet-popup-tip {
+  background: white !important;
+}
+
 @layer base {
   :root {
     --background: 0 0% 100%;

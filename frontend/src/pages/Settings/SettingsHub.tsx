@@ -9,6 +9,7 @@ import {
   Key,
   Menu,
   X,
+  Radio,
 } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -18,9 +19,10 @@ import { Team } from './sections/Team'
 import { Billing } from './sections/Billing'
 import { Security } from './sections/Security'
 import { ApiKeys } from './sections/ApiKeys'
+import { LivePulse } from './sections/LivePulse'
 import { cn } from '@/lib/utils'
 
-type SettingsSection = 'profile' | 'branding' | 'team' | 'billing' | 'security' | 'apikeys'
+type SettingsSection = 'profile' | 'branding' | 'team' | 'billing' | 'security' | 'apikeys' | 'livepulse'
 
 interface NavItem {
   id: SettingsSection
@@ -40,6 +42,7 @@ export function SettingsHub() {
     { id: 'billing', label: 'Faturamento', icon: CreditCard },
     { id: 'security', label: 'Segurança', icon: Shield },
     { id: 'apikeys', label: 'API Keys', icon: Key },
+    { id: 'livepulse', label: 'Live Pulse', icon: Radio },
   ]
 
   const renderSection = () => {
@@ -56,6 +59,8 @@ export function SettingsHub() {
         return <Security />
       case 'apikeys':
         return <ApiKeys />
+      case 'livepulse':
+        return <LivePulse />
       default:
         return <Profile />
     }

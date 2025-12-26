@@ -735,7 +735,7 @@ export function Accounts() {
                     <CardTitle className="flex items-center gap-2">
                       {account.name}
                     </CardTitle>
-                    <CardDescription className="mt-2 space-y-1">
+                    <div className="mt-2 space-y-1 text-sm text-muted-foreground">
                       {account.nome_fantasia && (
                         <div className="flex items-center gap-2">
                           <Building className="h-4 w-4" />
@@ -797,7 +797,7 @@ export function Accounts() {
                           <span>Responsável: {users.find(u => u.id === account.owner_id)?.full_name || `ID: ${account.owner_id}`}</span>
                         </div>
                       )}
-                    </CardDescription>
+                    </div>
                   </div>
                 </div>
                 <div className="flex gap-2">

@@ -6,7 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.exceptions import RequestValidationError
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from app.database import engine, init_db
-from app.routers import auth, users, playbooks, agents, company_profile, debug, leads, sequences, tasks, prospecting, audit, sales_funnel, opportunities, proposals, accounts, contacts, dashboard, settings, kpi
+from app.routers import auth, users, playbooks, agents, company_profile, debug, leads, sequences, tasks, prospecting, audit, sales_funnel, opportunities, proposals, accounts, contacts, dashboard, settings, kpi, live_pulse, widgets
 
 # Configurar logging para garantir que todos os logs apareçam
 logging.basicConfig(
@@ -30,6 +30,7 @@ app = FastAPI(
 )
 
 # CORS middleware - DEVE SER ADICIONADO ANTES DE QUALQUER OUTRO MIDDLEWARE
+# Permitir origens específicas para requisições com credenciais
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
@@ -38,8 +39,13 @@ app.add_middleware(
         "http://frontend:3000",
         "http://127.0.0.1:3000",
         "http://127.0.0.1:5173",
+        "http://localhost:8080",  # Para testar widgets
+        "http://127.0.0.1:8080",  # Para testar widgets
+        "http://127.0.0.1:5500",  # Para testar widgets (Live Server)
+        "http://localhost:5500",  # Para testar widgets (Live Server)
+        "file://",  # Para arquivos HTML locais
     ],
-    allow_credentials=True,
+    allow_credentials=True,  # Permitir credenciais para o frontend autenticado
     allow_methods=["*"],
     allow_headers=["*"],
     expose_headers=["X-Total-Count"],
@@ -90,6 +96,8 @@ app.include_router(dashboard.router, prefix="/api/dashboard", tags=["dashboard"]
 app.include_router(debug.router, prefix="/api/debug", tags=["debug"])
 app.include_router(settings.router, prefix="/api/settings", tags=["settings"])
 app.include_router(kpi.router, prefix="/api/kpi", tags=["kpi"])
+app.include_router(live_pulse.router, prefix="/api/live-pulse", tags=["live-pulse"])
+app.include_router(widgets.router, prefix="/api", tags=["widgets"])
 
 
 @app.on_event("startup")

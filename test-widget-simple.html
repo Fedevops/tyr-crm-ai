@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Teste Widget - Versão Simples</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            padding: 40px;
+            max-width: 800px;
+            margin: 0 auto;
+            background: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+            margin-top: 0;
+        }
+        .status {
+            padding: 15px;
+            border-radius: 4px;
+            margin: 20px 0;
+            font-family: monospace;
+            font-size: 12px;
+        }
+        .success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        .error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+        .info {
+            background: #d1ecf1;
+            color: #0c5460;
+            border: 1px solid #bee5eb;
+        }
+        button {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 10px 5px;
+        }
+        button:hover {
+            background: #0056b3;
+        }
+        #console {
+            background: #1e1e1e;
+            color: #d4d4d4;
+            padding: 15px;
+            border-radius: 4px;
+            font-family: 'Courier New', monospace;
+            font-size: 11px;
+            max-height: 400px;
+            overflow-y: auto;
+            margin-top: 20px;
+        }
+        .log {
+            margin: 2px 0;
+        }
+        .log-error {
+            color: #f48771;
+        }
+        .log-success {
+            color: #4ec9b0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🧪 Teste do Widget TYR Live Pulse</h1>
+        
+        <div id="status" class="status info">
+            Aguardando inicialização...
+        </div>
+
+        <div>
+            <button onclick="testWidget()">Testar Widget</button>
+            <button onclick="clearConsole()">Limpar Console</button>
+            <button onclick="checkWidget()">Verificar Widget</button>
+        </div>
+
+        <div id="console"></div>
+    </div>
+
+    <script>
+        const consoleDiv = document.getElementById('console');
+        const statusDiv = document.getElementById('status');
+        
+        function log(message, type = 'info') {
+            const timestamp = new Date().toLocaleTimeString();
+            const logClass = type === 'error' ? 'log-error' : type === 'success' ? 'log-success' : '';
+            consoleDiv.innerHTML += `<div class="log ${logClass}">[${timestamp}] ${message}</div>`;
+            consoleDiv.scrollTop = consoleDiv.scrollHeight;
+            console.log(`[${timestamp}] ${message}`);
+        }
+        
+        function clearConsole() {
+            consoleDiv.innerHTML = '';
+        }
+        
+        function updateStatus(message, type = 'info') {
+            statusDiv.textContent = message;
+            statusDiv.className = `status ${type}`;
+        }
+        
+        function checkWidget() {
+            log('=== Verificando Widget ===', 'info');
+            
+            if (window.TYRLivePulse) {
+                log('✓ window.TYRLivePulse encontrado', 'success');
+            } else {
+                log('✗ window.TYRLivePulse NÃO encontrado', 'error');
+            }
+            
+            if (window.TYR_CONFIG) {
+                log('✓ window.TYR_CONFIG encontrado: ' + JSON.stringify(window.TYR_CONFIG), 'success');
+            } else {
+                log('✗ window.TYR_CONFIG NÃO encontrado', 'error');
+            }
+            
+            const widget = document.getElementById('tyr-chat-widget');
+            if (widget) {
+                log('✓ Widget encontrado no DOM', 'success');
+                const button = document.getElementById('tyr-chat-button');
+                if (button) {
+                    log('✓ Botão do widget encontrado', 'success');
+                } else {
+                    log('✗ Botão do widget NÃO encontrado', 'error');
+                }
+            } else {
+                log('✗ Widget NÃO encontrado no DOM', 'error');
+            }
+        }
+        
+        function testWidget() {
+            clearConsole();
+            log('=== Iniciando Teste do Widget ===', 'info');
+            
+            const API_URL = 'http://localhost:8000';
+            const TENANT_ID = 1; // ALTERE PARA SEU TENANT_ID
+            
+            log(`API URL: ${API_URL}`, 'info');
+            log(`Tenant ID: ${TENANT_ID}`, 'info');
+            
+            // 1. Testar se o endpoint do widget está acessível
+            log('Testando endpoint do widget...', 'info');
+            fetch(`${API_URL}/api/widgets/tyr-live-pulse.js`)
+                .then(response => {
+                    if (response.ok) {
+                        log(`✓ Endpoint do widget acessível (${response.status})`, 'success');
+                        return response.text();
+                    } else {
+                        log(`✗ Erro ao acessar endpoint (${response.status})`, 'error');
+                        throw new Error(`HTTP ${response.status}`);
+                    }
+                })
+                .then(script => {
+                    log(`✓ Script carregado (${script.length} caracteres)`, 'success');
+                    log('Inicializando widget...', 'info');
+                    initWidget(API_URL, TENANT_ID);
+                })
+                .catch(error => {
+                    log(`✗ Erro ao carregar widget: ${error.message}`, 'error');
+                    updateStatus('Erro ao carregar widget. Verifique se o servidor está rodando.', 'error');
+                });
+        }
+        
+        function initWidget(apiUrl, tenantId) {
+            const TYR_CONFIG = {
+                apiUrl: apiUrl,
+                tenantId: tenantId,
+                position: 'bottom-right',
+                primaryColor: '#3b82f6',
+                buttonText: 'Fale Conosco',
+            };
+            
+            log('Configuração: ' + JSON.stringify(TYR_CONFIG), 'info');
+            
+            // Definir config
+            window.TYR_CONFIG = TYR_CONFIG;
+            
+            // Carregar script
+            const script = document.createElement('script');
+            script.src = `${apiUrl}/api/widgets/tyr-live-pulse.js`;
+            script.async = true;
+            
+            script.onload = function() {
+                log('✓ Script carregado com sucesso', 'success');
+                
+                setTimeout(() => {
+                    if (window.TYRLivePulse) {
+                        log('✓ TYRLivePulse disponível, inicializando...', 'success');
+                        try {
+                            window.TYRLivePulse.init(TYR_CONFIG);
+                            log('✓ Widget inicializado!', 'success');
+                            updateStatus('Widget inicializado com sucesso! Verifique o canto inferior direito.', 'success');
+                            
+                            // Verificar após 1 segundo
+                            setTimeout(() => {
+                                checkWidget();
+                            }, 1000);
+                        } catch (error) {
+                            log(`✗ Erro ao inicializar: ${error.message}`, 'error');
+                            updateStatus('Erro ao inicializar widget: ' + error.message, 'error');
+                        }
+                    } else {
+                        log('✗ TYRLivePulse não disponível após carregar script', 'error');
+                        updateStatus('Erro: TYRLivePulse não encontrado', 'error');
+                    }
+                }, 100);
+            };
+            
+            script.onerror = function() {
+                log('✗ Erro ao carregar script do widget', 'error');
+                updateStatus('Erro ao carregar script. Verifique a URL e CORS.', 'error');
+            };
+            
+            log('Adicionando script ao DOM...', 'info');
+            document.head.appendChild(script);
+        }
+        
+        // Auto-testar ao carregar
+        window.addEventListener('load', function() {
+            log('Página carregada. Clique em "Testar Widget" para iniciar.', 'info');
+        });
+    </script>
+</body>
+</html>
+

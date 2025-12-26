@@ -7,7 +7,7 @@ from typing import List
 from app.database import get_session
 from app.models import (
     Task, TaskCreate, TaskUpdate, TaskResponse, TaskType, TaskStatus,
-    Lead, Sequence, User,
+    Lead, Sequence, User, UserRole,
     TaskComment, TaskCommentCreate, TaskCommentResponse
 )
 from app.dependencies import get_current_active_user, apply_ownership_filter, ensure_ownership, require_ownership
@@ -244,10 +244,14 @@ async def get_upcoming_tasks(
         now = datetime.utcnow()
         future_date = now + timedelta(days=days)
         
+        # Usar apply_ownership_filter como nos outros endpoints
         query = select(Task)
         query = apply_ownership_filter(query, Task, current_user)
+        
+        # Adicionar filtros de data e status
         query = query.where(
             and_(
+                Task.due_date.isnot(None),
                 Task.due_date >= now,
                 Task.due_date <= future_date,
                 Task.status != TaskStatus.COMPLETED,
@@ -265,11 +269,21 @@ async def get_upcoming_tasks(
         query = query.order_by(Task.due_date.asc())
         
         tasks = session.exec(query).all()
-        return tasks
+        
+        # Converter para dict e depois para TaskResponse para garantir serialização correta
+        tasks_response = []
+        for task in tasks:
+            task_dict = task.dict()
+            # Garantir que todos os campos opcionais estão presentes
+            tasks_response.append(TaskResponse(**task_dict))
+        
+        return tasks_response
     except Exception as e:
         import logging
+        import traceback
         logger = logging.getLogger(__name__)
-        logger.error(f"Error fetching upcoming tasks: {e}", exc_info=True)
+        error_trace = traceback.format_exc()
+        logger.error(f"Error fetching upcoming tasks: {e}\n{error_trace}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error fetching upcoming tasks: {str(e)}"

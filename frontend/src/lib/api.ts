@@ -71,6 +71,19 @@ api.interceptors.response.use(
   }
 )
 
+// Live Pulse API functions
+export const livePulseApi = {
+  getVisitors: () => api.get('/api/live-pulse/visitors'),
+  getVisitor: (visitorId: string) => api.get(`/api/live-pulse/visitors/${visitorId}`),
+  createVisitor: (data: any) => api.post('/api/live-pulse/visitors', data),
+  updateVisitor: (visitorId: string, data: any) => api.put(`/api/live-pulse/visitors/${visitorId}`, data),
+  getChatHistory: (visitorId: string) => api.get(`/api/live-pulse/visitors/${visitorId}/chat`),
+  sendChatMessage: (visitorId: string, message: string) => api.post(`/api/live-pulse/visitors/${visitorId}/chat`, { message }),
+  convertToLead: (visitorId: string, data: any) => api.post(`/api/live-pulse/visitors/${visitorId}/convert-to-lead`, data),
+  getVisitReports: (skip?: number, limit?: number) => api.get('/api/live-pulse/visit-reports', { params: { skip, limit } }),
+  getVisitReport: (reportId: number) => api.get(`/api/live-pulse/visit-reports/${reportId}`),
+}
+
 export default api
 
 

@@ -21,6 +21,8 @@ import { Proposals } from './pages/Proposals'
 import { SalesFunnels } from './pages/SalesFunnels'
 import { AuditLog } from './pages/AuditLog'
 import { KPIOverview } from './pages/KPI/KPIOverview'
+import { LivePulseDashboard } from './pages/LivePulse/LivePulseDashboard'
+import { VisitReports } from './pages/VisitReports'
 import { Toaster } from './components/ui/toaster'
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
@@ -48,8 +50,10 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
 function Layout({ children }: { children: React.ReactNode }) {
   return (
     <div className="flex h-screen">
-      <Sidebar />
-      <div className="flex flex-1 flex-col">
+      <div data-sidebar className="transition-transform duration-300">
+        <Sidebar />
+      </div>
+      <div className="flex flex-1 flex-col overflow-hidden">
         <Header />
         <main className="flex-1 overflow-y-auto">{children}</main>
       </div>
@@ -206,6 +210,26 @@ function AppRoutes() {
           <ProtectedRoute>
             <Layout>
               <KPIOverview />
+            </Layout>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/live-pulse"
+        element={
+          <ProtectedRoute>
+            <Layout>
+              <LivePulseDashboard />
+            </Layout>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/visit-reports"
+        element={
+          <ProtectedRoute>
+            <Layout>
+              <VisitReports />
             </Layout>
           </ProtectedRoute>
         }
