@@ -1,8 +1,9 @@
 """Service for KPI tracking - can be called from any router"""
-from sqlmodel import Session, select
+from sqlmodel import Session, select, func, and_, or_
 from datetime import datetime
 from app.models import (
-    Goal, ActivityLog, GoalMetricType, GoalStatus, GoalPeriod
+    Goal, ActivityLog, GoalMetricType, GoalStatus, GoalPeriod,
+    Lead, Task, TaskType, TaskStatus, Opportunity, OpportunityStatus
 )
 
 
@@ -62,6 +63,88 @@ def reset_goal_period_if_needed(goal: Goal) -> Goal:
         goal.current_value = 0.0
         goal.status = GoalStatus.ON_TRACK
     return goal
+
+
+def calculate_initial_goal_value(
+    session: Session,
+    user_id: int,
+    tenant_id: int,
+    metric_type: GoalMetricType,
+    period_start: datetime,
+    period_end: datetime
+) -> float:
+    """
+    Calcula o valor inicial de uma meta baseado em atividades já existentes no período.
+    Isso garante que KPIs criados no meio do período incluam atividades anteriores.
+    """
+    if metric_type == GoalMetricType.LEADS_CREATED:
+        # Contar leads criados pelo usuário no período
+        # Conta leads onde o usuário é o criador (created_by_id) OU o dono (owner_id)
+        count = session.exec(
+            select(func.count(Lead.id)).where(
+                and_(
+                    Lead.tenant_id == tenant_id,
+                    or_(
+                        Lead.created_by_id == user_id,
+                        Lead.owner_id == user_id
+                    ),
+                    Lead.created_at >= period_start,
+                    Lead.created_at <= period_end
+                )
+            )
+        ).one()
+        return float(count or 0)
+    
+    elif metric_type == GoalMetricType.TASKS_COMPLETED:
+        # Contar tarefas completadas pelo usuário no período
+        count = session.exec(
+            select(func.count(Task.id)).where(
+                and_(
+                    Task.tenant_id == tenant_id,
+                    Task.owner_id == user_id,
+                    Task.status == TaskStatus.COMPLETED,
+                    Task.completed_at.isnot(None),
+                    Task.completed_at >= period_start,
+                    Task.completed_at <= period_end
+                )
+            )
+        ).one()
+        return float(count or 0)
+    
+    elif metric_type == GoalMetricType.REVENUE_GENERATED:
+        # Somar receita de oportunidades ganhas pelo usuário no período
+        result = session.exec(
+            select(func.coalesce(func.sum(Opportunity.amount), 0)).where(
+                and_(
+                    Opportunity.tenant_id == tenant_id,
+                    Opportunity.owner_id == user_id,
+                    Opportunity.status == OpportunityStatus.WON,
+                    Opportunity.actual_close_date.isnot(None),
+                    Opportunity.actual_close_date >= period_start,
+                    Opportunity.actual_close_date <= period_end
+                )
+            )
+        ).one()
+        return float(result or 0)
+    
+    elif metric_type == GoalMetricType.CALLS_MADE:
+        # Contar chamadas (tarefas do tipo CALL) completadas no período
+        count = session.exec(
+            select(func.count(Task.id)).where(
+                and_(
+                    Task.tenant_id == tenant_id,
+                    Task.owner_id == user_id,
+                    Task.type == TaskType.CALL,
+                    Task.status == TaskStatus.COMPLETED,
+                    Task.completed_at.isnot(None),
+                    Task.completed_at >= period_start,
+                    Task.completed_at <= period_end
+                )
+            )
+        ).one()
+        return float(count or 0)
+    
+    return 0.0
 
 
 def track_kpi_activity(

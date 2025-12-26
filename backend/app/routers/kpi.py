@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlmodel import Session, select
+from sqlmodel import Session, select, func, and_, or_
 from typing import List, Dict
 from datetime import datetime
 from app.database import get_session
@@ -8,13 +8,14 @@ from app.models import (
     ActivityLog, ActivityLogResponse,
     TrackActivityRequest,
     GoalMetricType, GoalPeriod, GoalStatus,
-    User
+    User, Lead
 )
 from app.dependencies import get_current_active_user
 from app.services.kpi_service import (
     calculate_period_dates,
     calculate_goal_status,
     reset_goal_period_if_needed,
+    calculate_initial_goal_value,
 )
 
 router = APIRouter()
@@ -75,19 +76,32 @@ async def create_goal(
     """Create a new goal"""
     period_start, period_end = calculate_period_dates(goal_data.period)
     
+    # Calcular valor inicial baseado em atividades já existentes no período
+    initial_value = calculate_initial_goal_value(
+        session=session,
+        user_id=current_user.id,
+        tenant_id=current_user.tenant_id,
+        metric_type=goal_data.metric_type,
+        period_start=period_start,
+        period_end=period_end
+    )
+    
     goal = Goal(
         tenant_id=current_user.tenant_id,
         user_id=current_user.id,
         title=goal_data.title,
         metric_type=goal_data.metric_type,
         target_value=goal_data.target_value,
-        current_value=0.0,
+        current_value=initial_value,
         period=goal_data.period,
         status=GoalStatus.ON_TRACK,
         is_visible_on_wallboard=goal_data.is_visible_on_wallboard,
         period_start=period_start,
         period_end=period_end,
     )
+    
+    # Recalcular status com o valor inicial
+    goal.status = calculate_goal_status(goal)
     
     session.add(goal)
     session.commit()
@@ -289,5 +303,100 @@ async def get_kpi_stats(
             }
             for goal in top_goals
         ]
+    }
+
+
+@router.get("/debug/leads-count")
+async def debug_leads_count(
+    session: Session = Depends(get_session),
+    current_user: User = Depends(get_current_active_user)
+):
+    """Debug endpoint para verificar contagem de leads para KPI"""
+    period_start, period_end = calculate_period_dates(GoalPeriod.MONTHLY)
+    
+    # Total de leads no tenant no período
+    total_leads = session.exec(
+        select(func.count(Lead.id)).where(
+            and_(
+                Lead.tenant_id == current_user.tenant_id,
+                Lead.created_at >= period_start,
+                Lead.created_at <= period_end
+            )
+        )
+    ).one()
+    
+    # Leads com created_by_id == user_id
+    leads_by_created = session.exec(
+        select(func.count(Lead.id)).where(
+            and_(
+                Lead.tenant_id == current_user.tenant_id,
+                Lead.created_by_id == current_user.id,
+                Lead.created_at >= period_start,
+                Lead.created_at <= period_end
+            )
+        )
+    ).one()
+    
+    # Leads com owner_id == user_id
+    leads_by_owner = session.exec(
+        select(func.count(Lead.id)).where(
+            and_(
+                Lead.tenant_id == current_user.tenant_id,
+                Lead.owner_id == current_user.id,
+                Lead.created_at >= period_start,
+                Lead.created_at <= period_end
+            )
+        )
+    ).one()
+    
+    # Leads que serão contados pela query atual (created_by_id OU owner_id)
+    leads_counted = session.exec(
+        select(func.count(Lead.id)).where(
+            and_(
+                Lead.tenant_id == current_user.tenant_id,
+                or_(
+                    Lead.created_by_id == current_user.id,
+                    Lead.owner_id == current_user.id
+                ),
+                Lead.created_at >= period_start,
+                Lead.created_at <= period_end
+            )
+        )
+    ).one()
+    
+    # Leads sem created_by_id nem owner_id
+    leads_without_ownership = session.exec(
+        select(func.count(Lead.id)).where(
+            and_(
+                Lead.tenant_id == current_user.tenant_id,
+                Lead.created_by_id.is_(None),
+                Lead.owner_id.is_(None),
+                Lead.created_at >= period_start,
+                Lead.created_at <= period_end
+            )
+        )
+    ).one()
+    
+    # Valor calculado pela função
+    calculated_value = calculate_initial_goal_value(
+        session=session,
+        user_id=current_user.id,
+        tenant_id=current_user.tenant_id,
+        metric_type=GoalMetricType.LEADS_CREATED,
+        period_start=period_start,
+        period_end=period_end
+    )
+    
+    return {
+        "user_id": current_user.id,
+        "user_email": current_user.email,
+        "period_start": period_start.isoformat(),
+        "period_end": period_end.isoformat(),
+        "total_leads_in_period": total_leads,
+        "leads_by_created_by_id": leads_by_created,
+        "leads_by_owner_id": leads_by_owner,
+        "leads_counted_by_query": leads_counted,
+        "leads_without_ownership": leads_without_ownership,
+        "calculated_initial_value": calculated_value
     }
 

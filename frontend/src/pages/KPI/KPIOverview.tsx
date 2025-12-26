@@ -96,6 +96,15 @@ export function KPIOverview() {
     const data = []
     const now = new Date()
 
+    // Agrupar metas por tipo de métrica
+    const goalsByMetric = goals.reduce((acc, goal) => {
+      if (!acc[goal.metric_type]) {
+        acc[goal.metric_type] = []
+      }
+      acc[goal.metric_type].push(goal)
+      return acc
+    }, {} as Record<string, Goal[]>)
+
     for (let i = days - 1; i >= 0; i--) {
       const date = new Date(now)
       date.setDate(date.getDate() - i)
@@ -104,21 +113,42 @@ export function KPIOverview() {
       // Calcular meta ideal (progresso linear)
       const idealProgress = ((days - i) / days) * 100
 
-      // Calcular progresso real (soma de todas as metas)
-      const totalProgress = goals.reduce((sum, goal) => {
-        const goalProgress = (goal.current_value / goal.target_value) * 100
-        return sum + goalProgress
-      }, 0)
-      const avgProgress = goals.length > 0 ? totalProgress / goals.length : 0
-
-      data.push({
+      // Criar objeto de dados para este dia
+      const dayData: Record<string, any> = {
         date: dayLabel,
         ideal: idealProgress,
-        real: avgProgress,
+      }
+
+      // Calcular progresso para cada tipo de métrica
+      Object.entries(goalsByMetric).forEach(([metricType, metricGoals]) => {
+        if (metricGoals.length > 0) {
+          const totalProgress = metricGoals.reduce((sum, goal) => {
+            const goalProgress = (goal.current_value / goal.target_value) * 100
+            return sum + goalProgress
+          }, 0)
+          const avgProgress = totalProgress / metricGoals.length
+          dayData[getMetricLabel(metricType)] = Math.round(avgProgress)
+        }
       })
+
+      data.push(dayData)
     }
 
     return data
+  }, [goals])
+
+  // Cores para cada tipo de métrica
+  const metricColors: Record<string, string> = {
+    'Tarefas Completadas': '#8884d8',
+    'Leads Criados': '#82ca9d',
+    'Receita Gerada': '#ffc658',
+    'Chamadas Realizadas': '#ff7300',
+  }
+
+  // Obter tipos de métricas únicos para criar as linhas do gráfico
+  const uniqueMetricTypes = useMemo(() => {
+    const types = new Set(goals.map(g => getMetricLabel(g.metric_type)))
+    return Array.from(types)
   }, [goals])
 
   const handleDelete = async (goalId: number) => {
@@ -207,31 +237,37 @@ export function KPIOverview() {
           <CardHeader>
             <CardTitle>Tendência de Progresso</CardTitle>
             <CardDescription>
-              Comparação entre Meta Ideal e Progresso Real (últimos 30 dias)
+              Progresso por tipo de métrica (últimos 30 dias)
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <ResponsiveContainer width="100%" height={300}>
+            <ResponsiveContainer width="100%" height={400}>
               <LineChart data={chartData}>
                 <CartesianGrid strokeDasharray="3 3" />
                 <XAxis dataKey="date" />
-                <YAxis />
+                <YAxis domain={[0, 100]} />
                 <Tooltip />
                 <Legend />
                 <Line
                   type="monotone"
                   dataKey="ideal"
-                  stroke="#8884d8"
+                  stroke="#94a3b8"
                   name="Meta Ideal"
                   strokeWidth={2}
+                  strokeDasharray="5 5"
+                  dot={false}
                 />
-                <Line
-                  type="monotone"
-                  dataKey="real"
-                  stroke="#82ca9d"
-                  name="Progresso Real"
-                  strokeWidth={2}
-                />
+                {uniqueMetricTypes.map((metricLabel, index) => (
+                  <Line
+                    key={metricLabel}
+                    type="monotone"
+                    dataKey={metricLabel}
+                    stroke={metricColors[metricLabel] || `hsl(${index * 60}, 70%, 50%)`}
+                    name={metricLabel}
+                    strokeWidth={2}
+                    dot={{ r: 4 }}
+                  />
+                ))}
               </LineChart>
             </ResponsiveContainer>
           </CardContent>
@@ -344,4 +380,5 @@ export function KPIOverview() {
     </div>
   )
 }
+
 
