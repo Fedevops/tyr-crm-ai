@@ -47,11 +47,26 @@ export function KPIProvider({ children }: { children: ReactNode }) {
     setLoading(true)
     setError(null)
     try {
+      console.log('[KPI Frontend] Buscando goals...')
       const response = await api.get('/api/kpi/goals')
-      setGoals(response.data)
+      console.log('[KPI Frontend] Resposta recebida:', response)
+      console.log('[KPI Frontend] Dados recebidos:', response.data)
+      console.log('[KPI Frontend] Tipo dos dados:', typeof response.data, Array.isArray(response.data))
+      console.log('[KPI Frontend] Quantidade de goals:', Array.isArray(response.data) ? response.data.length : 'Não é array')
+      
+      if (Array.isArray(response.data)) {
+        setGoals(response.data)
+        console.log('[KPI Frontend] Goals definidos no estado:', response.data.length)
+      } else {
+        console.error('[KPI Frontend] Resposta não é um array:', response.data)
+        setGoals([])
+      }
     } catch (err: any) {
-      setError(err.response?.data?.detail || 'Erro ao carregar metas')
-      console.error('Error fetching goals:', err)
+      const errorMsg = err.response?.data?.detail || 'Erro ao carregar metas'
+      setError(errorMsg)
+      console.error('[KPI Frontend] Erro ao buscar goals:', err)
+      console.error('[KPI Frontend] Detalhes do erro:', err.response?.data)
+      setGoals([])
     } finally {
       setLoading(false)
     }
@@ -68,17 +83,28 @@ export function KPIProvider({ children }: { children: ReactNode }) {
   const createGoal = useCallback(
     async (goalData: Omit<Goal, 'id' | 'tenant_id' | 'user_id' | 'current_value' | 'status' | 'period_start' | 'period_end' | 'created_at' | 'updated_at'>) => {
       try {
+        console.log('[KPI Frontend] Criando goal:', goalData)
         const response = await api.post('/api/kpi/goals', goalData)
+        console.log('[KPI Frontend] Resposta da criação:', response)
+        console.log('[KPI Frontend] Goal criado:', response.data)
         const newGoal = response.data
-        setGoals((prev) => [...prev, newGoal])
-        toast({
-          variant: 'success',
-          title: 'Meta criada',
-          description: 'Sua meta foi criada com sucesso!',
-        })
-        return newGoal
+        
+        if (newGoal && newGoal.id) {
+          // Recarregar todos os goals para garantir sincronização
+          await fetchGoals()
+          toast({
+            variant: 'success',
+            title: 'Meta criada',
+            description: 'Sua meta foi criada com sucesso!',
+          })
+          return newGoal
+        } else {
+          throw new Error('Resposta inválida do servidor')
+        }
       } catch (err: any) {
         const errorMsg = err.response?.data?.detail || 'Erro ao criar meta'
+        console.error('[KPI Frontend] Erro ao criar goal:', err)
+        console.error('[KPI Frontend] Detalhes do erro:', err.response?.data)
         setError(errorMsg)
         toast({
           variant: 'destructive',
@@ -88,7 +114,7 @@ export function KPIProvider({ children }: { children: ReactNode }) {
         throw err
       }
     },
-    [toast]
+    [toast, fetchGoals]
   )
 
   const updateGoal = useCallback(

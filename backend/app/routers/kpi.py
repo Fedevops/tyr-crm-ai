@@ -29,6 +29,11 @@ async def get_goals(
     current_user: User = Depends(get_current_active_user)
 ):
     """Get all goals for the current user"""
+    import logging
+    logger = logging.getLogger(__name__)
+    
+    logger.info(f"[KPI] Buscando goals para user_id={current_user.id}, tenant_id={current_user.tenant_id}, email={current_user.email}")
+    
     # Debug: verificar todos os goals do tenant
     all_tenant_goals = session.exec(
         select(Goal).where(
@@ -36,10 +41,11 @@ async def get_goals(
         )
     ).all()
     
-    print(f"[DEBUG KPI] Total de goals no tenant {current_user.tenant_id}: {len(all_tenant_goals)}")
-    print(f"[DEBUG KPI] User ID atual: {current_user.id}")
+    logger.info(f"[KPI] Total de goals no tenant {current_user.tenant_id}: {len(all_tenant_goals)}")
+    logger.info(f"[KPI] User ID atual: {current_user.id}, Email: {current_user.email}")
+    
     for g in all_tenant_goals:
-        print(f"[DEBUG KPI] Goal ID {g.id}: user_id={g.user_id}, title={g.title}")
+        logger.info(f"[KPI] Goal ID {g.id}: user_id={g.user_id}, title={g.title}, metric_type={g.metric_type.value}")
     
     # Usar and_() para garantir que a query está correta
     goals = session.exec(
@@ -51,11 +57,14 @@ async def get_goals(
         )
     ).all()
     
-    print(f"[DEBUG KPI] Goals encontrados para user_id {current_user.id}: {len(goals)}")
+    logger.info(f"[KPI] Goals encontrados para user_id {current_user.id}: {len(goals)}")
     
     if len(goals) == 0 and len(all_tenant_goals) > 0:
-        print(f"[DEBUG KPI] ATENÇÃO: Existem {len(all_tenant_goals)} goals no tenant, mas nenhum para o user_id {current_user.id}")
-        print(f"[DEBUG KPI] Isso pode indicar que os goals foram criados com um user_id diferente")
+        logger.warning(f"[KPI] ATENÇÃO: Existem {len(all_tenant_goals)} goals no tenant, mas nenhum para o user_id {current_user.id}")
+        logger.warning(f"[KPI] Isso pode indicar que os goals foram criados com um user_id diferente")
+        # Listar os user_ids dos goals existentes
+        user_ids_in_goals = {g.user_id for g in all_tenant_goals}
+        logger.warning(f"[KPI] User IDs encontrados nos goals: {user_ids_in_goals}")
     
     # Resetar períodos se necessário e recalcular status
     updated_goals = []
@@ -67,7 +76,8 @@ async def get_goals(
     
     session.commit()
     
-    return [
+    # Criar lista de respostas
+    response_list = [
         GoalResponse(
             id=goal.id,
             tenant_id=goal.tenant_id,
@@ -86,6 +96,10 @@ async def get_goals(
         )
         for goal in updated_goals
     ]
+    
+    logger.info(f"[KPI] Retornando {len(response_list)} goals para o frontend")
+    
+    return response_list
 
 
 @router.post("/goals", response_model=GoalResponse)
@@ -95,6 +109,12 @@ async def create_goal(
     current_user: User = Depends(get_current_active_user)
 ):
     """Create a new goal"""
+    import logging
+    logger = logging.getLogger(__name__)
+    
+    logger.info(f"[KPI CREATE] Criando goal para user_id={current_user.id}, tenant_id={current_user.tenant_id}, email={current_user.email}")
+    logger.info(f"[KPI CREATE] Dados do goal: title={goal_data.title}, metric_type={goal_data.metric_type.value}, target_value={goal_data.target_value}")
+    
     period_start, period_end = calculate_period_dates(goal_data.period)
     
     # Calcular valor inicial baseado em atividades já existentes no período
@@ -106,6 +126,8 @@ async def create_goal(
         period_start=period_start,
         period_end=period_end
     )
+    
+    logger.info(f"[KPI CREATE] Valor inicial calculado: {initial_value}")
     
     goal = Goal(
         tenant_id=current_user.tenant_id,
@@ -124,11 +146,15 @@ async def create_goal(
     # Recalcular status com o valor inicial
     goal.status = calculate_goal_status(goal)
     
+    logger.info(f"[KPI CREATE] Goal criado: id={goal.id}, user_id={goal.user_id}, tenant_id={goal.tenant_id}, status={goal.status.value}")
+    
     session.add(goal)
     session.commit()
     session.refresh(goal)
     
-    return GoalResponse(
+    logger.info(f"[KPI CREATE] Goal salvo no banco: id={goal.id}")
+    
+    response = GoalResponse(
         id=goal.id,
         tenant_id=goal.tenant_id,
         user_id=goal.user_id,
@@ -144,6 +170,10 @@ async def create_goal(
         created_at=goal.created_at,
         updated_at=goal.updated_at,
     )
+    
+    logger.info(f"[KPI CREATE] Retornando resposta para o frontend: id={response.id}, user_id={response.user_id}")
+    
+    return response
 
 
 @router.put("/goals/{goal_id}", response_model=GoalResponse)

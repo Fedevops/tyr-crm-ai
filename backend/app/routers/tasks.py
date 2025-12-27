@@ -17,6 +17,28 @@ from app.models import GoalMetricType
 router = APIRouter()
 
 
+def task_to_response(task: Task) -> TaskResponse:
+    """Helper function to convert Task to TaskResponse, handling None values"""
+    return TaskResponse(
+        id=task.id,
+        tenant_id=task.tenant_id,
+        lead_id=task.lead_id,
+        sequence_id=task.sequence_id,
+        assigned_to=task.assigned_to,
+        owner_id=task.owner_id,  # Pode ser None
+        created_by_id=task.created_by_id,  # Pode ser None
+        type=task.type,
+        title=task.title,
+        description=task.description,
+        status=task.status,
+        due_date=task.due_date,
+        completed_at=task.completed_at,
+        notes=task.notes,
+        created_at=task.created_at,
+        updated_at=task.updated_at
+    )
+
+
 def generate_tasks_from_sequence(
     session: Session,
     lead_id: int,
@@ -135,7 +157,7 @@ async def create_task(
                 task.created_by_id = current_user.id
             session.commit()
             session.refresh(tasks[0])
-            return tasks[0]
+            return task_to_response(tasks[0])
     
     # Create single task
     task_dict = task_data.dict()
@@ -152,7 +174,7 @@ async def create_task(
     session.add(task)
     session.commit()
     session.refresh(task)
-    return task
+    return task_to_response(task)
 
 
 @router.get("")
@@ -270,14 +292,8 @@ async def get_upcoming_tasks(
         
         tasks = session.exec(query).all()
         
-        # Converter para dict e depois para TaskResponse para garantir serialização correta
-        tasks_response = []
-        for task in tasks:
-            task_dict = task.dict()
-            # Garantir que todos os campos opcionais estão presentes
-            tasks_response.append(TaskResponse(**task_dict))
-        
-        return tasks_response
+        # Converter para TaskResponse garantindo que campos opcionais sejam tratados corretamente
+        return [task_to_response(task) for task in tasks]
     except Exception as e:
         import logging
         import traceback
@@ -304,7 +320,7 @@ async def get_task(
             detail="Task not found"
         )
     require_ownership(task, current_user)
-    return task
+    return task_to_response(task)
 
 
 @router.patch("/{task_id}", response_model=TaskResponse)
@@ -602,7 +618,7 @@ async def update_task(
             detail=f"Erro ao salvar tarefa: {str(e)}"
         )
     
-    return task
+    return task_to_response(task)
 
 
 @router.delete("/{task_id}")
