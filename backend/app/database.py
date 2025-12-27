@@ -683,6 +683,142 @@ def migrate_proposal_table():
             print(f"Migration warning (proposal table): {e}")
 
 
+def migrate_items_tables():
+    """Create item and stocktransaction tables and add items column to proposal table"""
+    with Session(engine) as session:
+        try:
+            # Check if item table exists
+            table_check = text("""
+                SELECT EXISTS (
+                    SELECT FROM information_schema.tables 
+                    WHERE table_name = 'item'
+                )
+            """)
+            result = session.exec(table_check).first()
+            item_table_exists = result[0] if result else False
+            
+            if not item_table_exists:
+                # Table will be created by SQLModel.metadata.create_all
+                print("✓ Item table will be created by SQLModel")
+            else:
+                print("✓ Item table already exists")
+            
+            # Check if stocktransaction table exists
+            stock_check = text("""
+                SELECT EXISTS (
+                    SELECT FROM information_schema.tables 
+                    WHERE table_name = 'stocktransaction'
+                )
+            """)
+            result = session.exec(stock_check).first()
+            stock_table_exists = result[0] if result else False
+            
+            if not stock_table_exists:
+                print("✓ StockTransaction table will be created by SQLModel")
+            else:
+                print("✓ StockTransaction table already exists")
+            
+            # Add image_url column to item table if it doesn't exist
+            if item_table_exists:
+                check_image_url = text("""
+                    SELECT column_name 
+                    FROM information_schema.columns 
+                    WHERE table_name='item' AND column_name='image_url'
+                """)
+                result = session.exec(check_image_url).first()
+                
+                if not result:
+                    try:
+                        alter_query = text("ALTER TABLE item ADD COLUMN image_url VARCHAR(500)")
+                        session.exec(alter_query)
+                        session.commit()
+                        print("✓ Added image_url column to item table")
+                    except Exception as e:
+                        session.rollback()
+                        print(f"Warning: Could not add image_url column to item: {e}")
+                else:
+                    print("✓ image_url column already exists in item table")
+            
+            # Add items column to proposal table if it doesn't exist
+            proposal_table_check = text("""
+                SELECT EXISTS (
+                    SELECT FROM information_schema.tables 
+                    WHERE table_name = 'proposal'
+                )
+            """)
+            result = session.exec(proposal_table_check).first()
+            proposal_exists = result[0] if result else False
+            
+            if proposal_exists:
+                check_items_column = text("""
+                    SELECT column_name 
+                    FROM information_schema.columns 
+                    WHERE table_name='proposal' AND column_name='items'
+                """)
+                result = session.exec(check_items_column).first()
+                
+                if not result:
+                    try:
+                        alter_query = text("ALTER TABLE proposal ADD COLUMN items TEXT")
+                        session.exec(alter_query)
+                        session.commit()
+                        print("✓ Added items column to proposal table")
+                    except Exception as e:
+                        session.rollback()
+                        print(f"Warning: Could not add items column to proposal: {e}")
+                else:
+                    print("✓ Items column already exists in proposal table")
+            
+            # Create indexes if they don't exist
+            try:
+                # Index for item.tenant_id
+                idx_tenant_check = text("""
+                    SELECT indexname 
+                    FROM pg_indexes 
+                    WHERE tablename='item' AND indexname='idx_item_tenant_id'
+                """)
+                result = session.exec(idx_tenant_check).first()
+                if not result:
+                    idx_query = text("CREATE INDEX IF NOT EXISTS idx_item_tenant_id ON item(tenant_id)")
+                    session.exec(idx_query)
+                    session.commit()
+                    print("✓ Created index idx_item_tenant_id on item table")
+                
+                # Index for item.sku + tenant_id (unique per tenant)
+                idx_sku_check = text("""
+                    SELECT indexname 
+                    FROM pg_indexes 
+                    WHERE tablename='item' AND indexname='idx_item_sku_tenant'
+                """)
+                result = session.exec(idx_sku_check).first()
+                if not result:
+                    idx_query = text("CREATE INDEX IF NOT EXISTS idx_item_sku_tenant ON item(tenant_id, sku) WHERE sku IS NOT NULL")
+                    session.exec(idx_query)
+                    session.commit()
+                    print("✓ Created index idx_item_sku_tenant on item table")
+                
+                # Index for stocktransaction.item_id
+                idx_stock_item_check = text("""
+                    SELECT indexname 
+                    FROM pg_indexes 
+                    WHERE tablename='stocktransaction' AND indexname='idx_stocktransaction_item_id'
+                """)
+                result = session.exec(idx_stock_item_check).first()
+                if not result:
+                    idx_query = text("CREATE INDEX IF NOT EXISTS idx_stocktransaction_item_id ON stocktransaction(item_id)")
+                    session.exec(idx_query)
+                    session.commit()
+                    print("✓ Created index idx_stocktransaction_item_id on stocktransaction table")
+                    
+            except Exception as e:
+                session.rollback()
+                print(f"Warning: Could not create indexes: {e}")
+                
+        except Exception as e:
+            session.rollback()
+            print(f"Migration warning (items tables): {e}")
+
+
 def init_db():
     """Initialize database tables"""
     SQLModel.metadata.create_all(engine)
@@ -690,6 +826,7 @@ def init_db():
     migrate_lead_table()
     migrate_task_table()
     migrate_proposal_table()
+    migrate_items_tables()
     # Add foreign keys for account_id and contact_id after tables are created
     migrate_lead_foreign_keys()
     # Garantir que todos os leads existentes tenham owner_id e created_by_id

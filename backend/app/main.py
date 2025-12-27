@@ -4,9 +4,11 @@ from fastapi import FastAPI, Request, status
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.exceptions import RequestValidationError
+from fastapi.staticfiles import StaticFiles
 from starlette.exceptions import HTTPException as StarletteHTTPException
+from pathlib import Path
 from app.database import engine, init_db
-from app.routers import auth, users, playbooks, agents, company_profile, debug, leads, sequences, tasks, prospecting, audit, sales_funnel, opportunities, proposals, proposal_templates, accounts, contacts, dashboard, settings, kpi, live_pulse, widgets
+from app.routers import auth, users, playbooks, agents, company_profile, debug, leads, sequences, tasks, prospecting, audit, sales_funnel, opportunities, proposals, proposal_templates, accounts, contacts, dashboard, settings, kpi, live_pulse, widgets, items
 
 # Configurar logging para garantir que todos os logs apareçam
 logging.basicConfig(
@@ -99,6 +101,13 @@ app.include_router(settings.router, prefix="/api/settings", tags=["settings"])
 app.include_router(kpi.router, prefix="/api/kpi", tags=["kpi"])
 app.include_router(live_pulse.router, prefix="/api/live-pulse", tags=["live-pulse"])
 app.include_router(widgets.router, prefix="/api", tags=["widgets"])
+app.include_router(items.router, prefix="/api/items", tags=["items"])
+
+# Servir arquivos estáticos (imagens)
+from pathlib import Path
+uploads_dir = Path("uploads")
+uploads_dir.mkdir(exist_ok=True)
+app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
 
 
 @app.on_event("startup")

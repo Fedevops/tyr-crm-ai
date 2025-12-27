@@ -29,12 +29,33 @@ async def get_goals(
     current_user: User = Depends(get_current_active_user)
 ):
     """Get all goals for the current user"""
-    goals = session.exec(
+    # Debug: verificar todos os goals do tenant
+    all_tenant_goals = session.exec(
         select(Goal).where(
-            Goal.tenant_id == current_user.tenant_id,
-            Goal.user_id == current_user.id
+            Goal.tenant_id == current_user.tenant_id
         )
     ).all()
+    
+    print(f"[DEBUG KPI] Total de goals no tenant {current_user.tenant_id}: {len(all_tenant_goals)}")
+    print(f"[DEBUG KPI] User ID atual: {current_user.id}")
+    for g in all_tenant_goals:
+        print(f"[DEBUG KPI] Goal ID {g.id}: user_id={g.user_id}, title={g.title}")
+    
+    # Usar and_() para garantir que a query está correta
+    goals = session.exec(
+        select(Goal).where(
+            and_(
+                Goal.tenant_id == current_user.tenant_id,
+                Goal.user_id == current_user.id
+            )
+        )
+    ).all()
+    
+    print(f"[DEBUG KPI] Goals encontrados para user_id {current_user.id}: {len(goals)}")
+    
+    if len(goals) == 0 and len(all_tenant_goals) > 0:
+        print(f"[DEBUG KPI] ATENÇÃO: Existem {len(all_tenant_goals)} goals no tenant, mas nenhum para o user_id {current_user.id}")
+        print(f"[DEBUG KPI] Isso pode indicar que os goals foram criados com um user_id diferente")
     
     # Resetar períodos se necessário e recalcular status
     updated_goals = []
@@ -302,6 +323,55 @@ async def get_kpi_stats(
                 "status": goal.status.value,
             }
             for goal in top_goals
+        ]
+    }
+
+
+@router.get("/debug/goals")
+async def debug_goals(
+    session: Session = Depends(get_session),
+    current_user: User = Depends(get_current_active_user)
+):
+    """Debug endpoint to check all goals in the database"""
+    # Buscar todos os goals do tenant
+    all_goals = session.exec(
+        select(Goal).where(
+            Goal.tenant_id == current_user.tenant_id
+        )
+    ).all()
+    
+    # Buscar goals do usuário atual
+    user_goals = session.exec(
+        select(Goal).where(
+            Goal.tenant_id == current_user.tenant_id,
+            Goal.user_id == current_user.id
+        )
+    ).all()
+    
+    return {
+        "current_user_id": current_user.id,
+        "current_user_email": current_user.email,
+        "tenant_id": current_user.tenant_id,
+        "total_goals_in_tenant": len(all_goals),
+        "user_goals_count": len(user_goals),
+        "all_goals": [
+            {
+                "id": g.id,
+                "title": g.title,
+                "user_id": g.user_id,
+                "metric_type": g.metric_type.value,
+                "created_at": g.created_at.isoformat(),
+            }
+            for g in all_goals
+        ],
+        "user_goals": [
+            {
+                "id": g.id,
+                "title": g.title,
+                "metric_type": g.metric_type.value,
+                "created_at": g.created_at.isoformat(),
+            }
+            for g in user_goals
         ]
     }
 

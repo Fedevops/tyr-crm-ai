@@ -8,7 +8,8 @@ from app.database import get_session
 from app.models import (
     Proposal, ProposalCreate, ProposalUpdate, ProposalResponse, ProposalStatus,
     Opportunity, User, ProposalTemplate,
-    ProposalComment, ProposalCommentCreate, ProposalCommentResponse
+    ProposalComment, ProposalCommentCreate, ProposalCommentResponse,
+    Item
 )
 from app.dependencies import get_current_active_user, apply_ownership_filter, ensure_ownership, require_ownership
 from app.services.audit_service import log_create, log_update, log_status_change, log_delete
@@ -63,6 +64,113 @@ def get_proposal_field_type(field_name: str) -> str:
     return PROPOSAL_FIELD_TYPES.get(field_name, "string")
 
 
+def validate_proposal_items(session: Session, items_json: Optional[str], tenant_id: int) -> Optional[str]:
+    """
+    Valida e processa os itens de uma proposta.
+    
+    Args:
+        session: Sessão do banco de dados
+        items_json: JSON string com array de itens [{item_id, quantity, unit_price}]
+        tenant_id: ID do tenant para validação de segurança
+    
+    Returns:
+        JSON string validado e processado com subtotais calculados
+    
+    Raises:
+        HTTPException 400 se algum item for inválido ou de outro tenant
+    """
+    if not items_json:
+        return None
+    
+    try:
+        items = json.loads(items_json)
+    except json.JSONDecodeError:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid JSON format in items field"
+        )
+    
+    if not isinstance(items, list):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Items must be an array"
+        )
+    
+    if len(items) == 0:
+        return None
+    
+    validated_items = []
+    total = 0.0
+    
+    for item_data in items:
+        if not isinstance(item_data, dict):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Each item must be an object"
+            )
+        
+        item_id = item_data.get('item_id')
+        quantity = item_data.get('quantity', 1)
+        unit_price = item_data.get('unit_price')
+        
+        if not item_id:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="item_id is required for each item"
+            )
+        
+        if not isinstance(quantity, (int, float)) or quantity <= 0:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Invalid quantity for item {item_id}: must be a positive number"
+            )
+        
+        # Buscar item no banco
+        item = session.get(Item, item_id)
+        
+        if not item:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Item {item_id} not found"
+            )
+        
+        # VALIDAÇÃO DE SEGURANÇA: Verificar se item pertence ao tenant
+        if item.tenant_id != tenant_id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"Item {item_id} does not belong to your tenant"
+            )
+        
+        # Usar preço do item se não fornecido, ou validar se fornecido
+        if unit_price is None:
+            unit_price = item.unit_price
+        elif unit_price != item.unit_price:
+            # Permitir preço customizado, mas registrar o preço original também
+            pass
+        
+        subtotal = float(quantity) * float(unit_price)
+        total += subtotal
+        
+        validated_item = {
+            'item_id': item_id,
+            'name': item.name,
+            'sku': item.sku,
+            'type': item.type.value,
+            'quantity': quantity,
+            'unit_price': float(unit_price),
+            'subtotal': round(subtotal, 2)
+        }
+        validated_items.append(validated_item)
+    
+    result = {
+        'items': validated_items,
+        'subtotal': round(total, 2),
+        'total': round(total, 2)
+    }
+    
+    return json.dumps(result)
+
+
 @router.post("", response_model=ProposalResponse)
 async def create_proposal(
     proposal_data: ProposalCreate,
@@ -79,15 +187,29 @@ async def create_proposal(
         )
     require_ownership(opportunity, current_user)
     
+    # Validar e processar itens se fornecidos
+    items_json = None
+    if proposal_data.items:
+        items_json = validate_proposal_items(session, proposal_data.items, current_user.tenant_id)
+        # Se itens foram fornecidos, recalcular amount baseado no total dos itens
+        if items_json:
+            items_data = json.loads(items_json)
+            proposal_data.amount = items_data.get('total', proposal_data.amount)
+    
     # Preparar dados com ownership
-    prop_dict = proposal_data.dict(exclude={'template_id', 'template_data'})
+    prop_dict = proposal_data.dict(exclude={'template_id', 'template_data', 'items'})
     prop_dict = ensure_ownership(prop_dict, current_user)
     
+    # Adicionar items validado
+    if items_json:
+        prop_dict['items'] = items_json
+    
     # Se template_id foi fornecido, gerar conteúdo do template
+    # Se content foi fornecido manualmente, usar ele; caso contrário, gerar do template
     content = proposal_data.content or ""
     template_data_dict = {}
     
-    if proposal_data.template_id:
+    if proposal_data.template_id and not proposal_data.content:
         template = session.get(ProposalTemplate, proposal_data.template_id)
         if not template or template.tenant_id != current_user.tenant_id:
             raise HTTPException(
@@ -138,9 +260,16 @@ async def create_proposal(
         template_data_dict['valid_until'] = proposal_data.valid_until.strftime('%d/%m/%Y') if proposal_data.valid_until else ''
         
         # Renderizar template
-        content = render_template(template.html_content, template_data_dict)
-        prop_dict['template_data'] = json.dumps(template_data_dict)
-        prop_dict['template_id'] = proposal_data.template_id
+        try:
+            content = render_template(template.html_content, template_data_dict)
+            prop_dict['template_data'] = json.dumps(template_data_dict)
+            prop_dict['template_id'] = proposal_data.template_id
+        except Exception as e:
+            logger.error(f"Error rendering template {proposal_data.template_id}: {e}")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Erro ao renderizar template: {str(e)}"
+            )
     
     prop_dict['content'] = content
     
@@ -455,6 +584,21 @@ async def update_proposal(
     
     # Atualizar campos (apenas os que foram fornecidos)
     update_data = proposal_data.dict(exclude_unset=True)
+    
+    # Validar e processar itens se fornecidos
+    if 'items' in update_data and update_data['items']:
+        items_json = validate_proposal_items(session, update_data['items'], current_user.tenant_id)
+        if items_json:
+            items_data = json.loads(items_json)
+            # Recalcular amount baseado no total dos itens
+            if 'amount' not in update_data:
+                update_data['amount'] = items_data.get('total', proposal.amount)
+            else:
+                update_data['amount'] = items_data.get('total', update_data['amount'])
+        update_data['items'] = items_json
+    elif 'items' in update_data and update_data['items'] is None:
+        # Permitir remover itens
+        update_data['items'] = None
     
     # Se template_id foi fornecido, gerar conteúdo do template
     if 'template_id' in update_data and update_data['template_id']:

@@ -198,6 +198,24 @@ export function ProposalTemplateBuilder() {
       preview = preview.replace(new RegExp(`\\{\\{${field}\\}\\}`, 'g'), value)
     })
 
+    // Remover botões "Topo" e "Exportar PDF" do HTML
+    // Remove elementos que contenham texto "Topo" ou "Exportar" em botões
+    preview = preview.replace(/<button[^>]*>.*?(?:Topo|Exportar|Imprimir|PDF).*?<\/button>/gi, '')
+    preview = preview.replace(/<a[^>]*>.*?(?:Topo|Exportar|Imprimir|PDF).*?<\/a>/gi, '')
+    preview = preview.replace(/<div[^>]*class="[^"]*"(?:.*?Topo|.*?Exportar|.*?PDF)[^"]*"[^>]*>.*?<\/div>/gi, '')
+    
+    // Remover qualquer div que contenha esses botões
+    const tempDiv = document.createElement('div')
+    tempDiv.innerHTML = preview
+    const buttons = tempDiv.querySelectorAll('button, a')
+    buttons.forEach(btn => {
+      const text = btn.textContent || ''
+      if (text.includes('Topo') || text.includes('Exportar') || text.includes('Imprimir') || text.includes('PDF')) {
+        btn.remove()
+      }
+    })
+    preview = tempDiv.innerHTML
+
     return preview
   }
 
@@ -484,9 +502,14 @@ export function ProposalTemplateBuilder() {
                     />
                   </div>
                 ) : (
-                  <div className="border rounded-lg p-6 bg-background">
+                  <div className="border rounded-lg bg-background h-full overflow-auto">
                     <div 
-                      className="prose max-w-none"
+                      className="w-full h-full p-6"
+                      style={{ 
+                        maxWidth: '100%',
+                        margin: 0,
+                        padding: '1.5rem'
+                      }}
                       dangerouslySetInnerHTML={{ __html: renderPreview() }}
                     />
                   </div>

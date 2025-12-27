@@ -910,6 +910,7 @@ class Proposal(SQLModel, table=True):
     title: str
     content: str  # Conteúdo da proposta (texto ou HTML) - gerado a partir do template
     template_data: Optional[str] = Field(default=None, description="JSON string com dados usados para preencher o template")
+    items: Optional[str] = Field(default=None, description="JSON string com array de itens da proposta")
     amount: float
     currency: str = Field(default="BRL")
     valid_until: Optional[datetime] = None
@@ -938,6 +939,7 @@ class ProposalCreate(SQLModel):
     title: str
     content: Optional[str] = None  # Opcional: será gerado do template se template_id for fornecido
     template_data: Optional[str] = None  # JSON string com dados para preencher o template
+    items: Optional[str] = None  # JSON string com array de itens: [{item_id, quantity, unit_price, subtotal}]
     amount: float
     currency: Optional[str] = "BRL"
     valid_until: Optional[datetime] = None
@@ -949,6 +951,7 @@ class ProposalUpdate(SQLModel):
     title: Optional[str] = None
     content: Optional[str] = None
     template_data: Optional[str] = None
+    items: Optional[str] = None  # JSON string com array de itens
     amount: Optional[float] = None
     currency: Optional[str] = None
     valid_until: Optional[datetime] = None
@@ -964,6 +967,7 @@ class ProposalResponse(SQLModel):
     title: str
     content: str
     template_data: Optional[str]
+    items: Optional[str]  # JSON string com array de itens
     amount: float
     currency: str
     valid_until: Optional[datetime]
@@ -1283,3 +1287,133 @@ class VisitReportResponse(SQLModel):
     started_at: datetime
     ended_at: datetime
     created_at: datetime
+
+
+# ==================== CATALOG MODELS ====================
+
+class ItemType(str, Enum):
+    PRODUCT = "product"
+    SERVICE = "service"
+
+
+class StockTransactionType(str, Enum):
+    IN = "in"  # Entrada de estoque
+    OUT = "out"  # Saída de estoque
+    ADJUSTMENT = "adjustment"  # Ajuste manual
+    SALE = "sale"  # Venda (saída por proposta)
+    RETURN = "return"  # Devolução
+
+
+class Item(SQLModel, table=True):
+    """Produtos e Serviços do Catálogo"""
+    id: Optional[int] = Field(default=None, primary_key=True)
+    tenant_id: int = Field(foreign_key="tenant.id", index=True)
+    name: str
+    sku: Optional[str] = None  # Código único por tenant
+    description: Optional[str] = None
+    image_url: Optional[str] = None  # URL da imagem do produto
+    type: ItemType
+    cost_price: Optional[float] = None  # Preço de custo
+    unit_price: float  # Preço de venda
+    currency: str = Field(default="BRL")
+    track_stock: bool = Field(default=False)
+    stock_quantity: Optional[int] = None  # null para serviços
+    low_stock_threshold: Optional[int] = None  # Limite para alerta de estoque baixo
+    # Ownership
+    owner_id: int = Field(foreign_key="user.id", index=True)
+    created_by_id: int = Field(foreign_key="user.id", index=True)
+    # Timestamps
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    
+    # Relationships
+    stock_transactions: List["StockTransaction"] = Relationship(back_populates="item")
+
+
+class ItemCreate(SQLModel):
+    name: str
+    sku: Optional[str] = None
+    description: Optional[str] = None
+    image_url: Optional[str] = None
+    type: ItemType
+    cost_price: Optional[float] = None
+    unit_price: float
+    currency: Optional[str] = "BRL"
+    track_stock: Optional[bool] = False
+    stock_quantity: Optional[int] = None
+    low_stock_threshold: Optional[int] = None
+    owner_id: Optional[int] = None
+
+
+class ItemUpdate(SQLModel):
+    name: Optional[str] = None
+    sku: Optional[str] = None
+    description: Optional[str] = None
+    image_url: Optional[str] = None
+    type: Optional[ItemType] = None
+    cost_price: Optional[float] = None
+    unit_price: Optional[float] = None
+    currency: Optional[str] = None
+    track_stock: Optional[bool] = None
+    stock_quantity: Optional[int] = None
+    low_stock_threshold: Optional[int] = None
+
+
+class ItemResponse(SQLModel):
+    id: int
+    tenant_id: int
+    name: str
+    sku: Optional[str]
+    description: Optional[str]
+    image_url: Optional[str]
+    type: ItemType
+    cost_price: Optional[float]
+    unit_price: float
+    currency: str
+    track_stock: bool
+    stock_quantity: Optional[int]
+    low_stock_threshold: Optional[int]
+    owner_id: int
+    created_by_id: int
+    created_at: datetime
+    updated_at: datetime
+    margin_percentage: Optional[float] = None  # Calculado: ((unit_price - cost_price) / cost_price * 100) se cost_price disponível
+
+
+class StockTransaction(SQLModel, table=True):
+    """Log de transações de estoque"""
+    id: Optional[int] = Field(default=None, primary_key=True)
+    tenant_id: int = Field(foreign_key="tenant.id", index=True)
+    item_id: int = Field(foreign_key="item.id", index=True)
+    user_id: int = Field(foreign_key="user.id", index=True)  # Quem alterou
+    transaction_type: StockTransactionType
+    quantity_change: int  # Positivo para entrada, negativo para saída
+    previous_quantity: int
+    new_quantity: int
+    reason: Optional[str] = None
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    
+    # Relationships
+    item: Optional[Item] = Relationship(back_populates="stock_transactions")
+    user: Optional[User] = Relationship()
+
+
+class StockTransactionCreate(SQLModel):
+    quantity_change: int
+    transaction_type: StockTransactionType
+    reason: Optional[str] = None
+
+
+class StockTransactionResponse(SQLModel):
+    id: int
+    tenant_id: int
+    item_id: int
+    user_id: int
+    transaction_type: StockTransactionType
+    quantity_change: int
+    previous_quantity: int
+    new_quantity: int
+    reason: Optional[str]
+    created_at: datetime
+    user_name: Optional[str] = None
+    user_email: Optional[str] = None

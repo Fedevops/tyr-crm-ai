@@ -103,6 +103,34 @@ export const proposalsApi = {
   deleteProposal: (proposalId: number) => api.delete(`/api/proposals/${proposalId}`),
   exportPdf: (proposalId: number) => api.get(`/api/proposals/${proposalId}/pdf`, { responseType: 'blob' }),
   sendEmail: (proposalId: number, data: any) => api.post(`/api/proposals/${proposalId}/send-email`, data),
+  exportHtml: (proposalId: number) => api.get(`/api/proposals/${proposalId}/html`, { responseType: 'text' }),
+}
+
+export const itemsApi = {
+  getItems: (params?: {
+    type?: 'product' | 'service',
+    low_stock?: boolean,
+    search?: string,
+    skip?: number,
+    limit?: number
+  }) => api.get('/api/items', { params }),
+  getItem: (id: number) => api.get(`/api/items/${id}`),
+  createItem: (data: any) => api.post('/api/items', data),
+  updateItem: (id: number, data: any) => api.put(`/api/items/${id}`, data),
+  deleteItem: (id: number) => api.delete(`/api/items/${id}`),
+  uploadImage: (file: File) => {
+    const formData = new FormData()
+    formData.append('file', file)
+    return api.post('/api/items/upload-image', formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    })
+  },
+  adjustStock: (itemId: number, data: { quantity_change: number, transaction_type: string, reason?: string }) =>
+    api.post(`/api/items/${itemId}/stock/adjust`, data),
+  getStockHistory: (itemId: number, params?: { skip?: number, limit?: number }) =>
+    api.get(`/api/items/${itemId}/stock/history`, { params }),
 }
 
 export default api

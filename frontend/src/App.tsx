@@ -23,6 +23,7 @@ import { AuditLog } from './pages/AuditLog'
 import { KPIOverview } from './pages/KPI/KPIOverview'
 import { LivePulseDashboard } from './pages/LivePulse/LivePulseDashboard'
 import { VisitReports } from './pages/VisitReports'
+import { CatalogManager } from './pages/CatalogManager'
 import { Toaster } from './components/ui/toaster'
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
@@ -170,6 +171,16 @@ function AppRoutes() {
           <ProtectedRoute>
             <Layout>
               <Proposals />
+            </Layout>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/catalog"
+        element={
+          <ProtectedRoute>
+            <Layout>
+              <CatalogManager />
             </Layout>
           </ProtectedRoute>
         }
