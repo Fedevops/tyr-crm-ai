@@ -850,13 +850,66 @@ class ProposalStatus(str, Enum):
     EXPIRED = "expired"
 
 
+class ProposalTemplate(SQLModel, table=True):
+    """Templates de Proposta Comercial"""
+    id: Optional[int] = Field(default=None, primary_key=True)
+    tenant_id: int = Field(foreign_key="tenant.id", index=True)
+    name: str
+    description: Optional[str] = None
+    html_content: str = Field(description="HTML do template com placeholders (ex: {{company_name}}, {{amount}})")
+    available_fields: Optional[str] = Field(default=None, description="JSON string com lista de campos disponíveis")
+    is_active: bool = Field(default=True)
+    # Ownership
+    owner_id: int = Field(foreign_key="user.id", index=True)
+    created_by_id: int = Field(foreign_key="user.id", index=True)
+    # Timestamps
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    
+    # Relationships
+    proposals: List["Proposal"] = Relationship(back_populates="template")
+
+
+class ProposalTemplateCreate(SQLModel):
+    name: str
+    description: Optional[str] = None
+    html_content: str
+    available_fields: Optional[str] = None  # JSON string
+    is_active: Optional[bool] = True
+    owner_id: Optional[int] = None
+
+
+class ProposalTemplateUpdate(SQLModel):
+    name: Optional[str] = None
+    description: Optional[str] = None
+    html_content: Optional[str] = None
+    available_fields: Optional[str] = None
+    is_active: Optional[bool] = None
+
+
+class ProposalTemplateResponse(SQLModel):
+    id: int
+    tenant_id: int
+    name: str
+    description: Optional[str]
+    html_content: str
+    available_fields: Optional[str]
+    is_active: bool
+    owner_id: int
+    created_by_id: int
+    created_at: datetime
+    updated_at: datetime
+
+
 class Proposal(SQLModel, table=True):
     """Propostas Comerciais"""
     id: Optional[int] = Field(default=None, primary_key=True)
     tenant_id: int = Field(foreign_key="tenant.id", index=True)
     opportunity_id: int = Field(foreign_key="opportunity.id", index=True)
+    template_id: Optional[int] = Field(foreign_key="proposaltemplate.id", default=None, index=True)
     title: str
-    content: str  # Conteúdo da proposta (texto ou HTML)
+    content: str  # Conteúdo da proposta (texto ou HTML) - gerado a partir do template
+    template_data: Optional[str] = Field(default=None, description="JSON string com dados usados para preencher o template")
     amount: float
     currency: str = Field(default="BRL")
     valid_until: Optional[datetime] = None
@@ -875,13 +928,16 @@ class Proposal(SQLModel, table=True):
     
     # Relationships
     opportunity: Optional["Opportunity"] = Relationship(back_populates="proposals")
+    template: Optional["ProposalTemplate"] = Relationship(back_populates="proposals")
     comments: List["ProposalComment"] = Relationship(back_populates="proposal")
 
 
 class ProposalCreate(SQLModel):
     opportunity_id: int
+    template_id: Optional[int] = None
     title: str
-    content: str
+    content: Optional[str] = None  # Opcional: será gerado do template se template_id for fornecido
+    template_data: Optional[str] = None  # JSON string com dados para preencher o template
     amount: float
     currency: Optional[str] = "BRL"
     valid_until: Optional[datetime] = None
@@ -889,12 +945,25 @@ class ProposalCreate(SQLModel):
     owner_id: Optional[int] = None  # Se não especificado, será preenchido com created_by_id
 
 
+class ProposalUpdate(SQLModel):
+    title: Optional[str] = None
+    content: Optional[str] = None
+    template_data: Optional[str] = None
+    amount: Optional[float] = None
+    currency: Optional[str] = None
+    valid_until: Optional[datetime] = None
+    status: Optional[ProposalStatus] = None
+    notes: Optional[str] = None
+
+
 class ProposalResponse(SQLModel):
     id: int
     tenant_id: int
     opportunity_id: int
+    template_id: Optional[int]
     title: str
     content: str
+    template_data: Optional[str]
     amount: float
     currency: str
     valid_until: Optional[datetime]

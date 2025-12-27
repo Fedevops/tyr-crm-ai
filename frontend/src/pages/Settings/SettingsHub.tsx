@@ -10,6 +10,7 @@ import {
   Menu,
   X,
   Radio,
+  FileCode,
 } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -20,9 +21,10 @@ import { Billing } from './sections/Billing'
 import { Security } from './sections/Security'
 import { ApiKeys } from './sections/ApiKeys'
 import { LivePulse } from './sections/LivePulse'
+import { ProposalTemplates } from './sections/ProposalTemplates'
 import { cn } from '@/lib/utils'
 
-type SettingsSection = 'profile' | 'branding' | 'team' | 'billing' | 'security' | 'apikeys' | 'livepulse'
+type SettingsSection = 'profile' | 'branding' | 'team' | 'billing' | 'security' | 'apikeys' | 'livepulse' | 'proposal-templates'
 
 interface NavItem {
   id: SettingsSection
@@ -43,6 +45,7 @@ export function SettingsHub() {
     { id: 'security', label: 'Segurança', icon: Shield },
     { id: 'apikeys', label: 'API Keys', icon: Key },
     { id: 'livepulse', label: 'Live Pulse', icon: Radio },
+    { id: 'proposal-templates', label: 'Templates de Proposta', icon: FileCode },
   ]
 
   const renderSection = () => {
@@ -61,6 +64,8 @@ export function SettingsHub() {
         return <ApiKeys />
       case 'livepulse':
         return <LivePulse />
+      case 'proposal-templates':
+        return <ProposalTemplates />
       default:
         return <Profile />
     }

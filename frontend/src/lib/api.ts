@@ -84,6 +84,27 @@ export const livePulseApi = {
   getVisitReport: (reportId: number) => api.get(`/api/live-pulse/visit-reports/${reportId}`),
 }
 
+// Proposal Templates API functions
+export const proposalTemplatesApi = {
+  getTemplates: (isActive?: boolean) => api.get('/api/proposal-templates', { params: { is_active: isActive } }),
+  getTemplate: (templateId: number) => api.get(`/api/proposal-templates/${templateId}`),
+  createTemplate: (data: any) => api.post('/api/proposal-templates', data),
+  updateTemplate: (templateId: number, data: any) => api.put(`/api/proposal-templates/${templateId}`, data),
+  deleteTemplate: (templateId: number) => api.delete(`/api/proposal-templates/${templateId}`),
+  getTemplateFields: (templateId: number) => api.get(`/api/proposal-templates/${templateId}/fields`),
+}
+
+// Proposals API functions
+export const proposalsApi = {
+  getProposals: (params?: any) => api.get('/api/proposals', { params }),
+  getProposal: (proposalId: number) => api.get(`/api/proposals/${proposalId}`),
+  createProposal: (data: any) => api.post('/api/proposals', data),
+  updateProposal: (proposalId: number, data: any) => api.put(`/api/proposals/${proposalId}`, data),
+  deleteProposal: (proposalId: number) => api.delete(`/api/proposals/${proposalId}`),
+  exportPdf: (proposalId: number) => api.get(`/api/proposals/${proposalId}/pdf`, { responseType: 'blob' }),
+  sendEmail: (proposalId: number, data: any) => api.post(`/api/proposals/${proposalId}/send-email`, data),
+}
+
 export default api
 
 

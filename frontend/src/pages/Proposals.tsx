@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
-import api from '@/lib/api'
+import api, { proposalTemplatesApi } from '@/lib/api'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -20,12 +20,14 @@ import {
   User,
   Filter,
   Download,
-  X
+  X,
+  FileDown
 } from 'lucide-react'
 
 interface Proposal {
   id: number
   opportunity_id: number
+  template_id?: number | null
   title: string
   content: string
   amount: number
@@ -58,6 +60,7 @@ export function Proposals() {
   const { t } = useTranslation()
   const [proposals, setProposals] = useState<Proposal[]>([])
   const [opportunities, setOpportunities] = useState<Opportunity[]>([])
+  const [templates, setTemplates] = useState<Array<{id: number, name: string, description?: string}>>([])
   const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
   const [editingId, setEditingId] = useState<number | null>(null)
@@ -91,6 +94,7 @@ export function Proposals() {
   
   const [formData, setFormData] = useState({
     opportunity_id: null as number | null,
+    template_id: null as number | null,
     title: '',
     content: '',
     amount: '',
@@ -104,6 +108,7 @@ export function Proposals() {
   useEffect(() => {
     fetchUsers()
     fetchOpportunities()
+    fetchTemplates()
     fetchProposals()
   }, [currentPage, pageSize, searchTerm, statusFilter, advancedFilters, filterLogic])
 
@@ -122,6 +127,15 @@ export function Proposals() {
       setOpportunities(response.data)
     } catch (error) {
       console.error('Error fetching opportunities:', error)
+    }
+  }
+
+  const fetchTemplates = async () => {
+    try {
+      const response = await proposalTemplatesApi.getTemplates(true) // Apenas templates ativos
+      setTemplates(response.data || [])
+    } catch (error) {
+      console.error('Error fetching templates:', error)
     }
   }
 
@@ -239,6 +253,7 @@ export function Proposals() {
       const payload = {
         ...formData,
         opportunity_id: formData.opportunity_id,
+        template_id: formData.template_id || null,
         amount: parseFloat(formData.amount),
         valid_until: formData.valid_until || null,
         owner_id: formData.owner_id || null
@@ -261,6 +276,7 @@ export function Proposals() {
     setEditingId(proposal.id)
     setFormData({
       opportunity_id: proposal.opportunity_id,
+      template_id: proposal.template_id || null,
       title: proposal.title || '',
       content: proposal.content || '',
       amount: String(proposal.amount),
@@ -320,6 +336,7 @@ export function Proposals() {
   const resetForm = () => {
     setFormData({
       opportunity_id: null,
+      template_id: null,
       title: '',
       content: '',
       amount: '',
@@ -423,6 +440,171 @@ export function Proposals() {
     link.click()
     link.remove()
     window.URL.revokeObjectURL(url)
+  }
+
+  const handleExportPDF = async (proposal: Proposal) => {
+    try {
+      // Importar html2pdf dinamicamente
+      const html2pdf = (await import('html2pdf.js')).default
+      
+      // Criar HTML formatado para PDF (apenas o conteúdo da proposta)
+      const htmlContent = `
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <meta charset="UTF-8">
+          <style>
+            @page {
+              size: A4;
+              margin: 2cm;
+            }
+            body {
+              font-family: Arial, sans-serif;
+              line-height: 1.6;
+              color: #333;
+              margin: 0;
+              padding: 20px;
+              background: white;
+            }
+            h1 {
+              color: #2c3e50;
+              border-bottom: 3px solid #0066CC;
+              padding-bottom: 10px;
+              margin-bottom: 30px;
+            }
+            h2 {
+              color: #2c3e50;
+              border-bottom: 2px solid #e0e0e0;
+              padding-bottom: 10px;
+              margin-top: 30px;
+            }
+            .info-row {
+              display: flex;
+              justify-content: space-between;
+              padding: 10px 0;
+              border-bottom: 1px solid #f0f0f0;
+            }
+            .info-label {
+              font-weight: bold;
+              color: #666;
+            }
+            .content-section {
+              margin-top: 20px;
+            }
+          </style>
+        </head>
+        <body>
+          <h1>${proposal.title}</h1>
+          
+          <div class="info-row">
+            <span class="info-label">Status:</span>
+            <span>${getStatusLabel(proposal.status)}</span>
+          </div>
+          ${proposal.amount ? `
+          <div class="info-row">
+            <span class="info-label">Valor:</span>
+            <span style="font-size: 18px; font-weight: bold; color: #0066CC;">${new Intl.NumberFormat('pt-BR', { style: 'currency', currency: proposal.currency }).format(proposal.amount)}</span>
+          </div>
+          ` : ''}
+          ${proposal.valid_until ? `
+          <div class="info-row">
+            <span class="info-label">Válida até:</span>
+            <span>${new Date(proposal.valid_until).toLocaleDateString('pt-BR')}</span>
+          </div>
+          ` : ''}
+          ${proposal.sent_at ? `
+          <div class="info-row">
+            <span class="info-label">Enviada em:</span>
+            <span>${new Date(proposal.sent_at).toLocaleDateString('pt-BR')}</span>
+          </div>
+          ` : ''}
+          
+          ${proposal.content ? `
+          <h2>Conteúdo da Proposta</h2>
+          <div class="content-section">${proposal.content}</div>
+          ` : ''}
+          
+          ${proposal.notes ? `
+          <h2>Notas</h2>
+          <p class="content-section">${proposal.notes}</p>
+          ` : ''}
+        </body>
+        </html>
+      `
+      
+      // Criar um iframe oculto para renderizar o HTML isoladamente
+      const iframe = document.createElement('iframe')
+      iframe.style.position = 'fixed'
+      iframe.style.right = '-9999px'
+      iframe.style.bottom = '0'
+      iframe.style.width = '800px'
+      iframe.style.height = '1200px'
+      iframe.style.border = 'none'
+      iframe.style.opacity = '0'
+      iframe.style.pointerEvents = 'none'
+      document.body.appendChild(iframe)
+      
+      // Escrever o HTML no iframe
+      const iframeDoc = iframe.contentDocument || iframe.contentWindow?.document
+      if (!iframeDoc) {
+        throw new Error('Não foi possível acessar o documento do iframe')
+      }
+      
+      iframeDoc.open()
+      iframeDoc.write(htmlContent)
+      iframeDoc.close()
+      
+      // Aguardar o iframe carregar completamente
+      await new Promise((resolve) => {
+        if (iframe.contentWindow) {
+          iframe.contentWindow.onload = resolve
+          // Timeout de segurança
+          setTimeout(resolve, 500)
+        } else {
+          resolve(undefined)
+        }
+      })
+      
+      // Aguardar um pouco mais para garantir renderização
+      await new Promise(resolve => setTimeout(resolve, 200))
+      
+      // Obter o body do iframe
+      const iframeBody = iframeDoc.body
+      if (!iframeBody) {
+        throw new Error('Body do iframe não encontrado')
+      }
+      
+      // Configurações do PDF
+      const opt = {
+        margin: [15, 15, 15, 15],
+        filename: `proposta_${proposal.id}_${proposal.title.replace(/\s+/g, '_')}.pdf`,
+        image: { type: 'jpeg', quality: 0.98 },
+        html2canvas: { 
+          scale: 2, 
+          useCORS: true,
+          logging: false,
+          windowWidth: 800,
+          windowHeight: iframeBody.scrollHeight || 1200,
+          backgroundColor: '#ffffff',
+          removeContainer: true
+        },
+        jsPDF: { 
+          unit: 'mm', 
+          format: 'a4', 
+          orientation: 'portrait',
+          compress: true
+        }
+      }
+      
+      // Gerar PDF apenas do conteúdo do iframe
+      await html2pdf().set(opt).from(iframeBody).save()
+      
+      // Remover iframe temporário
+      document.body.removeChild(iframe)
+    } catch (error) {
+      console.error('Erro ao gerar PDF:', error)
+      alert('Erro ao gerar PDF. Por favor, tente novamente.')
+    }
   }
 
   const totalPages = Math.ceil(totalProposals / pageSize)
@@ -536,6 +718,27 @@ export function Proposals() {
                   </select>
                 </div>
                 <div>
+                  <label className="block text-sm font-medium mb-1">Template de Proposta</label>
+                  <select
+                    value={formData.template_id || ''}
+                    onChange={(e) => {
+                      const templateId = e.target.value ? Number(e.target.value) : null
+                      setFormData({ ...formData, template_id: templateId })
+                    }}
+                    className="w-full px-3 py-2 border rounded-md focus:ring-2 focus:ring-amber-500 focus:border-amber-500 transition-all duration-200"
+                  >
+                    <option value="">Sem template (conteúdo manual)</option>
+                    {templates.map(template => (
+                      <option key={template.id} value={template.id}>
+                        {template.name} {template.description ? `- ${template.description}` : ''}
+                      </option>
+                    ))}
+                  </select>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Selecione um template para preencher automaticamente o conteúdo da proposta
+                  </p>
+                </div>
+                <div>
                   <label className="block text-sm font-medium mb-1">Título *</label>
                   <Input
                     value={formData.title}
@@ -592,15 +795,28 @@ export function Proposals() {
                 </div>
               </div>
               <div>
-                <label className="block text-sm font-medium mb-1">Conteúdo *</label>
+                <label className="block text-sm font-medium mb-1">
+                  Conteúdo *
+                  {formData.template_id && (
+                    <span className="text-xs text-muted-foreground ml-2 font-normal">
+                      (Será preenchido automaticamente pelo template)
+                    </span>
+                  )}
+                </label>
                 <Textarea
                   value={formData.content}
                   onChange={(e) => setFormData({ ...formData, content: e.target.value })}
                   rows={10}
                   required
                   className="focus:ring-2 focus:ring-amber-500 focus:border-amber-500 transition-all duration-200"
-                  placeholder="Digite o conteúdo da proposta..."
+                  placeholder={formData.template_id ? "O conteúdo será gerado automaticamente do template selecionado..." : "Digite o conteúdo da proposta ou selecione um template acima..."}
+                  disabled={!!formData.template_id}
                 />
+                {formData.template_id && (
+                  <p className="text-xs text-muted-foreground mt-1">
+                    O conteúdo será gerado automaticamente quando você salvar a proposta.
+                  </p>
+                )}
               </div>
               <div>
                 <label className="block text-sm font-medium mb-1">Notas</label>
@@ -1021,6 +1237,18 @@ export function Proposals() {
             </div>
 
             <CardContent className="flex-1 overflow-y-auto p-6">
+              {/* Botão de Exportar PDF */}
+              <div className="mb-4 flex justify-end">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => selectedProposalDetail && handleExportPDF(selectedProposalDetail)}
+                >
+                  <FileDown className="mr-2 h-4 w-4" />
+                  Exportar PDF
+                </Button>
+              </div>
+              
               {/* Aba: Informações Básicas */}
               {activeTab === 'basicas' && (
                 <div className="space-y-4">

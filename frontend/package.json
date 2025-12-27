@@ -26,6 +26,7 @@
     "@radix-ui/react-select": "^2.0.0",
     "@radix-ui/react-slot": "^1.0.2",
     "@radix-ui/react-switch": "^1.0.3",
+    "@radix-ui/react-label": "^2.0.2",
     "@radix-ui/react-tabs": "^1.0.4",
     "@radix-ui/react-toast": "^1.1.5",
     "recharts": "^2.10.3",
@@ -35,7 +36,8 @@
     "react-leaflet": "^4.2.1",
     "leaflet": "^1.9.4",
     "framer-motion": "^10.16.16",
-    "socket.io-client": "^4.7.2"
+    "socket.io-client": "^4.7.2",
+    "html2pdf.js": "^0.10.1"
   },
   "devDependencies": {
     "@types/react": "^18.2.43",

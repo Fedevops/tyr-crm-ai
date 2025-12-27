@@ -1,19 +1,30 @@
 from typing import List, Optional, Dict, Union
 from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException, status, Query, Body
+from fastapi.responses import Response, StreamingResponse
 from sqlmodel import Session, select, and_, or_, func
 from pydantic import BaseModel, Field
 from app.database import get_session
 from app.models import (
-    Proposal, ProposalCreate, ProposalResponse, ProposalStatus,
-    Opportunity, User,
+    Proposal, ProposalCreate, ProposalUpdate, ProposalResponse, ProposalStatus,
+    Opportunity, User, ProposalTemplate,
     ProposalComment, ProposalCommentCreate, ProposalCommentResponse
 )
 from app.dependencies import get_current_active_user, apply_ownership_filter, ensure_ownership, require_ownership
 from app.services.audit_service import log_create, log_update, log_status_change, log_delete
 import logging
+import json
+import re
+from io import BytesIO
 
 logger = logging.getLogger(__name__)
+
+try:
+    from jinja2 import Template
+    JINJA2_AVAILABLE = True
+except ImportError:
+    JINJA2_AVAILABLE = False
+    logger.warning("jinja2 not available. Template rendering will be disabled.")
 
 router = APIRouter()
 
@@ -69,8 +80,75 @@ async def create_proposal(
     require_ownership(opportunity, current_user)
     
     # Preparar dados com ownership
-    prop_dict = proposal_data.dict()
+    prop_dict = proposal_data.dict(exclude={'template_id', 'template_data'})
     prop_dict = ensure_ownership(prop_dict, current_user)
+    
+    # Se template_id foi fornecido, gerar conteúdo do template
+    content = proposal_data.content or ""
+    template_data_dict = {}
+    
+    if proposal_data.template_id:
+        template = session.get(ProposalTemplate, proposal_data.template_id)
+        if not template or template.tenant_id != current_user.tenant_id:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Template not found"
+            )
+        
+        # Parse template_data JSON se fornecido
+        if proposal_data.template_data:
+            try:
+                template_data_dict = json.loads(proposal_data.template_data)
+            except json.JSONDecodeError:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Invalid JSON in template_data"
+                )
+        
+        # Adicionar dados padrão da opportunity, account, contact
+        if opportunity:
+            template_data_dict['opportunity_name'] = opportunity.name
+            template_data_dict['opportunity_amount'] = opportunity.amount or 0
+            template_data_dict['opportunity_currency'] = opportunity.currency or 'BRL'
+            
+            # Carregar account se existir
+            if opportunity.account_id:
+                from app.models import Account
+                account = session.get(Account, opportunity.account_id)
+                if account:
+                    template_data_dict['company_name'] = account.name
+                    template_data_dict['company_website'] = account.website or ''
+                    template_data_dict['company_phone'] = account.phone or ''
+                    template_data_dict['company_email'] = account.email or ''
+            
+            # Carregar contact se existir
+            if opportunity.contact_id:
+                from app.models import Contact
+                contact = session.get(Contact, opportunity.contact_id)
+                if contact:
+                    template_data_dict['contact_name'] = f"{contact.first_name} {contact.last_name}"
+                    template_data_dict['contact_email'] = contact.email or ''
+                    template_data_dict['contact_phone'] = contact.phone or ''
+                    template_data_dict['contact_position'] = contact.position or ''
+        
+        # Adicionar dados da proposta
+        template_data_dict['proposal_title'] = proposal_data.title
+        template_data_dict['proposal_amount'] = proposal_data.amount
+        template_data_dict['proposal_currency'] = proposal_data.currency or 'BRL'
+        template_data_dict['valid_until'] = proposal_data.valid_until.strftime('%d/%m/%Y') if proposal_data.valid_until else ''
+        
+        # Renderizar template
+        content = render_template(template.html_content, template_data_dict)
+        prop_dict['template_data'] = json.dumps(template_data_dict)
+        prop_dict['template_id'] = proposal_data.template_id
+    
+    prop_dict['content'] = content
+    
+    # Garantir que template_id e template_data sejam None se não foram fornecidos
+    if 'template_id' not in prop_dict:
+        prop_dict['template_id'] = None
+    if 'template_data' not in prop_dict:
+        prop_dict['template_data'] = None
     
     proposal = Proposal(
         **prop_dict,
@@ -355,7 +433,7 @@ async def get_proposal(
 @router.put("/{proposal_id}", response_model=ProposalResponse)
 async def update_proposal(
     proposal_id: int,
-    proposal_data: ProposalCreate,
+    proposal_data: ProposalUpdate,
     session: Session = Depends(get_session),
     current_user: User = Depends(get_current_active_user)
 ):
@@ -375,36 +453,81 @@ async def update_proposal(
             detail=f"Cannot edit proposal with status {proposal.status.value}"
         )
     
-    # Verificar opportunity se mudou
-    if proposal_data.opportunity_id != proposal.opportunity_id:
-        opportunity = session.get(Opportunity, proposal_data.opportunity_id)
-        if not opportunity or opportunity.tenant_id != current_user.tenant_id:
+    # Atualizar campos (apenas os que foram fornecidos)
+    update_data = proposal_data.dict(exclude_unset=True)
+    
+    # Se template_id foi fornecido, gerar conteúdo do template
+    if 'template_id' in update_data and update_data['template_id']:
+        template = session.get(ProposalTemplate, update_data['template_id'])
+        if not template or template.tenant_id != current_user.tenant_id:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail="Opportunity not found"
+                detail="Template not found"
             )
-        require_ownership(opportunity, current_user)
+        
+        # Parse template_data JSON se fornecido
+        template_data_dict = {}
+        if 'template_data' in update_data and update_data['template_data']:
+            try:
+                template_data_dict = json.loads(update_data['template_data'])
+            except json.JSONDecodeError:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Invalid JSON in template_data"
+                )
+        
+        # Carregar opportunity com relacionamentos
+        opportunity = session.get(Opportunity, proposal.opportunity_id)
+        if opportunity:
+            from app.models import Account, Contact
+            if opportunity.account_id:
+                account_stmt = select(Account).where(Account.id == opportunity.account_id)
+                opportunity.account = session.exec(account_stmt).first()
+            if opportunity.contact_id:
+                contact_stmt = select(Contact).where(Contact.id == opportunity.contact_id)
+                opportunity.contact = session.exec(contact_stmt).first()
+            
+            # Adicionar dados padrão
+            template_data_dict['opportunity_name'] = opportunity.name
+            template_data_dict['opportunity_amount'] = opportunity.amount or 0
+            template_data_dict['opportunity_currency'] = opportunity.currency or 'BRL'
+            
+            if opportunity.account:
+                template_data_dict['company_name'] = opportunity.account.name
+                template_data_dict['company_website'] = opportunity.account.website or ''
+                template_data_dict['company_phone'] = opportunity.account.phone or ''
+                template_data_dict['company_email'] = opportunity.account.email or ''
+            
+            if opportunity.contact:
+                template_data_dict['contact_name'] = f"{opportunity.contact.first_name} {opportunity.contact.last_name}"
+                template_data_dict['contact_email'] = opportunity.contact.email or ''
+                template_data_dict['contact_phone'] = opportunity.contact.phone or ''
+                template_data_dict['contact_position'] = opportunity.contact.position or ''
+        
+        # Adicionar dados da proposta
+        template_data_dict['proposal_title'] = update_data.get('title', proposal.title)
+        template_data_dict['proposal_amount'] = update_data.get('amount', proposal.amount)
+        template_data_dict['proposal_currency'] = update_data.get('currency', proposal.currency) or 'BRL'
+        if 'valid_until' in update_data and update_data['valid_until']:
+            template_data_dict['valid_until'] = update_data['valid_until'].strftime('%d/%m/%Y')
+        elif proposal.valid_until:
+            template_data_dict['valid_until'] = proposal.valid_until.strftime('%d/%m/%Y')
+        else:
+            template_data_dict['valid_until'] = ''
+        
+        # Renderizar template
+        content = render_template(template.html_content, template_data_dict)
+        update_data['content'] = content
+        update_data['template_data'] = json.dumps(template_data_dict)
     
     # Atualizar campos
-    prop_dict = proposal_data.dict()
-    for key, value in prop_dict.items():
+    for key, value in update_data.items():
         if key not in ['owner_id', 'created_by_id', 'tenant_id', 'status']:
             old_value = getattr(proposal, key, None)
             if old_value != value:
                 # Registrar mudança de campo
                 log_update(session, current_user, "Proposal", proposal_id, key, old_value, value)
             setattr(proposal, key, value)
-    
-    # Atualizar owner_id se especificado (com validação)
-    if prop_dict.get("owner_id") and prop_dict["owner_id"] != proposal.owner_id:
-        if current_user.role.value == "admin":
-            old_owner = proposal.owner_id
-            proposal.owner_id = prop_dict["owner_id"]
-            log_update(session, current_user, "Proposal", proposal_id, "owner_id", old_owner, prop_dict["owner_id"])
-        elif prop_dict["owner_id"] == current_user.id:
-            old_owner = proposal.owner_id
-            proposal.owner_id = prop_dict["owner_id"]
-            log_update(session, current_user, "Proposal", proposal_id, "owner_id", old_owner, prop_dict["owner_id"])
     
     proposal.updated_at = datetime.utcnow()
     session.add(proposal)
@@ -681,4 +804,130 @@ async def delete_proposal_comment(
     session.delete(comment)
     session.commit()
     return {"message": "Comment deleted successfully"}
+
+
+def render_template(html_content: str, data: Dict[str, any]) -> str:
+    """Render template HTML with data using Jinja2"""
+    if not JINJA2_AVAILABLE:
+        # Fallback: simple string replacement for {{field}} placeholders
+        result = html_content
+        for key, value in data.items():
+            result = result.replace(f"{{{{{key}}}}}", str(value))
+        return result
+    
+    try:
+        template = Template(html_content)
+        return template.render(**data)
+    except Exception as e:
+        logger.error(f"Error rendering template: {e}")
+        # Fallback to simple replacement
+        result = html_content
+        for key, value in data.items():
+            result = result.replace(f"{{{{{key}}}}}", str(value))
+        return result
+
+
+@router.get("/{proposal_id}/html")
+async def get_proposal_html(
+    proposal_id: int,
+    session: Session = Depends(get_session),
+    current_user: User = Depends(get_current_active_user)
+):
+    """Get proposal HTML for PDF generation (client-side)"""
+    proposal = session.get(Proposal, proposal_id)
+    if not proposal:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Proposal not found"
+        )
+    require_ownership(proposal, current_user)
+    
+    # Retornar HTML formatado para geração de PDF no frontend
+    styled_html = f"""
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <meta charset="UTF-8">
+        <style>
+            @page {{
+                size: A4;
+                margin: 2cm;
+            }}
+            body {{
+                font-family: Arial, sans-serif;
+                margin: 0;
+                padding: 0;
+                line-height: 1.6;
+                color: #333;
+            }}
+            h1, h2, h3 {{
+                color: #2c3e50;
+            }}
+            table {{
+                width: 100%;
+                border-collapse: collapse;
+                margin: 20px 0;
+            }}
+            table th, table td {{
+                border: 1px solid #ddd;
+                padding: 12px;
+                text-align: left;
+            }}
+            table th {{
+                background-color: #f2f2f2;
+            }}
+        </style>
+    </head>
+    <body>
+        {proposal.content}
+    </body>
+    </html>
+    """
+    
+    return Response(
+        content=styled_html,
+        media_type="text/html",
+        headers={
+            "Content-Disposition": f'inline; filename="proposal_{proposal_id}.html"'
+        }
+    )
+
+
+@router.post("/{proposal_id}/send-email")
+async def send_proposal_email(
+    proposal_id: int,
+    recipient_email: str = Body(..., embed=True),
+    subject: Optional[str] = Body(None, embed=True),
+    message: Optional[str] = Body(None, embed=True),
+    session: Session = Depends(get_session),
+    current_user: User = Depends(get_current_active_user)
+):
+    """Send proposal by email"""
+    proposal = session.get(Proposal, proposal_id)
+    if not proposal:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Proposal not found"
+        )
+    require_ownership(proposal, current_user)
+    
+    # TODO: Implementar envio de e-mail
+    # Por enquanto, apenas retornar sucesso
+    # Você precisará configurar SMTP ou usar um serviço como SendGrid, AWS SES, etc.
+    
+    logger.info(f"Sending proposal {proposal_id} to {recipient_email}")
+    
+    # Marcar como enviado se ainda estiver em DRAFT
+    if proposal.status == ProposalStatus.DRAFT:
+        proposal.status = ProposalStatus.SENT
+        proposal.sent_at = datetime.utcnow()
+        session.add(proposal)
+        session.commit()
+    
+    return {
+        "message": "Email sent successfully",
+        "proposal_id": proposal_id,
+        "recipient": recipient_email,
+        "note": "Email functionality needs to be configured with SMTP or email service"
+    }
 

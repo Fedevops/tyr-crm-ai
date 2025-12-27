@@ -597,12 +597,99 @@ def migrate_existing_leads_ownership():
             print(f"Migration warning (existing leads): {e}")
 
 
+def migrate_proposal_table():
+    """Add template_id and template_data columns to Proposal table if they don't exist"""
+    with Session(engine) as session:
+        try:
+            # Check if proposal table exists
+            table_check = text("""
+                SELECT EXISTS (
+                    SELECT FROM information_schema.tables 
+                    WHERE table_name = 'proposal'
+                )
+            """)
+            result = session.exec(table_check).first()
+            table_exists = result[0] if result else False
+            
+            if not table_exists:
+                return  # Table doesn't exist, create_all will handle it
+            
+            # Check and add template_id
+            check_template_id = text("""
+                SELECT column_name 
+                FROM information_schema.columns 
+                WHERE table_name='proposal' AND column_name='template_id'
+            """)
+            result = session.exec(check_template_id).first()
+            
+            if not result:
+                try:
+                    # Add column
+                    alter_query = text("ALTER TABLE proposal ADD COLUMN template_id INTEGER")
+                    session.exec(alter_query)
+                    session.commit()
+                    
+                    # Check if proposaltemplate table exists before adding foreign key
+                    template_table_check = text("""
+                        SELECT EXISTS (
+                            SELECT FROM information_schema.tables 
+                            WHERE table_name = 'proposaltemplate'
+                        )
+                    """)
+                    template_exists = session.exec(template_table_check).first()
+                    
+                    if template_exists and template_exists[0]:
+                        # Add foreign key
+                        fk_query = text("""
+                            ALTER TABLE proposal 
+                            ADD CONSTRAINT proposal_template_id_fkey 
+                            FOREIGN KEY (template_id) REFERENCES proposaltemplate(id)
+                        """)
+                        session.exec(fk_query)
+                        session.commit()
+                        
+                        # Add index
+                        idx_query = text("CREATE INDEX IF NOT EXISTS idx_proposal_template_id ON proposal(template_id)")
+                        session.exec(idx_query)
+                        session.commit()
+                        print(f"✓ Added template_id column to proposal table with foreign key and index")
+                    else:
+                        print(f"⚠️ Table 'proposaltemplate' does not exist yet. Foreign key will be added when table is created.")
+                except Exception as e:
+                    session.rollback()
+                    print(f"Warning: Could not add template_id to proposal: {e}")
+            
+            # Check and add template_data
+            check_template_data = text("""
+                SELECT column_name 
+                FROM information_schema.columns 
+                WHERE table_name='proposal' AND column_name='template_data'
+            """)
+            result = session.exec(check_template_data).first()
+            
+            if not result:
+                try:
+                    # Add column as TEXT (JSON will be stored as string)
+                    alter_query = text("ALTER TABLE proposal ADD COLUMN template_data TEXT")
+                    session.exec(alter_query)
+                    session.commit()
+                    print(f"✓ Added template_data column to proposal table")
+                except Exception as e:
+                    session.rollback()
+                    print(f"Warning: Could not add template_data to proposal: {e}")
+            
+        except Exception as e:
+            session.rollback()
+            print(f"Migration warning (proposal table): {e}")
+
+
 def init_db():
     """Initialize database tables"""
     SQLModel.metadata.create_all(engine)
     # Run migrations for existing tables
     migrate_lead_table()
     migrate_task_table()
+    migrate_proposal_table()
     # Add foreign keys for account_id and contact_id after tables are created
     migrate_lead_foreign_keys()
     # Garantir que todos os leads existentes tenham owner_id e created_by_id
