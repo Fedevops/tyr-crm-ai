@@ -133,6 +133,58 @@ export const itemsApi = {
     api.get(`/api/items/${itemId}/stock/history`, { params }),
 }
 
+// Orders API functions
+export const ordersApi = {
+  getOrders: (params?: {
+    status?: string,
+    customer_name?: string,
+    date_from?: string,
+    date_to?: string
+  }) => api.get('/api/orders', { params }),
+  getOrder: (orderId: number) => api.get(`/api/orders/${orderId}`),
+  createOrder: (data: any) => api.post('/api/orders', data),
+  updateOrder: (orderId: number, data: any) => api.put(`/api/orders/${orderId}`, data),
+  deleteOrder: (orderId: number) => api.delete(`/api/orders/${orderId}`),
+  exportOrderHtml: (orderId: number) => api.get(`/api/orders/${orderId}/html`, { responseType: 'text' }),
+}
+
+// Settings API functions
+export const settingsApi = {
+  getUsage: () => api.get('/api/settings/usage'),
+  getProfile: () => api.get('/api/settings/profile'),
+  updateProfile: (data: any) => api.put('/api/settings/profile', data),
+  getBranding: () => api.get('/api/settings/branding'),
+  updateBranding: (data: any) => api.put('/api/settings/branding', data),
+  getTeam: () => api.get('/api/settings/team'),
+  getBilling: () => api.get('/api/settings/billing'),
+  getInvoices: () => api.get('/api/settings/billing/invoices'),
+  changePassword: (data: any) => api.put('/api/settings/security/password', data),
+  toggle2FA: (data: any) => api.put('/api/settings/security/2fa', data),
+  getApiKeys: () => api.get('/api/settings/api-keys'),
+  generateApiKey: (data: any) => api.post('/api/settings/api-keys', data),
+  revokeApiKey: (keyId: number) => api.delete(`/api/settings/api-keys/${keyId}`),
+}
+
+export const integrationsApi = {
+  getIntegrations: () => api.get('/api/integrations'),
+  getIntegration: (integrationType: string) => api.get(`/api/integrations/${integrationType}`),
+  connectIntegration: (integrationType: string, data: any) => api.post(`/api/integrations/${integrationType}/connect`, data),
+  updateIntegration: (integrationType: string, data: any) => api.put(`/api/integrations/${integrationType}`, data),
+  disconnectIntegration: (integrationType: string) => api.delete(`/api/integrations/${integrationType}`),
+  testIntegration: (integrationType: string) => api.get(`/api/integrations/${integrationType}/test`),
+  googleCalendarOAuth: () => {
+    window.location.href = `${api.defaults.baseURL}/api/integrations/google-calendar/oauth/authorize`
+  },
+}
+
+export const formsApi = {
+  getForms: () => api.get('/api/forms'),
+  getForm: (formId: number) => api.get(`/api/forms/${formId}`),
+  createForm: (data: any) => api.post('/api/forms', data),
+  updateForm: (formId: number, data: any) => api.put(`/api/forms/${formId}`, data),
+  deleteForm: (formId: number) => api.delete(`/api/forms/${formId}`),
+}
+
 export default api
 
 

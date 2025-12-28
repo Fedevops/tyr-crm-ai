@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
-import api, { proposalTemplatesApi, itemsApi } from '@/lib/api'
+import { useNavigate } from 'react-router-dom'
+import api, { proposalTemplatesApi, itemsApi, ordersApi } from '@/lib/api'
+import { useToast } from '@/components/ui/use-toast'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -40,7 +42,8 @@ import {
   FileDown,
   Package,
   PlusCircle,
-  Trash2 as Trash2Icon
+  Trash2 as Trash2Icon,
+  ShoppingCart
 } from 'lucide-react'
 
 interface Proposal {
@@ -98,6 +101,8 @@ interface Opportunity {
 
 export function Proposals() {
   const { t } = useTranslation()
+  const navigate = useNavigate()
+  const { toast } = useToast()
   const [proposals, setProposals] = useState<Proposal[]>([])
   const [opportunities, setOpportunities] = useState<Opportunity[]>([])
   const [templates, setTemplates] = useState<Array<{id: number, name: string, description?: string}>>([])
@@ -447,6 +452,92 @@ export function Proposals() {
     } catch (error: any) {
       console.error('Error accepting proposal:', error)
       alert(error.response?.data?.detail || 'Erro ao aceitar proposta')
+    }
+  }
+
+  const handleGenerateOrder = async (proposal: Proposal) => {
+    try {
+      // Buscar detalhes completos da proposta
+      const response = await api.get(`/api/proposals/${proposal.id}`)
+      const fullProposal = response.data
+      
+      // Buscar dados da oportunidade para obter informações do cliente
+      const oppResponse = await api.get(`/api/opportunities/${fullProposal.opportunity_id}`)
+      const opportunity = oppResponse.data
+      
+      // Buscar contato da oportunidade (prioritário)
+      let contactId: number | null = null
+      let accountId: number | null = null
+      let customerName = 'Cliente'
+      let customerEmail = ''
+      let customerPhone = ''
+      
+      if (opportunity.contact_id) {
+        contactId = opportunity.contact_id
+        const contactResponse = await api.get(`/api/contacts/${opportunity.contact_id}`)
+        const contact = contactResponse.data
+        customerName = `${contact.first_name} ${contact.last_name}`.trim()
+        customerEmail = contact.email || ''
+        customerPhone = contact.phone || contact.mobile || ''
+        // Usar account_id do contato se disponível
+        if (contact.account_id) {
+          accountId = contact.account_id
+        }
+      }
+      
+      // Se não tiver contato, buscar dados da conta
+      if (!contactId && opportunity.account_id) {
+        accountId = opportunity.account_id
+        const accountResponse = await api.get(`/api/accounts/${opportunity.account_id}`)
+        const account = accountResponse.data
+        customerName = account.name
+        customerEmail = account.email || ''
+        customerPhone = account.phone || ''
+      }
+      
+      // Preparar itens do pedido
+      const orderItems: Array<{ item_id: number; quantity: number; unit_price?: number }> = []
+      
+      if (fullProposal.items) {
+        try {
+          const itemsData = JSON.parse(fullProposal.items)
+          if (itemsData.items && Array.isArray(itemsData.items)) {
+            for (const item of itemsData.items) {
+              // Buscar item_id pelo nome ou SKU
+              const catalogItem = availableItems.find(i => 
+                i.name === item.name || i.sku === item.sku
+              )
+              if (catalogItem) {
+                orderItems.push({
+                  item_id: catalogItem.id,
+                  quantity: item.quantity,
+                  unit_price: item.unit_price
+                })
+              }
+            }
+          }
+        } catch (error) {
+          console.error('Error parsing proposal items:', error)
+        }
+      }
+      
+      // Navegar para página de pedidos com dados pré-preenchidos
+      navigate('/orders', {
+        state: {
+          proposal_id: proposal.id,
+          contact_id: contactId,
+          account_id: accountId,
+          customer_name: customerName,
+          customer_email: customerEmail,
+          customer_phone: customerPhone,
+          items: orderItems,
+          currency: fullProposal.currency,
+          notes: `Pedido gerado a partir da proposta #${proposal.id}: ${proposal.title}`
+        }
+      })
+    } catch (error: any) {
+      console.error('Error generating order:', error)
+      alert(error.response?.data?.detail || 'Erro ao gerar pedido')
     }
   }
 
@@ -1539,6 +1630,20 @@ export function Proposals() {
                           Rejeitar
                         </Button>
                       </>
+                    )}
+                    {proposal.status === 'accepted' && (
+                      <Button
+                        size="sm"
+                        variant="default"
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          handleGenerateOrder(proposal)
+                        }}
+                        className="text-xs"
+                      >
+                        <ShoppingCart className="mr-1 h-3 w-3" />
+                        Gerar Pedido
+                      </Button>
                     )}
                   </div>
                 </CardContent>

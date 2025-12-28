@@ -19,7 +19,8 @@ import {
   User,
   Filter,
   FileText,
-  XCircle
+  XCircle,
+  ShoppingCart
 } from 'lucide-react'
 
 interface Account {
@@ -48,6 +49,8 @@ interface Account {
   created_by_id: number
   created_at: string
   updated_at: string
+  orders_count?: number
+  total_orders_value?: number
 }
 
 export function Accounts() {
@@ -67,13 +70,15 @@ export function Accounts() {
   // Detail modal
   const [showAccountDetailModal, setShowAccountDetailModal] = useState(false)
   const [selectedAccountDetail, setSelectedAccountDetail] = useState<Account | null>(null)
-  const [activeTab, setActiveTab] = useState<'basicas' | 'endereco' | 'contatos' | 'oportunidades' | 'propostas'>('basicas')
+  const [activeTab, setActiveTab] = useState<'basicas' | 'endereco' | 'contatos' | 'oportunidades' | 'propostas' | 'pedidos'>('basicas')
   const [accountContacts, setAccountContacts] = useState<any[]>([])
   const [accountOpportunities, setAccountOpportunities] = useState<any[]>([])
   const [accountProposals, setAccountProposals] = useState<any[]>([])
+  const [accountOrders, setAccountOrders] = useState<any[]>([])
   const [loadingContacts, setLoadingContacts] = useState(false)
   const [loadingOpportunities, setLoadingOpportunities] = useState(false)
   const [loadingProposals, setLoadingProposals] = useState(false)
+  const [loadingOrders, setLoadingOrders] = useState(false)
   
   // Advanced filters
   const [advancedFilters, setAdvancedFilters] = useState<Array<{
@@ -297,8 +302,22 @@ export function Accounts() {
       fetchAccountContacts(selectedAccountDetail.id)
       fetchAccountOpportunities(selectedAccountDetail.id)
       fetchAccountProposals(selectedAccountDetail.id)
+      fetchAccountOrders(selectedAccountDetail.id)
     }
   }, [showAccountDetailModal, selectedAccountDetail?.id])
+  
+  const fetchAccountOrders = async (accountId: number) => {
+    try {
+      setLoadingOrders(true)
+      const response = await api.get(`/api/accounts/${accountId}/orders`)
+      setAccountOrders(response.data || [])
+    } catch (error) {
+      console.error('Error fetching account orders:', error)
+      setAccountOrders([])
+    } finally {
+      setLoadingOrders(false)
+    }
+  }
 
   const fetchAccountContacts = async (accountId: number) => {
     try {
@@ -797,6 +816,17 @@ export function Accounts() {
                           <span>Responsável: {users.find(u => u.id === account.owner_id)?.full_name || `ID: ${account.owner_id}`}</span>
                         </div>
                       )}
+                      {account.orders_count !== undefined && account.orders_count > 0 && (
+                        <div className="flex items-center gap-2 text-sm">
+                          <ShoppingCart className="h-4 w-4" />
+                          <span className="font-semibold">{account.orders_count} pedido(s)</span>
+                          {account.total_orders_value && (
+                            <span className="text-muted-foreground">
+                              - {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(account.total_orders_value)}
+                            </span>
+                          )}
+                        </div>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -979,6 +1009,16 @@ export function Accounts() {
                   }`}
                 >
                   Propostas
+                </button>
+                <button
+                  onClick={() => setActiveTab('pedidos')}
+                  className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
+                    activeTab === 'pedidos'
+                      ? 'border-primary text-primary'
+                      : 'border-transparent text-muted-foreground hover:text-foreground'
+                  }`}
+                >
+                  Pedidos {selectedAccountDetail?.orders_count ? `(${selectedAccountDetail.orders_count})` : ''}
                 </button>
               </div>
             </div>
@@ -1286,6 +1326,83 @@ export function Accounts() {
                                 {proposal.rejection_reason && (
                                   <div className="mt-1">Motivo: {proposal.rejection_reason}</div>
                                 )}
+                              </div>
+                            )}
+                          </CardContent>
+                        </Card>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Aba: Pedidos */}
+              {activeTab === 'pedidos' && (
+                <div className="space-y-4">
+                  {selectedAccountDetail && (
+                    <div className="flex items-center justify-between p-4 bg-muted rounded-lg">
+                      <div>
+                        <p className="text-sm font-medium">Total de Pedidos</p>
+                        <p className="text-2xl font-bold">{selectedAccountDetail.orders_count || 0}</p>
+                      </div>
+                      {selectedAccountDetail.total_orders_value && (
+                        <div className="text-right">
+                          <p className="text-sm font-medium">Valor Total</p>
+                          <p className="text-2xl font-bold text-primary">
+                            {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(selectedAccountDetail.total_orders_value)}
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                  {loadingOrders ? (
+                    <div className="text-center py-4 text-muted-foreground">Carregando pedidos...</div>
+                  ) : accountOrders.length === 0 ? (
+                    <p className="text-sm text-muted-foreground">Nenhum pedido associado a esta empresa.</p>
+                  ) : (
+                    <div className="space-y-3">
+                      {accountOrders.map((order) => (
+                        <Card key={order.id} className="border-l-4 border-l-blue-400">
+                          <CardHeader className="pb-3">
+                            <div className="flex items-start justify-between">
+                              <div className="flex-1">
+                                <CardTitle className="text-base">Pedido #{order.id}</CardTitle>
+                                <CardDescription className="mt-1">
+                                  <span className="font-semibold text-blue-600 dark:text-blue-400">
+                                    {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: order.currency || 'BRL' }).format(order.total_amount)}
+                                  </span>
+                                </CardDescription>
+                              </div>
+                              <span className={`text-xs px-2 py-1 rounded ${
+                                order.status === 'completed' ? 'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-200' :
+                                order.status === 'cancelled' ? 'bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-200' :
+                                order.status === 'shipped' ? 'bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-200' :
+                                order.status === 'processing' ? 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900 dark:text-yellow-200' :
+                                'bg-gray-100 text-gray-700 dark:bg-gray-900 dark:text-gray-200'
+                              }`}>
+                                {order.status === 'pending' ? 'Pendente' :
+                                 order.status === 'processing' ? 'Processando' :
+                                 order.status === 'completed' ? 'Finalizado' :
+                                 order.status === 'cancelled' ? 'Cancelado' :
+                                 order.status === 'shipped' ? 'Enviado' : order.status}
+                              </span>
+                            </div>
+                          </CardHeader>
+                          <CardContent className="space-y-2">
+                            <div className="text-xs text-muted-foreground">
+                              Cliente: {order.customer_name}
+                            </div>
+                            {order.proposal_id && (
+                              <div className="text-xs text-muted-foreground">
+                                Proposta: #{order.proposal_id}
+                              </div>
+                            )}
+                            <div className="text-xs text-muted-foreground">
+                              Data: {new Date(order.created_at).toLocaleDateString('pt-BR')}
+                            </div>
+                            {order.items && order.items.length > 0 && (
+                              <div className="text-xs text-muted-foreground">
+                                {order.items.length} item(ns)
                               </div>
                             )}
                           </CardContent>

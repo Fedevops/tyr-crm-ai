@@ -819,6 +819,424 @@ def migrate_items_tables():
             print(f"Migration warning (items tables): {e}")
 
 
+def migrate_tenant_limits():
+    """Create tenantlimit, apicalllog, and planlimitdefaults tables and initialize default limits"""
+    from app.models import PlanType, PlanLimitDefaults
+    
+    with Session(engine) as session:
+        try:
+            # Check if tenantlimit table exists
+            table_check = text("""
+                SELECT EXISTS (
+                    SELECT FROM information_schema.tables 
+                    WHERE table_name = 'tenantlimit'
+                )
+            """)
+            result = session.exec(table_check).first()
+            table_exists = result[0] if result else False
+            
+            # Check if planlimitdefaults table exists
+            plan_limits_check = text("""
+                SELECT EXISTS (
+                    SELECT FROM information_schema.tables 
+                    WHERE table_name = 'planlimitdefaults'
+                )
+            """)
+            plan_limits_result = session.exec(plan_limits_check).first()
+            plan_limits_exists = plan_limits_result[0] if plan_limits_result else False
+            
+            if not table_exists:
+                # Tables will be created by SQLModel.metadata.create_all in init_db
+                # But we can create them explicitly here if needed
+                create_tenantlimit = text("""
+                    CREATE TABLE IF NOT EXISTS tenantlimit (
+                        id SERIAL PRIMARY KEY,
+                        tenant_id INTEGER UNIQUE NOT NULL,
+                        plan_type VARCHAR(50) NOT NULL DEFAULT 'starter',
+                        max_leads INTEGER NOT NULL DEFAULT 100,
+                        max_users INTEGER NOT NULL DEFAULT 3,
+                        max_items INTEGER NOT NULL DEFAULT 50,
+                        max_api_calls INTEGER NOT NULL DEFAULT 1000,
+                        created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+                        updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+                        FOREIGN KEY (tenant_id) REFERENCES tenant(id)
+                    )
+                """)
+                create_apicalllog = text("""
+                    CREATE TABLE IF NOT EXISTS apicalllog (
+                        id SERIAL PRIMARY KEY,
+                        tenant_id INTEGER NOT NULL,
+                        endpoint VARCHAR(500) NOT NULL,
+                        method VARCHAR(10) NOT NULL,
+                        user_id INTEGER,
+                        created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+                        FOREIGN KEY (tenant_id) REFERENCES tenant(id),
+                        FOREIGN KEY (user_id) REFERENCES "user"(id)
+                    )
+                """)
+                session.exec(create_tenantlimit)
+                session.exec(create_apicalllog)
+                
+                # Criar índices para melhor performance
+                try:
+                    idx_tenant_id = text("CREATE INDEX IF NOT EXISTS idx_apicalllog_tenant_id ON apicalllog(tenant_id)")
+                    idx_created_at = text("CREATE INDEX IF NOT EXISTS idx_apicalllog_created_at ON apicalllog(created_at)")
+                    idx_tenant_created = text("CREATE INDEX IF NOT EXISTS idx_apicalllog_tenant_created ON apicalllog(tenant_id, created_at)")
+                    session.exec(idx_tenant_id)
+                    session.exec(idx_created_at)
+                    session.exec(idx_tenant_created)
+                    print("✓ Created indexes for apicalllog table")
+                except Exception as idx_error:
+                    print(f"Warning: Could not create indexes for apicalllog: {idx_error}")
+                
+                session.commit()
+                print("✓ Created tenantlimit and apicalllog tables")
+            else:
+                print("✓ tenantlimit and apicalllog tables already exist")
+            
+            if not plan_limits_exists:
+                create_planlimitdefaults = text("""
+                    CREATE TABLE IF NOT EXISTS planlimitdefaults (
+                        id SERIAL PRIMARY KEY,
+                        plan_type VARCHAR(50) UNIQUE NOT NULL,
+                        max_leads INTEGER NOT NULL DEFAULT 100,
+                        max_users INTEGER NOT NULL DEFAULT 3,
+                        max_items INTEGER NOT NULL DEFAULT 50,
+                        max_api_calls INTEGER NOT NULL DEFAULT 1000,
+                        created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+                        updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
+                    )
+                """)
+                session.exec(create_planlimitdefaults)
+                session.commit()
+                print("✓ Created planlimitdefaults table")
+            else:
+                print("✓ planlimitdefaults table already exists")
+            
+            # Initialize default plan limits
+            plan_defaults = {
+                PlanType.STARTER: {
+                    "max_leads": 100,
+                    "max_users": 3,
+                    "max_items": 50,
+                    "max_api_calls": 1000
+                },
+                PlanType.PROFESSIONAL: {
+                    "max_leads": 1000,
+                    "max_users": 10,
+                    "max_items": 500,
+                    "max_api_calls": 10000
+                },
+                PlanType.ENTERPRISE: {
+                    "max_leads": -1,  # Ilimitado
+                    "max_users": -1,
+                    "max_items": -1,
+                    "max_api_calls": -1
+                }
+            }
+            
+            for plan_type, defaults in plan_defaults.items():
+                existing_plan_limit = session.exec(
+                    text("SELECT id FROM planlimitdefaults WHERE plan_type = :plan_type"),
+                    {"plan_type": plan_type.value}
+                ).first()
+                
+                if not existing_plan_limit:
+                    insert_plan_limit = text("""
+                        INSERT INTO planlimitdefaults (plan_type, max_leads, max_users, max_items, max_api_calls, created_at, updated_at)
+                        VALUES (:plan_type, :max_leads, :max_users, :max_items, :max_api_calls, NOW(), NOW())
+                    """)
+                    session.exec(
+                        insert_plan_limit,
+                        {
+                            "plan_type": plan_type.value,
+                            **defaults
+                        }
+                    )
+                    session.commit()
+                    print(f"✓ Initialized default limits for plan {plan_type.value}")
+            
+            # Initialize default limits for existing tenants
+            all_tenants = session.exec(text("SELECT id FROM tenant")).all()
+            
+            for tenant_id in all_tenants:
+                # Check if limit already exists for this tenant
+                existing_limit = session.exec(
+                    text("SELECT id FROM tenantlimit WHERE tenant_id = :tenant_id"),
+                    {"tenant_id": tenant_id}
+                ).first()
+                
+                if not existing_limit:
+                    # Create default Starter plan limits
+                    insert_query = text("""
+                        INSERT INTO tenantlimit (tenant_id, plan_type, max_leads, max_users, max_items, max_api_calls, created_at, updated_at)
+                        VALUES (:tenant_id, :plan_type, :max_leads, :max_users, :max_items, :max_api_calls, NOW(), NOW())
+                    """)
+                    session.exec(
+                        insert_query,
+                        {
+                            "tenant_id": tenant_id,
+                            "plan_type": PlanType.STARTER.value,
+                            "max_leads": 100,
+                            "max_users": 3,
+                            "max_items": 50,
+                            "max_api_calls": 1000
+                        }
+                    )
+                    session.commit()
+                    print(f"✓ Initialized default limits for tenant {tenant_id}")
+            
+        except Exception as e:
+            session.rollback()
+            print(f"Migration warning (tenant limits): {e}")
+
+
+def migrate_orders_tables():
+    """Create order, orderitem, and orderstatushistory tables"""
+    from app.models import Order, OrderItem, OrderStatusHistory
+    
+    with Session(engine) as session:
+        try:
+            # Check if order table exists
+            table_check = text("""
+                SELECT EXISTS (
+                    SELECT FROM information_schema.tables 
+                    WHERE table_name = 'order'
+                )
+            """)
+            result = session.exec(table_check).first()
+            table_exists = result[0] if result else False
+            
+            if not table_exists:
+                # Tables will be created by SQLModel.metadata.create_all in init_db
+                # But we can create them explicitly here if needed
+                create_order = text("""
+                    CREATE TABLE IF NOT EXISTS "order" (
+                        id SERIAL PRIMARY KEY,
+                        tenant_id INTEGER NOT NULL,
+                        proposal_id INTEGER,
+                        contact_id INTEGER,
+                        account_id INTEGER,
+                        customer_name VARCHAR(255) NOT NULL,
+                        customer_email VARCHAR(255),
+                        customer_phone VARCHAR(50),
+                        status VARCHAR(50) NOT NULL DEFAULT 'pending',
+                        total_amount DECIMAL(10, 2) NOT NULL,
+                        currency VARCHAR(10) NOT NULL DEFAULT 'BRL',
+                        notes TEXT,
+                        owner_id INTEGER NOT NULL,
+                        created_by_id INTEGER NOT NULL,
+                        created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+                        updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+                        FOREIGN KEY (tenant_id) REFERENCES tenant(id),
+                        FOREIGN KEY (proposal_id) REFERENCES proposal(id),
+                        FOREIGN KEY (contact_id) REFERENCES contact(id),
+                        FOREIGN KEY (account_id) REFERENCES account(id),
+                        FOREIGN KEY (owner_id) REFERENCES "user"(id),
+                        FOREIGN KEY (created_by_id) REFERENCES "user"(id)
+                    )
+                """)
+                create_orderitem = text("""
+                    CREATE TABLE IF NOT EXISTS orderitem (
+                        id SERIAL PRIMARY KEY,
+                        tenant_id INTEGER NOT NULL,
+                        order_id INTEGER NOT NULL,
+                        item_id INTEGER NOT NULL,
+                        quantity INTEGER NOT NULL,
+                        unit_price DECIMAL(10, 2) NOT NULL,
+                        subtotal DECIMAL(10, 2) NOT NULL,
+                        FOREIGN KEY (tenant_id) REFERENCES tenant(id),
+                        FOREIGN KEY (order_id) REFERENCES "order"(id) ON DELETE CASCADE,
+                        FOREIGN KEY (item_id) REFERENCES item(id)
+                    )
+                """)
+                create_orderstatushistory = text("""
+                    CREATE TABLE IF NOT EXISTS orderstatushistory (
+                        id SERIAL PRIMARY KEY,
+                        tenant_id INTEGER NOT NULL,
+                        order_id INTEGER NOT NULL,
+                        status VARCHAR(50) NOT NULL,
+                        notes TEXT,
+                        changed_by_id INTEGER NOT NULL,
+                        created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+                        FOREIGN KEY (tenant_id) REFERENCES tenant(id),
+                        FOREIGN KEY (order_id) REFERENCES "order"(id) ON DELETE CASCADE,
+                        FOREIGN KEY (changed_by_id) REFERENCES "user"(id)
+                    )
+                """)
+                session.exec(create_order)
+                session.exec(create_orderitem)
+                session.exec(create_orderstatushistory)
+                
+                # Criar índices
+                try:
+                    idx_order_tenant = text("CREATE INDEX IF NOT EXISTS idx_order_tenant_id ON \"order\"(tenant_id)")
+                    idx_order_proposal = text("CREATE INDEX IF NOT EXISTS idx_order_proposal_id ON \"order\"(proposal_id)")
+                    idx_order_contact = text("CREATE INDEX IF NOT EXISTS idx_order_contact_id ON \"order\"(contact_id)")
+                    idx_order_account = text("CREATE INDEX IF NOT EXISTS idx_order_account_id ON \"order\"(account_id)")
+                    idx_orderitem_order = text("CREATE INDEX IF NOT EXISTS idx_orderitem_order_id ON orderitem(order_id)")
+                    idx_orderitem_item = text("CREATE INDEX IF NOT EXISTS idx_orderitem_item_id ON orderitem(item_id)")
+                    idx_orderstatushistory_order = text("CREATE INDEX IF NOT EXISTS idx_orderstatushistory_order_id ON orderstatushistory(order_id)")
+                    session.exec(idx_order_tenant)
+                    session.exec(idx_order_proposal)
+                    session.exec(idx_order_contact)
+                    session.exec(idx_order_account)
+                    session.exec(idx_orderitem_order)
+                    session.exec(idx_orderitem_item)
+                    session.exec(idx_orderstatushistory_order)
+                    print("✓ Created indexes for orders tables")
+                except Exception as idx_error:
+                    print(f"Warning: Could not create indexes for orders: {idx_error}")
+                
+                session.commit()
+                print("✓ Created order, orderitem, and orderstatushistory tables")
+            else:
+                # Verificar se precisa adicionar colunas contact_id e account_id
+                try:
+                    check_contact = text("""
+                        SELECT column_name 
+                        FROM information_schema.columns 
+                        WHERE table_name = 'order' AND column_name = 'contact_id'
+                    """)
+                    result_contact = session.exec(check_contact).first()
+                    if not result_contact:
+                        add_contact = text("ALTER TABLE \"order\" ADD COLUMN contact_id INTEGER REFERENCES contact(id)")
+                        add_account = text("ALTER TABLE \"order\" ADD COLUMN account_id INTEGER REFERENCES account(id)")
+                        session.exec(add_contact)
+                        session.exec(add_account)
+                        # Criar índices
+                        idx_order_contact = text("CREATE INDEX IF NOT EXISTS idx_order_contact_id ON \"order\"(contact_id)")
+                        idx_order_account = text("CREATE INDEX IF NOT EXISTS idx_order_account_id ON \"order\"(account_id)")
+                        session.exec(idx_order_contact)
+                        session.exec(idx_order_account)
+                        session.commit()
+                        print("✓ Added contact_id and account_id columns to order table")
+                    else:
+                        print("✓ order table already has contact_id and account_id columns")
+                except Exception as e:
+                    print(f"Warning: Could not add contact_id/account_id columns: {e}")
+                    session.rollback()
+                
+                print("✓ order, orderitem, and orderstatushistory tables already exist")
+            
+        except Exception as e:
+            session.rollback()
+            print(f"Migration warning (orders tables): {e}")
+
+
+def migrate_integrations_tables():
+    """Create tenantintegration table"""
+    from app.models import TenantIntegration, IntegrationType
+    from sqlalchemy import text
+    
+    with Session(engine) as session:
+        try:
+            # Check if tenantintegration table exists
+            table_check = text("""
+                SELECT EXISTS (
+                    SELECT FROM information_schema.tables 
+                    WHERE table_name = 'tenantintegration'
+                )
+            """)
+            result = session.exec(table_check).first()
+            table_exists = result[0] if result else False
+            
+            if not table_exists:
+                # Tables will be created by SQLModel.metadata.create_all in init_db
+                # But we can create explicitly here if needed
+                create_table = text("""
+                    CREATE TABLE IF NOT EXISTS tenantintegration (
+                        id SERIAL PRIMARY KEY,
+                        tenant_id INTEGER NOT NULL,
+                        integration_type VARCHAR(50) NOT NULL,
+                        is_active BOOLEAN NOT NULL DEFAULT FALSE,
+                        credentials_encrypted JSONB,
+                        config JSONB,
+                        last_sync_at TIMESTAMP WITH TIME ZONE,
+                        created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+                        updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+                        FOREIGN KEY (tenant_id) REFERENCES tenant(id),
+                        UNIQUE(tenant_id, integration_type)
+                    )
+                """)
+                session.exec(create_table)
+                
+                # Criar índices
+                session.exec(text("CREATE INDEX IF NOT EXISTS idx_tenantintegration_tenant_id ON tenantintegration(tenant_id)"))
+                session.exec(text("CREATE INDEX IF NOT EXISTS idx_tenantintegration_type ON tenantintegration(integration_type)"))
+                
+                session.commit()
+                print("✓ Created tenantintegration table")
+            else:
+                print("✓ tenantintegration table already exists")
+        except Exception as e:
+            session.rollback()
+            print(f"Migration warning (integrations tables): {e}")
+
+
+def migrate_forms_tables():
+    """Create form and formfield tables"""
+    from app.models import Form, FormField
+    from sqlalchemy import text
+    
+    with Session(engine) as session:
+        try:
+            # Check if form table exists
+            table_check = text("""
+                SELECT EXISTS (
+                    SELECT FROM information_schema.tables 
+                    WHERE table_name = 'form'
+                )
+            """)
+            result = session.exec(table_check).first()
+            table_exists = result[0] if result else False
+            
+            if not table_exists:
+                create_form_table = text("""
+                    CREATE TABLE IF NOT EXISTS form (
+                        id SERIAL PRIMARY KEY,
+                        tenant_id INTEGER NOT NULL,
+                        name VARCHAR(255) NOT NULL,
+                        description TEXT,
+                        button_text VARCHAR(100) NOT NULL DEFAULT 'Enviar',
+                        button_color VARCHAR(7) NOT NULL DEFAULT '#3b82f6',
+                        success_message TEXT NOT NULL DEFAULT 'Obrigado! Entraremos em contato em breve.',
+                        is_active BOOLEAN NOT NULL DEFAULT TRUE,
+                        created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+                        updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+                        FOREIGN KEY (tenant_id) REFERENCES tenant(id)
+                    )
+                """)
+                create_formfield_table = text("""
+                    CREATE TABLE IF NOT EXISTS formfield (
+                        id SERIAL PRIMARY KEY,
+                        form_id INTEGER NOT NULL,
+                        field_type VARCHAR(50) NOT NULL,
+                        label VARCHAR(255) NOT NULL,
+                        name VARCHAR(255) NOT NULL,
+                        placeholder VARCHAR(255),
+                        required BOOLEAN NOT NULL DEFAULT FALSE,
+                        "order" INTEGER NOT NULL DEFAULT 0,
+                        options JSONB,
+                        FOREIGN KEY (form_id) REFERENCES form(id) ON DELETE CASCADE
+                    )
+                """)
+                session.exec(create_form_table)
+                session.exec(create_formfield_table)
+                
+                # Criar índices
+                session.exec(text("CREATE INDEX IF NOT EXISTS idx_form_tenant_id ON form(tenant_id)"))
+                session.exec(text("CREATE INDEX IF NOT EXISTS idx_formfield_form_id ON formfield(form_id)"))
+                
+                session.commit()
+                print("✓ Created form and formfield tables")
+            else:
+                print("✓ form and formfield tables already exist")
+        except Exception as e:
+            session.rollback()
+            print(f"Migration warning (forms tables): {e}")
+
+
 def init_db():
     """Initialize database tables"""
     SQLModel.metadata.create_all(engine)
@@ -827,6 +1245,8 @@ def init_db():
     migrate_task_table()
     migrate_proposal_table()
     migrate_items_tables()
+    migrate_tenant_limits()
+    migrate_orders_tables()
     # Add foreign keys for account_id and contact_id after tables are created
     migrate_lead_foreign_keys()
     # Garantir que todos os leads existentes tenham owner_id e created_by_id

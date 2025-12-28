@@ -15,7 +15,7 @@ from app.models import (
     LeadComment, LeadCommentCreate, LeadCommentResponse,
     Account, AccountCreate, Contact, ContactCreate, Opportunity, OpportunityCreate, SalesStage
 )
-from app.dependencies import get_current_active_user, apply_ownership_filter, ensure_ownership, require_ownership, check_ownership
+from app.dependencies import get_current_active_user, apply_ownership_filter, ensure_ownership, require_ownership, check_ownership, check_limit
 from app.services.audit_service import log_convert
 from app.services.enrichment_service import enrich_lead
 from app.services.kpi_service import track_kpi_activity
@@ -226,6 +226,8 @@ async def create_lead(
     current_user: User = Depends(get_current_active_user)
 ):
     """Create a new lead for the current tenant"""
+    # Verificar limite antes de criar
+    await check_limit("leads", session, current_user)
     # Preparar dados com ownership
     lead_dict = lead_data.dict()
     lead_dict = ensure_ownership(lead_dict, current_user)

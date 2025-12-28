@@ -11,6 +11,9 @@ import {
   X,
   Radio,
   FileCode,
+  BarChart3,
+  Plug,
+  FileEdit,
 } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -22,9 +25,12 @@ import { Security } from './sections/Security'
 import { ApiKeys } from './sections/ApiKeys'
 import { LivePulse } from './sections/LivePulse'
 import { ProposalTemplates } from './sections/ProposalTemplates'
+import { UsageSection } from './sections/UsageSection'
+import { Integrations } from './sections/Integrations'
+import { FormBuilder } from './sections/FormBuilder'
 import { cn } from '@/lib/utils'
 
-type SettingsSection = 'profile' | 'branding' | 'team' | 'billing' | 'security' | 'apikeys' | 'livepulse' | 'proposal-templates'
+type SettingsSection = 'profile' | 'branding' | 'team' | 'billing' | 'security' | 'apikeys' | 'livepulse' | 'proposal-templates' | 'usage' | 'integrations' | 'form-builder'
 
 interface NavItem {
   id: SettingsSection
@@ -42,10 +48,13 @@ export function SettingsHub() {
     { id: 'branding', label: 'Branding', icon: Palette },
     { id: 'team', label: 'Equipe', icon: Users },
     { id: 'billing', label: 'Faturamento', icon: CreditCard },
+    { id: 'usage', label: 'Uso e Limites', icon: BarChart3 },
     { id: 'security', label: 'Segurança', icon: Shield },
     { id: 'apikeys', label: 'API Keys', icon: Key },
     { id: 'livepulse', label: 'Live Pulse', icon: Radio },
     { id: 'proposal-templates', label: 'Templates de Proposta', icon: FileCode },
+    { id: 'integrations', label: 'Integrações', icon: Plug },
+    { id: 'form-builder', label: 'Form Builder', icon: FileEdit },
   ]
 
   const renderSection = () => {
@@ -66,6 +75,12 @@ export function SettingsHub() {
         return <LivePulse />
       case 'proposal-templates':
         return <ProposalTemplates />
+      case 'usage':
+        return <UsageSection />
+      case 'integrations':
+        return <Integrations />
+      case 'form-builder':
+        return <FormBuilder />
       default:
         return <Profile />
     }

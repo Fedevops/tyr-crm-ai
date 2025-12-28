@@ -8,7 +8,7 @@ from app.models import (
     StockTransaction, StockTransactionCreate, StockTransactionResponse, StockTransactionType,
     User
 )
-from app.dependencies import get_current_active_user, apply_ownership_filter, ensure_ownership, require_ownership
+from app.dependencies import get_current_active_user, apply_ownership_filter, ensure_ownership, require_ownership, check_limit
 from app.services.audit_service import log_create, log_update, log_delete
 import logging
 import os
@@ -101,6 +101,8 @@ async def create_item(
     current_user: User = Depends(get_current_active_user)
 ):
     """Create a new item (product or service)"""
+    # Verificar limite antes de criar
+    await check_limit("items", session, current_user)
     # Verificar se SKU já existe para este tenant (se fornecido)
     if item_data.sku:
         existing_item = session.exec(

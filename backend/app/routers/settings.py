@@ -1,13 +1,13 @@
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlmodel import Session, select
+from sqlmodel import Session, select, func, and_
 from pydantic import BaseModel, EmailStr
-from typing import Optional, List
+from typing import Optional, List, Dict
 from datetime import datetime, timedelta
 import json
 from app.database import get_session
-from app.models import User, Tenant, CompanyProfile
+from app.models import User, Tenant, CompanyProfile, TenantLimit, Lead, Item, ApiCallLog, PlanLimitDefaults, PlanType, UserRole
 from app.auth import verify_password, get_password_hash
-from app.dependencies import get_current_active_user
+from app.dependencies import get_current_active_user, check_limit
 
 router = APIRouter()
 
@@ -187,6 +187,9 @@ async def invite_member(
     current_user: User = Depends(get_current_active_user)
 ):
     """Invite a new team member"""
+    # Verificar limite de usuários antes de convidar
+    await check_limit("users", session, current_user)
+    
     # Verificar se usuário já existe
     existing_user = session.exec(
         select(User).where(User.email == invite_data.email)
@@ -514,4 +517,343 @@ async def update_webhook(
     """Update webhook URL"""
     # TODO: adicionar campo webhook_url no Tenant ou CompanyProfile
     return {"message": "Webhook updated successfully", "url": webhook_data.url}
+
+
+# ==================== USAGE & LIMITS ====================
+
+class UsageMetricResponse(BaseModel):
+    current: int
+    max: int
+    percentage: float
+
+
+class UsageResponse(BaseModel):
+    plan_type: str
+    limits: Dict[str, UsageMetricResponse]
+
+
+@router.get("/usage", response_model=UsageResponse)
+async def get_usage(
+    session: Session = Depends(get_session),
+    current_user: User = Depends(get_current_active_user)
+):
+    """Get current usage and limits for the tenant"""
+    tenant_id = current_user.tenant_id
+    
+    # Buscar limites do tenant
+    tenant_limit = session.exec(
+        select(TenantLimit).where(TenantLimit.tenant_id == tenant_id)
+    ).first()
+    
+    # Se não existir, criar com valores padrão do plan_type
+    if not tenant_limit:
+        plan_type = PlanType.STARTER
+        default_limits = get_default_limits_for_plan(session, plan_type)
+        tenant_limit = TenantLimit(
+            tenant_id=tenant_id,
+            plan_type=plan_type,
+            max_leads=default_limits.max_leads,
+            max_users=default_limits.max_users,
+            max_items=default_limits.max_items,
+            max_api_calls=default_limits.max_api_calls
+        )
+        session.add(tenant_limit)
+        session.commit()
+        session.refresh(tenant_limit)
+    
+    # Calcular uso atual em tempo real
+    # Leads
+    leads_count = session.exec(
+        select(func.count(Lead.id)).where(Lead.tenant_id == tenant_id)
+    ).one() or 0
+    
+    # Users (apenas ativos)
+    users_count = session.exec(
+        select(func.count(User.id)).where(
+            and_(
+                User.tenant_id == tenant_id,
+                User.is_active == True
+            )
+        )
+    ).one() or 0
+    
+    # Items
+    items_count = session.exec(
+        select(func.count(Item.id)).where(Item.tenant_id == tenant_id)
+    ).one() or 0
+    
+    # API Calls (último mês)
+    month_start = datetime.utcnow().replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    api_calls_count = session.exec(
+        select(func.count(ApiCallLog.id)).where(
+            and_(
+                ApiCallLog.tenant_id == tenant_id,
+                ApiCallLog.created_at >= month_start
+            )
+        )
+    ).one() or 0
+    
+    # Calcular percentuais
+    def calculate_usage(current: int, max_limit: int) -> UsageMetricResponse:
+        if max_limit == -1:  # Ilimitado
+            percentage = 0.0
+            # Usar um valor muito grande para representar ilimitado no frontend
+            max_value = 999999999
+        else:
+            percentage = min((current / max_limit * 100) if max_limit > 0 else 0, 100.0)
+            max_value = max_limit
+        return UsageMetricResponse(
+            current=current,
+            max=max_value,
+            percentage=round(percentage, 2)
+        )
+    
+    return UsageResponse(
+        plan_type=tenant_limit.plan_type.value,
+        limits={
+            "leads": calculate_usage(leads_count, tenant_limit.max_leads),
+            "users": calculate_usage(users_count, tenant_limit.max_users),
+            "items": calculate_usage(items_count, tenant_limit.max_items),
+            "api_calls": calculate_usage(api_calls_count, tenant_limit.max_api_calls)
+        }
+    )
+
+
+# ==================== PLAN LIMITS MANAGEMENT ====================
+
+class PlanLimitDefaultsResponse(BaseModel):
+    plan_type: str
+    max_leads: int
+    max_users: int
+    max_items: int
+    max_api_calls: int
+    created_at: str
+    updated_at: str
+
+
+class UpdatePlanLimitDefaultsRequest(BaseModel):
+    max_leads: Optional[int] = None
+    max_users: Optional[int] = None
+    max_items: Optional[int] = None
+    max_api_calls: Optional[int] = None
+
+
+class UpdateTenantLimitsRequest(BaseModel):
+    plan_type: Optional[PlanType] = None
+    max_leads: Optional[int] = None
+    max_users: Optional[int] = None
+    max_items: Optional[int] = None
+    max_api_calls: Optional[int] = None
+
+
+def get_default_limits_for_plan(session: Session, plan_type: PlanType) -> PlanLimitDefaults:
+    """Obter limites padrão para um tipo de plano, criando se não existir"""
+    plan_limits = session.exec(
+        select(PlanLimitDefaults).where(PlanLimitDefaults.plan_type == plan_type)
+    ).first()
+    
+    if not plan_limits:
+        # Criar limites padrão baseado no tipo de plano
+        defaults = {
+            PlanType.STARTER: {
+                "max_leads": 100,
+                "max_users": 3,
+                "max_items": 50,
+                "max_api_calls": 1000
+            },
+            PlanType.PROFESSIONAL: {
+                "max_leads": 1000,
+                "max_users": 10,
+                "max_items": 500,
+                "max_api_calls": 10000
+            },
+            PlanType.ENTERPRISE: {
+                "max_leads": -1,  # Ilimitado
+                "max_users": -1,
+                "max_items": -1,
+                "max_api_calls": -1
+            }
+        }
+        
+        plan_limits = PlanLimitDefaults(
+            plan_type=plan_type,
+            **defaults.get(plan_type, defaults[PlanType.STARTER])
+        )
+        session.add(plan_limits)
+        session.commit()
+        session.refresh(plan_limits)
+    
+    return plan_limits
+
+
+@router.get("/usage/plan-limits", response_model=List[PlanLimitDefaultsResponse])
+async def get_plan_limits(
+    session: Session = Depends(get_session),
+    current_user: User = Depends(get_current_active_user)
+):
+    """Listar limites padrão de todos os tipos de plano (apenas admin)"""
+    if current_user.role != UserRole.ADMIN:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Apenas administradores podem visualizar limites de planos"
+        )
+    
+    # Garantir que todos os planos tenham limites definidos
+    for plan_type in PlanType:
+        get_default_limits_for_plan(session, plan_type)
+    
+    all_limits = session.exec(select(PlanLimitDefaults)).all()
+    return [
+        PlanLimitDefaultsResponse(
+            plan_type=limit.plan_type.value,
+            max_leads=limit.max_leads,
+            max_users=limit.max_users,
+            max_items=limit.max_items,
+            max_api_calls=limit.max_api_calls,
+            created_at=limit.created_at.isoformat(),
+            updated_at=limit.updated_at.isoformat()
+        )
+        for limit in all_limits
+    ]
+
+
+@router.get("/usage/plan-limits/{plan_type}", response_model=PlanLimitDefaultsResponse)
+async def get_plan_limit(
+    plan_type: PlanType,
+    session: Session = Depends(get_session),
+    current_user: User = Depends(get_current_active_user)
+):
+    """Obter limites padrão de um tipo de plano específico (apenas admin)"""
+    if current_user.role != UserRole.ADMIN:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Apenas administradores podem visualizar limites de planos"
+        )
+    
+    plan_limits = get_default_limits_for_plan(session, plan_type)
+    return PlanLimitDefaultsResponse(
+        plan_type=plan_limits.plan_type.value,
+        max_leads=plan_limits.max_leads,
+        max_users=plan_limits.max_users,
+        max_items=plan_limits.max_items,
+        max_api_calls=plan_limits.max_api_calls,
+        created_at=plan_limits.created_at.isoformat(),
+        updated_at=plan_limits.updated_at.isoformat()
+    )
+
+
+@router.put("/usage/plan-limits/{plan_type}", response_model=PlanLimitDefaultsResponse)
+async def update_plan_limits(
+    plan_type: PlanType,
+    limits_data: UpdatePlanLimitDefaultsRequest,
+    session: Session = Depends(get_session),
+    current_user: User = Depends(get_current_active_user)
+):
+    """Atualizar limites padrão de um tipo de plano (apenas admin)"""
+    if current_user.role != UserRole.ADMIN:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Apenas administradores podem atualizar limites de planos"
+        )
+    
+    plan_limits = get_default_limits_for_plan(session, plan_type)
+    
+    # Atualizar campos fornecidos
+    if limits_data.max_leads is not None:
+        plan_limits.max_leads = limits_data.max_leads
+    if limits_data.max_users is not None:
+        plan_limits.max_users = limits_data.max_users
+    if limits_data.max_items is not None:
+        plan_limits.max_items = limits_data.max_items
+    if limits_data.max_api_calls is not None:
+        plan_limits.max_api_calls = limits_data.max_api_calls
+    
+    plan_limits.updated_at = datetime.utcnow()
+    session.add(plan_limits)
+    session.commit()
+    session.refresh(plan_limits)
+    
+    return PlanLimitDefaultsResponse(
+        plan_type=plan_limits.plan_type.value,
+        max_leads=plan_limits.max_leads,
+        max_users=plan_limits.max_users,
+        max_items=plan_limits.max_items,
+        max_api_calls=plan_limits.max_api_calls,
+        created_at=plan_limits.created_at.isoformat(),
+        updated_at=plan_limits.updated_at.isoformat()
+    )
+
+
+@router.put("/usage/limits", response_model=dict)
+async def update_tenant_limits(
+    limits_data: UpdateTenantLimitsRequest,
+    session: Session = Depends(get_session),
+    current_user: User = Depends(get_current_active_user)
+):
+    """Atualizar limites do tenant atual (apenas admin do tenant)"""
+    if current_user.role != UserRole.ADMIN:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Apenas administradores podem atualizar limites do tenant"
+        )
+    
+    tenant_id = current_user.tenant_id
+    tenant_limit = session.exec(
+        select(TenantLimit).where(TenantLimit.tenant_id == tenant_id)
+    ).first()
+    
+    if not tenant_limit:
+        # Se não existir, criar usando limites padrão do plan_type
+        plan_type = limits_data.plan_type or PlanType.STARTER
+        default_limits = get_default_limits_for_plan(session, plan_type)
+        
+        tenant_limit = TenantLimit(
+            tenant_id=tenant_id,
+            plan_type=plan_type,
+            max_leads=default_limits.max_leads,
+            max_users=default_limits.max_users,
+            max_items=default_limits.max_items,
+            max_api_calls=default_limits.max_api_calls
+        )
+        session.add(tenant_limit)
+    else:
+        # Se mudou o plan_type, atualizar limites usando os padrões do novo plano
+        if limits_data.plan_type and limits_data.plan_type != tenant_limit.plan_type:
+            default_limits = get_default_limits_for_plan(session, limits_data.plan_type)
+            tenant_limit.plan_type = limits_data.plan_type
+            # Aplicar limites padrão apenas se não foram especificados explicitamente
+            if limits_data.max_leads is None:
+                tenant_limit.max_leads = default_limits.max_leads
+            if limits_data.max_users is None:
+                tenant_limit.max_users = default_limits.max_users
+            if limits_data.max_items is None:
+                tenant_limit.max_items = default_limits.max_items
+            if limits_data.max_api_calls is None:
+                tenant_limit.max_api_calls = default_limits.max_api_calls
+    
+    # Atualizar campos fornecidos explicitamente
+    if limits_data.max_leads is not None:
+        tenant_limit.max_leads = limits_data.max_leads
+    if limits_data.max_users is not None:
+        tenant_limit.max_users = limits_data.max_users
+    if limits_data.max_items is not None:
+        tenant_limit.max_items = limits_data.max_items
+    if limits_data.max_api_calls is not None:
+        tenant_limit.max_api_calls = limits_data.max_api_calls
+    
+    tenant_limit.updated_at = datetime.utcnow()
+    session.add(tenant_limit)
+    session.commit()
+    session.refresh(tenant_limit)
+    
+    return {
+        "message": "Limites atualizados com sucesso",
+        "limits": {
+            "plan_type": tenant_limit.plan_type.value,
+            "max_leads": tenant_limit.max_leads,
+            "max_users": tenant_limit.max_users,
+            "max_items": tenant_limit.max_items,
+            "max_api_calls": tenant_limit.max_api_calls
+        }
+    }
 

@@ -24,6 +24,7 @@ import { KPIOverview } from './pages/KPI/KPIOverview'
 import { LivePulseDashboard } from './pages/LivePulse/LivePulseDashboard'
 import { VisitReports } from './pages/VisitReports'
 import { CatalogManager } from './pages/CatalogManager'
+import { Orders } from './pages/Orders'
 import { Toaster } from './components/ui/toaster'
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
@@ -181,6 +182,16 @@ function AppRoutes() {
           <ProtectedRoute>
             <Layout>
               <CatalogManager />
+            </Layout>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/orders"
+        element={
+          <ProtectedRoute>
+            <Layout>
+              <Orders />
             </Layout>
           </ProtectedRoute>
         }

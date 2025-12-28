@@ -1,5 +1,5 @@
 from sqlmodel import SQLModel, Field, Relationship, Column, JSON
-from typing import Optional, List
+from typing import Optional, List, Dict
 from datetime import datetime
 from enum import Enum
 from pydantic import field_validator
@@ -600,6 +600,7 @@ class Account(SQLModel, table=True):
     # Relationships
     contacts: List["Contact"] = Relationship(back_populates="account")
     opportunities: List["Opportunity"] = Relationship(back_populates="account")
+    orders: List["Order"] = Relationship()
 
 
 class AccountCreate(SQLModel):
@@ -643,6 +644,9 @@ class AccountResponse(SQLModel):
     created_by_id: int
     created_at: datetime
     updated_at: datetime
+    # Estatísticas
+    orders_count: Optional[int] = 0
+    total_orders_value: Optional[float] = 0.0
 
 
 class Contact(SQLModel, table=True):
@@ -931,6 +935,7 @@ class Proposal(SQLModel, table=True):
     opportunity: Optional["Opportunity"] = Relationship(back_populates="proposals")
     template: Optional["ProposalTemplate"] = Relationship(back_populates="proposals")
     comments: List["ProposalComment"] = Relationship(back_populates="proposal")
+    orders: List["Order"] = Relationship(back_populates="proposal")
 
 
 class ProposalCreate(SQLModel):
@@ -1417,3 +1422,350 @@ class StockTransactionResponse(SQLModel):
     created_at: datetime
     user_name: Optional[str] = None
     user_email: Optional[str] = None
+
+
+# ==================== USAGE & LIMITS MODELS ====================
+
+class PlanType(str, Enum):
+    STARTER = "starter"
+    PROFESSIONAL = "professional"
+    ENTERPRISE = "enterprise"
+
+
+class PlanLimitDefaults(SQLModel, table=True):
+    """Limites padrão por tipo de plano (configurável)"""
+    id: Optional[int] = Field(default=None, primary_key=True)
+    plan_type: PlanType = Field(unique=True, index=True)
+    max_leads: int = Field(default=100)
+    max_users: int = Field(default=3)
+    max_items: int = Field(default=50)
+    max_api_calls: int = Field(default=1000)  # Por mês
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class TenantLimit(SQLModel, table=True):
+    """Limites de uso por Tenant"""
+    id: Optional[int] = Field(default=None, primary_key=True)
+    tenant_id: int = Field(foreign_key="tenant.id", unique=True, index=True)
+    plan_type: PlanType = Field(default=PlanType.STARTER)
+    max_leads: int = Field(default=100)
+    max_users: int = Field(default=3)
+    max_items: int = Field(default=50)
+    max_api_calls: int = Field(default=1000)  # Por mês
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class ApiCallLog(SQLModel, table=True):
+    """Log de chamadas de API para tracking de uso"""
+    id: Optional[int] = Field(default=None, primary_key=True)
+    tenant_id: int = Field(foreign_key="tenant.id", index=True)
+    endpoint: str
+    method: str  # GET, POST, PUT, DELETE, etc.
+    user_id: Optional[int] = Field(foreign_key="user.id", default=None)
+    created_at: datetime = Field(default_factory=datetime.utcnow, index=True)
+
+
+# ==================== ORDERS MODELS ====================
+
+class OrderStatus(str, Enum):
+    PENDING = "pending"        # Aguardando processamento
+    PROCESSING = "processing"   # Em processamento
+    COMPLETED = "completed"    # Finalizado (estoque decrementado)
+    CANCELLED = "cancelled"    # Cancelado
+    SHIPPED = "shipped"        # Enviado (opcional)
+
+
+class Order(SQLModel, table=True):
+    """Pedidos de Venda"""
+    id: Optional[int] = Field(default=None, primary_key=True)
+    tenant_id: int = Field(foreign_key="tenant.id", index=True)
+    proposal_id: Optional[int] = Field(foreign_key="proposal.id", default=None, index=True)
+    contact_id: Optional[int] = Field(foreign_key="contact.id", default=None, index=True)  # Contato principal
+    account_id: Optional[int] = Field(foreign_key="account.id", default=None, index=True)  # Conta/Empresa
+    customer_name: str  # Nome completo do cliente (backup/display)
+    customer_email: Optional[str] = None  # Email (backup/display)
+    customer_phone: Optional[str] = None  # Telefone (backup/display)
+    status: OrderStatus = Field(default=OrderStatus.PENDING)
+    total_amount: float
+    currency: str = Field(default="BRL")
+    notes: Optional[str] = None
+    # Ownership
+    owner_id: int = Field(foreign_key="user.id", index=True)
+    created_by_id: int = Field(foreign_key="user.id", index=True)
+    # Timestamps
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    
+    # Relationships
+    items: List["OrderItem"] = Relationship(back_populates="order")
+    status_history: List["OrderStatusHistory"] = Relationship(back_populates="order")
+    proposal: Optional["Proposal"] = Relationship(back_populates="orders")
+    contact: Optional["Contact"] = Relationship()
+    account: Optional["Account"] = Relationship()
+
+
+class OrderItem(SQLModel, table=True):
+    """Itens de um Pedido"""
+    id: Optional[int] = Field(default=None, primary_key=True)
+    tenant_id: int = Field(foreign_key="tenant.id", index=True)
+    order_id: int = Field(foreign_key="order.id", index=True)
+    item_id: int = Field(foreign_key="item.id", index=True)
+    quantity: int
+    unit_price: float  # Preço no momento da venda
+    subtotal: float  # quantity * unit_price
+    
+    # Relationships
+    order: Optional[Order] = Relationship(back_populates="items")
+    item: Optional[Item] = Relationship()
+
+
+class OrderStatusHistory(SQLModel, table=True):
+    """Histórico de mudanças de status de pedidos"""
+    id: Optional[int] = Field(default=None, primary_key=True)
+    tenant_id: int = Field(foreign_key="tenant.id", index=True)
+    order_id: int = Field(foreign_key="order.id", index=True)
+    status: OrderStatus
+    notes: Optional[str] = None  # Notas sobre a mudança
+    changed_by_id: int = Field(foreign_key="user.id", index=True)
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    
+    # Relationships
+    order: Optional[Order] = Relationship(back_populates="status_history")
+    changed_by: Optional[User] = Relationship()
+
+
+# Pydantic Models for Orders
+
+class OrderItemCreate(SQLModel):
+    item_id: int
+    quantity: int
+    unit_price: Optional[float] = None  # Se não fornecido, usa preço do item
+
+
+class OrderCreate(SQLModel):
+    contact_id: Optional[int] = None  # ID do contato (prioritário)
+    account_id: Optional[int] = None  # ID da conta (opcional, pode vir do contato)
+    customer_name: Optional[str] = None  # Nome completo (backup se não tiver contato)
+    customer_email: Optional[str] = None
+    customer_phone: Optional[str] = None
+    proposal_id: Optional[int] = None
+    items: List[OrderItemCreate]
+    notes: Optional[str] = None
+    currency: str = Field(default="BRL")
+    owner_id: Optional[int] = None  # Se não especificado, será preenchido com created_by_id
+
+
+class OrderUpdate(SQLModel):
+    status: Optional[OrderStatus] = None
+    notes: Optional[str] = None
+
+
+class OrderItemResponse(SQLModel):
+    id: int
+    tenant_id: int
+    order_id: int
+    item_id: int
+    quantity: int
+    unit_price: float
+    subtotal: float
+    # Item details
+    item_name: Optional[str] = None
+    item_sku: Optional[str] = None
+    item_type: Optional[str] = None
+
+
+class OrderStatusHistoryResponse(SQLModel):
+    id: int
+    tenant_id: int
+    order_id: int
+    status: str
+    notes: Optional[str]
+    changed_by_id: int
+    created_at: datetime
+    # User details
+    changed_by_name: Optional[str] = None
+    changed_by_email: Optional[str] = None
+
+
+class OrderResponse(SQLModel):
+    id: int
+    tenant_id: int
+    proposal_id: Optional[int]
+    contact_id: Optional[int]
+    account_id: Optional[int]
+    customer_name: str
+    customer_email: Optional[str]
+    customer_phone: Optional[str]
+    status: str
+    total_amount: float
+    currency: str
+    notes: Optional[str]
+    owner_id: int
+    created_by_id: int
+    created_at: datetime
+    updated_at: datetime
+    # Relationships
+    items: List[OrderItemResponse] = []
+    status_history: List[OrderStatusHistoryResponse] = []
+    # Dados relacionados
+    contact_name: Optional[str] = None
+    account_name: Optional[str] = None
+
+
+# ==================== INTEGRATIONS ====================
+
+class IntegrationType(str, Enum):
+    WHATSAPP_TWILIO = "whatsapp_twilio"
+    GOOGLE_CALENDAR = "google_calendar"
+    EMAIL_SMTP = "email_smtp"
+    EMAIL_IMAP = "email_imap"
+    TOTVS = "totvs"
+    SALESFORCE = "salesforce"
+
+
+class TenantIntegration(SQLModel, table=True):
+    """Integrações de Tenant"""
+    id: Optional[int] = Field(default=None, primary_key=True)
+    tenant_id: int = Field(foreign_key="tenant.id", index=True)
+    integration_type: IntegrationType
+    is_active: bool = Field(default=False)
+    credentials_encrypted: Optional[str] = Field(default=None, sa_column=Column(JSON))  # JSON criptografado
+    config: Optional[Dict] = Field(default=None, sa_column=Column(JSON))  # Configurações adicionais
+    last_sync_at: Optional[datetime] = None
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class TenantIntegrationCreate(SQLModel):
+    integration_type: IntegrationType
+    credentials: Optional[Dict] = None  # Será criptografado antes de salvar
+    config: Optional[Dict] = None
+    is_active: bool = True
+
+
+class TenantIntegrationUpdate(SQLModel):
+    credentials: Optional[Dict] = None
+    config: Optional[Dict] = None
+    is_active: Optional[bool] = None
+
+
+class TenantIntegrationResponse(SQLModel):
+    id: int
+    tenant_id: int
+    integration_type: str
+    is_active: bool
+    config: Optional[Dict] = None
+    last_sync_at: Optional[datetime] = None
+    created_at: datetime
+    updated_at: datetime
+    # Não incluir credentials_encrypted por segurança
+
+
+# ==================== FORMS ====================
+
+class FormFieldType(str, Enum):
+    TEXT = "text"
+    EMAIL = "email"
+    PHONE = "phone"
+    SELECT = "select"
+    TEXTAREA = "textarea"
+    NUMBER = "number"
+    DATE = "date"
+    CHECKBOX = "checkbox"
+
+
+class Form(SQLModel, table=True):
+    """Formulários de Captura"""
+    id: Optional[int] = Field(default=None, primary_key=True)
+    tenant_id: int = Field(foreign_key="tenant.id", index=True)
+    name: str
+    description: Optional[str] = None
+    button_text: str = Field(default="Enviar")
+    button_color: str = Field(default="#3b82f6")  # Cor hex do botão
+    success_message: str = Field(default="Obrigado! Entraremos em contato em breve.")
+    is_active: bool = Field(default=True)
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    
+    # Relationships
+    fields: List["FormField"] = Relationship(back_populates="form")
+
+
+class FormField(SQLModel, table=True):
+    """Campos de Formulário"""
+    id: Optional[int] = Field(default=None, primary_key=True)
+    form_id: int = Field(foreign_key="form.id", index=True)
+    field_type: FormFieldType
+    label: str
+    name: str  # Nome do campo (usado no HTML)
+    placeholder: Optional[str] = None
+    required: bool = Field(default=False)
+    order: int = Field(default=0)  # Ordem de exibição
+    options: Optional[List[str]] = Field(default=None, sa_column=Column(JSON))  # Para SELECT
+    
+    # Relationships
+    form: Optional["Form"] = Relationship(back_populates="fields")
+
+
+class FormFieldCreate(SQLModel):
+    field_type: FormFieldType
+    label: str
+    name: str
+    placeholder: Optional[str] = None
+    required: bool = False
+    order: int = 0
+    options: Optional[List[str]] = None
+
+
+class FormFieldResponse(SQLModel):
+    id: int
+    form_id: int
+    field_type: str
+    label: str
+    name: str
+    placeholder: Optional[str]
+    required: bool
+    order: int
+    options: Optional[List[str]] = None
+
+
+class FormCreate(SQLModel):
+    name: str
+    description: Optional[str] = None
+    button_text: str = "Enviar"
+    button_color: str = "#3b82f6"
+    success_message: str = "Obrigado! Entraremos em contato em breve."
+    is_active: bool = True
+    fields: List[FormFieldCreate] = []
+
+
+class FormUpdate(SQLModel):
+    name: Optional[str] = None
+    description: Optional[str] = None
+    button_text: Optional[str] = None
+    button_color: Optional[str] = None
+    success_message: Optional[str] = None
+    is_active: Optional[bool] = None
+    fields: Optional[List[FormFieldCreate]] = None
+
+
+class FormResponse(SQLModel):
+    id: int
+    tenant_id: int
+    name: str
+    description: Optional[str]
+    button_text: str
+    button_color: str
+    success_message: str
+    is_active: bool
+    created_at: datetime
+    updated_at: datetime
+    fields: List[FormFieldResponse] = []
+
+
+class FormSubmitRequest(SQLModel):
+    """Request para submissão pública de formulário"""
+    form_id: int
+    data: Dict[str, str]  # Dados do formulário

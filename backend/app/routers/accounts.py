@@ -5,7 +5,7 @@ from fastapi.responses import JSONResponse
 from sqlmodel import Session, select, and_, or_, func
 from pydantic import BaseModel, Field
 from app.database import get_session
-from app.models import Account, AccountCreate, AccountResponse, User
+from app.models import Account, AccountCreate, AccountResponse, User, Order
 from app.dependencies import get_current_active_user, apply_ownership_filter, ensure_ownership, require_ownership
 from app.services.audit_service import log_create, log_update, log_delete
 import logging
@@ -23,18 +23,28 @@ class AccountFilter(BaseModel):
 
 class AccountFiltersRequest(BaseModel):
     filters: List[AccountFilter] = Field(default_factory=list)
-    logic: str = Field("AND", description="Lógica de combinação: 'AND' ou 'OR'")
-    search: Optional[str] = None
-    skip: int = 0
-    limit: int = 100
 
-# Mapeamento de campos e seus tipos
-ACCOUNT_FIELD_TYPES: Dict[str, str] = {
-    "id": "number",
-    "owner_id": "number",
-    "created_by_id": "number",
-    "created_at": "date",
-    "updated_at": "date",
+# Mapeamento de tipos de campos
+ACCOUNT_FIELD_TYPES = {
+    "name": "string",
+    "website": "string",
+    "phone": "string",
+    "email": "string",
+    "industry": "string",
+    "company_size": "string",
+    "address": "string",
+    "city": "string",
+    "state": "string",
+    "zip_code": "string",
+    "country": "string",
+    "description": "string",
+    "cnpj": "string",
+    "razao_social": "string",
+    "nome_fantasia": "string",
+    "owner_id": "integer",
+    "created_by_id": "integer",
+    "created_at": "datetime",
+    "updated_at": "datetime",
 }
 
 def get_account_field_type(field_name: str) -> str:
@@ -79,7 +89,11 @@ async def create_account(
     # Registrar auditoria
     log_create(session, current_user, "Account", account.id)
     
-    return account
+    # Retornar com estatísticas (zero para nova conta)
+    account_dict = account.dict()
+    account_dict['orders_count'] = 0
+    account_dict['total_orders_value'] = 0.0
+    return AccountResponse(**account_dict)
 
 
 @router.post("/filter", response_model=List[AccountResponse])
@@ -88,126 +102,96 @@ async def filter_accounts(
     session: Session = Depends(get_session),
     current_user: User = Depends(get_current_active_user)
 ):
-    """Get accounts with advanced filters"""
-    # Base query for counting
-    count_query = select(func.count(Account.id))
-    count_query = apply_ownership_filter(count_query, Account, current_user)
     
-    # Query for data
+    # Base query - aplicar filtro de ownership
     query = select(Account)
     query = apply_ownership_filter(query, Account, current_user)
     
-    # Aplicar filtros avançados
-    filter_conditions = []
+    # Aplicar filtros
+    filters = []
+    for filter_item in filters_request.filters:
+        field_type = get_account_field_type(filter_item.field)
+        field = getattr(Account, filter_item.field, None)
+        
+        if not field:
+            continue
+        
+        if filter_item.operator == "equals":
+            filters.append(field == filter_item.value)
+        elif filter_item.operator == "not_equals":
+            filters.append(field != filter_item.value)
+        elif filter_item.operator == "contains":
+            if field_type == "string":
+                filters.append(field.ilike(f"%{filter_item.value}%"))
+        elif filter_item.operator == "not_contains":
+            if field_type == "string":
+                filters.append(~field.ilike(f"%{filter_item.value}%"))
+        elif filter_item.operator == "starts_with":
+            if field_type == "string":
+                filters.append(field.ilike(f"{filter_item.value}%"))
+        elif filter_item.operator == "ends_with":
+            if field_type == "string":
+                filters.append(field.ilike(f"%{filter_item.value}"))
+        elif filter_item.operator == "greater_than":
+            filters.append(field > filter_item.value)
+        elif filter_item.operator == "less_than":
+            filters.append(field < filter_item.value)
+        elif filter_item.operator == "greater_than_or_equal":
+            filters.append(field >= filter_item.value)
+        elif filter_item.operator == "less_than_or_equal":
+            filters.append(field <= filter_item.value)
+        elif filter_item.operator == "between":
+            if filter_item.value is not None and filter_item.value2 is not None:
+                filters.append(and_(field >= filter_item.value, field <= filter_item.value2))
+        elif filter_item.operator == "in":
+            if isinstance(filter_item.value, list):
+                filters.append(field.in_(filter_item.value))
+        elif filter_item.operator == "not_in":
+            if isinstance(filter_item.value, list):
+                filters.append(~field.in_(filter_item.value))
+        elif filter_item.operator == "is_null":
+            filters.append(field.is_(None))
+        elif filter_item.operator == "is_not_null":
+            filters.append(field.isnot(None))
     
-    if filters_request.filters:
-        for filter_obj in filters_request.filters:
-            try:
-                if not hasattr(Account, filter_obj.field):
-                    logger.warning(f"Campo '{filter_obj.field}' não existe no modelo Account")
-                    continue
-                
-                field = getattr(Account, filter_obj.field)
-                field_type = get_account_field_type(filter_obj.field)
-                operator = filter_obj.operator
-                value = filter_obj.value
-                value2 = filter_obj.value2
-                
-                if value is None and operator not in ["is_null", "is_not_null"]:
-                    continue
-                
-                if operator == "equals":
-                    if field_type == "string":
-                        if value:
-                            filter_conditions.append(field.ilike(f"{value}"))
-                    else:
-                        filter_conditions.append(field == value)
-                elif operator == "not_equals":
-                    if field_type == "string":
-                        if value:
-                            filter_conditions.append(~field.ilike(f"{value}"))
-                    else:
-                        filter_conditions.append(field != value)
-                elif operator == "greater_than":
-                    if value is not None:
-                        filter_conditions.append(field > value)
-                elif operator == "less_than":
-                    if value is not None:
-                        filter_conditions.append(field < value)
-                elif operator == "greater_than_or_equal":
-                    if value is not None:
-                        filter_conditions.append(field >= value)
-                elif operator == "less_than_or_equal":
-                    if value is not None:
-                        filter_conditions.append(field <= value)
-                elif operator == "between":
-                    if value is not None and value2 is not None:
-                        filter_conditions.append(and_(field >= value, field <= value2))
-                elif operator == "contains":
-                    if value:
-                        filter_conditions.append(field.ilike(f"%{value}%"))
-                elif operator == "not_contains":
-                    if value:
-                        filter_conditions.append(~field.ilike(f"%{value}%"))
-                elif operator == "starts_with":
-                    if value:
-                        filter_conditions.append(field.ilike(f"{value}%"))
-                elif operator == "ends_with":
-                    if value:
-                        filter_conditions.append(field.ilike(f"%{value}"))
-                elif operator == "is_null":
-                    filter_conditions.append(field.is_(None))
-                elif operator == "is_not_null":
-                    filter_conditions.append(field.isnot(None))
-                elif operator == "in":
-                    if value:
-                        if not isinstance(value, list):
-                            value = [value]
-                        filter_conditions.append(field.in_(value))
-                elif operator == "not_in":
-                    if value:
-                        if not isinstance(value, list):
-                            value = [value]
-                        filter_conditions.append(~field.in_(value))
-            except Exception as e:
-                logger.error(f"Erro ao aplicar filtro {filter_obj.field}: {e}", exc_info=True)
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail=f"Erro ao aplicar filtro no campo '{filter_obj.field}': {str(e)}"
-                )
+    if filters:
+        query = query.where(and_(*filters))
     
-    if filters_request.search:
-        search_filter = or_(
-            Account.name.ilike(f"%{filters_request.search}%"),
-            Account.cnpj.ilike(f"%{filters_request.search}%"),
-            Account.email.ilike(f"%{filters_request.search}%")
-        )
-        filter_conditions.append(search_filter)
-    
-    if filter_conditions:
-        if filters_request.logic.upper() == "OR":
-            combined_filter = or_(*filter_conditions)
-        else:
-            combined_filter = and_(*filter_conditions)
-        query = query.where(combined_filter)
-        count_query = count_query.where(combined_filter)
-    
+    # Ordenar por nome
     query = query.order_by(Account.name.asc())
-    
-    total_count = session.exec(count_query).one()
-    query = query.offset(filters_request.skip).limit(filters_request.limit)
     
     accounts = session.exec(query).all()
     
-    accounts_data = []
+    # Adicionar estatísticas de pedidos para cada conta
+    accounts_with_stats = []
     for account in accounts:
-        acc_dict = account.dict()
-        for key, value in acc_dict.items():
-            if isinstance(value, datetime):
-                acc_dict[key] = value.isoformat()
-        accounts_data.append(acc_dict)
+        orders_count = session.exec(
+            select(func.count(Order.id)).where(
+                and_(
+                    Order.tenant_id == current_user.tenant_id,
+                    Order.account_id == account.id
+                )
+            )
+        ).one() or 0
+        
+        total_orders_value = session.exec(
+            select(func.sum(Order.total_amount)).where(
+                and_(
+                    Order.tenant_id == current_user.tenant_id,
+                    Order.account_id == account.id
+                )
+            )
+        ).one() or 0.0
+        
+        account_dict = account.dict()
+        account_dict['orders_count'] = orders_count
+        account_dict['total_orders_value'] = float(total_orders_value) if total_orders_value else 0.0
+        accounts_with_stats.append(AccountResponse(**account_dict))
     
-    response = JSONResponse(content=accounts_data)
+    # Contar total (para paginação futura)
+    total_count = len(accounts_with_stats)
+    
+    response = JSONResponse(content=[acc.dict() for acc in accounts_with_stats])
     response.headers["X-Total-Count"] = str(total_count)
     return response
 
@@ -261,7 +245,34 @@ async def get_accounts(
     query = query.offset(skip).limit(limit)
     
     accounts = session.exec(query).all()
-    return accounts
+    
+    # Adicionar estatísticas de pedidos para cada conta
+    accounts_with_stats = []
+    for account in accounts:
+        orders_count = session.exec(
+            select(func.count(Order.id)).where(
+                and_(
+                    Order.tenant_id == current_user.tenant_id,
+                    Order.account_id == account.id
+                )
+            )
+        ).one() or 0
+        
+        total_orders_value = session.exec(
+            select(func.sum(Order.total_amount)).where(
+                and_(
+                    Order.tenant_id == current_user.tenant_id,
+                    Order.account_id == account.id
+                )
+            )
+        ).one() or 0.0
+        
+        account_dict = account.dict()
+        account_dict['orders_count'] = orders_count
+        account_dict['total_orders_value'] = float(total_orders_value) if total_orders_value else 0.0
+        accounts_with_stats.append(AccountResponse(**account_dict))
+    
+    return accounts_with_stats
 
 
 @router.get("/{account_id}", response_model=AccountResponse)
@@ -278,7 +289,66 @@ async def get_account(
             detail="Account not found"
         )
     require_ownership(account, current_user)
-    return account
+    
+    # Contar pedidos e calcular valor total
+    orders_count = session.exec(
+        select(func.count(Order.id)).where(
+            and_(
+                Order.tenant_id == current_user.tenant_id,
+                Order.account_id == account_id
+            )
+        )
+    ).one() or 0
+    
+    total_orders_value = session.exec(
+        select(func.sum(Order.total_amount)).where(
+            and_(
+                Order.tenant_id == current_user.tenant_id,
+                Order.account_id == account_id
+            )
+        )
+    ).one() or 0.0
+    
+    # Criar resposta com estatísticas
+    account_dict = account.dict()
+    account_dict['orders_count'] = orders_count
+    account_dict['total_orders_value'] = float(total_orders_value) if total_orders_value else 0.0
+    
+    return AccountResponse(**account_dict)
+
+
+@router.get("/{account_id}/orders")
+async def get_account_orders(
+    account_id: int,
+    session: Session = Depends(get_session),
+    current_user: User = Depends(get_current_active_user)
+):
+    """Get all orders for a specific account"""
+    from app.routers.orders import order_to_response
+    
+    # Verificar se a conta existe e pertence ao tenant
+    account = session.get(Account, account_id)
+    if not account:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Account not found"
+        )
+    require_ownership(account, current_user)
+    
+    # Buscar pedidos da conta
+    orders = session.exec(
+        select(Order).where(
+            and_(
+                Order.tenant_id == current_user.tenant_id,
+                Order.account_id == account_id
+            )
+        ).order_by(Order.created_at.desc())
+    ).all()
+    
+    # Converter para response
+    orders_response = [order_to_response(order, session) for order in orders]
+    
+    return orders_response
 
 
 @router.put("/{account_id}", response_model=AccountResponse)
@@ -315,30 +385,42 @@ async def update_account(
             )
     
     # Atualizar campos
-    acc_dict = account_data.dict()
-    for key, value in acc_dict.items():
-        if key not in ['owner_id', 'created_by_id', 'tenant_id']:
-            old_value = getattr(account, key, None)
-            if old_value != value:
-                # Registrar mudança de campo
-                log_update(session, current_user, "Account", account_id, key, old_value, value)
-            setattr(account, key, value)
+    update_data = account_data.dict(exclude_unset=True)
+    for key, value in update_data.items():
+        setattr(account, key, value)
     
-    # Atualizar owner_id se especificado (com validação)
-    if acc_dict.get("owner_id") and acc_dict["owner_id"] != account.owner_id:
-        if current_user.role.value == "admin":
-            old_owner = account.owner_id
-            account.owner_id = acc_dict["owner_id"]
-            log_update(session, current_user, "Account", account_id, "owner_id", old_owner, acc_dict["owner_id"])
-        elif acc_dict["owner_id"] == current_user.id:
-            old_owner = account.owner_id
-            account.owner_id = acc_dict["owner_id"]
-            log_update(session, current_user, "Account", account_id, "owner_id", old_owner, acc_dict["owner_id"])
-    
+    account.updated_at = datetime.utcnow()
     session.add(account)
     session.commit()
     session.refresh(account)
-    return account
+    
+    # Registrar auditoria
+    log_update(session, current_user, "Account", account_id)
+    
+    # Retornar com estatísticas atualizadas
+    orders_count = session.exec(
+        select(func.count(Order.id)).where(
+            and_(
+                Order.tenant_id == current_user.tenant_id,
+                Order.account_id == account_id
+            )
+        )
+    ).one() or 0
+    
+    total_orders_value = session.exec(
+        select(func.sum(Order.total_amount)).where(
+            and_(
+                Order.tenant_id == current_user.tenant_id,
+                Order.account_id == account_id
+            )
+        )
+    ).one() or 0.0
+    
+    account_dict = account.dict()
+    account_dict['orders_count'] = orders_count
+    account_dict['total_orders_value'] = float(total_orders_value) if total_orders_value else 0.0
+    
+    return AccountResponse(**account_dict)
 
 
 @router.delete("/{account_id}")
@@ -356,44 +438,10 @@ async def delete_account(
         )
     require_ownership(account, current_user)
     
-    # Verificar se há contacts associados
-    from app.models import Contact
-    contacts = session.exec(
-        select(Contact).where(
-            and_(
-                Contact.account_id == account_id,
-                Contact.tenant_id == current_user.tenant_id
-            )
-        )
-    ).all()
-    
-    if contacts:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Cannot delete account with associated contacts. Please delete or reassign contacts first."
-        )
-    
-    # Verificar se há opportunities associadas
-    from app.models import Opportunity
-    opportunities = session.exec(
-        select(Opportunity).where(
-            and_(
-                Opportunity.account_id == account_id,
-                Opportunity.tenant_id == current_user.tenant_id
-            )
-        )
-    ).all()
-    
-    if opportunities:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Cannot delete account with associated opportunities. Please delete or reassign opportunities first."
-        )
-    
-    # Registrar auditoria antes de deletar
-    log_delete(session, current_user, "Account", account_id)
-    
     session.delete(account)
     session.commit()
+    
+    # Registrar auditoria
+    log_delete(session, current_user, "Account", account_id)
+    
     return {"message": "Account deleted successfully"}
-

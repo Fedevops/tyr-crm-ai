@@ -8,7 +8,8 @@ from fastapi.staticfiles import StaticFiles
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from pathlib import Path
 from app.database import engine, init_db
-from app.routers import auth, users, playbooks, agents, company_profile, debug, leads, sequences, tasks, prospecting, audit, sales_funnel, opportunities, proposals, proposal_templates, accounts, contacts, dashboard, settings, kpi, live_pulse, widgets, items
+from app.routers import auth, users, playbooks, agents, company_profile, debug, leads, sequences, tasks, prospecting, audit, sales_funnel, opportunities, proposals, proposal_templates, accounts, contacts, dashboard, settings, kpi, live_pulse, widgets, items, orders, integrations, forms
+from app.middleware import ApiCallTrackingMiddleware
 
 # Configurar logging para garantir que todos os logs apareçam
 logging.basicConfig(
@@ -52,6 +53,9 @@ app.add_middleware(
     allow_headers=["*"],
     expose_headers=["X-Total-Count"],
 )
+
+# API Call Tracking Middleware - Adicionado após CORS para rastrear chamadas de API
+app.add_middleware(ApiCallTrackingMiddleware)
 
 # Exception handlers para garantir que CORS seja aplicado mesmo em erros
 @app.exception_handler(StarletteHTTPException)
@@ -102,6 +106,9 @@ app.include_router(kpi.router, prefix="/api/kpi", tags=["kpi"])
 app.include_router(live_pulse.router, prefix="/api/live-pulse", tags=["live-pulse"])
 app.include_router(widgets.router, prefix="/api", tags=["widgets"])
 app.include_router(items.router, prefix="/api/items", tags=["items"])
+app.include_router(orders.router, prefix="/api/orders", tags=["orders"])
+app.include_router(integrations.router, prefix="/api/integrations", tags=["integrations"])
+app.include_router(forms.router, prefix="/api/forms", tags=["forms"])
 
 # Servir arquivos estáticos (imagens)
 from pathlib import Path

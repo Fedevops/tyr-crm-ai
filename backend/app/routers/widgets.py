@@ -1,6 +1,9 @@
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Request, HTTPException, status, Query, Depends
 from fastapi.responses import Response
 from pathlib import Path
+from sqlmodel import Session, select
+from app.database import get_session
+from app.models import Form, FormField, FormFieldType
 
 router = APIRouter()
 
@@ -506,6 +509,310 @@ async def get_live_pulse_widget(request: Request):
         headers["Access-Control-Allow-Headers"] = "*"
     else:
         # Se não houver origin (arquivo local), permitir qualquer origem
+        headers["Access-Control-Allow-Origin"] = "*"
+    
+    return Response(content=widget_code, media_type="application/javascript", headers=headers)
+
+
+@router.get("/widgets/tyr-form.js")
+async def get_form_widget(
+    request: Request,
+    form_id: int = Query(..., description="ID do formulário"),
+    session: Session = Depends(get_session)
+):
+    """Serve o script do widget de formulário"""
+    # Buscar formulário
+    form = session.get(Form, form_id)
+    if not form:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Form not found"
+        )
+    
+    if not form.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Form is not active"
+        )
+    
+    # Buscar campos do formulário
+    fields = session.exec(
+        select(FormField).where(FormField.form_id == form.id)
+        .order_by(FormField.order)
+    ).all()
+    
+    # Gerar HTML do formulário
+    form_fields_html = ""
+    for field in fields:
+        field_id = f"tyr-form-field-{field.id}"
+        required_attr = "required" if field.required else ""
+        placeholder_attr = f'placeholder="{field.placeholder}"' if field.placeholder else ""
+        
+        if field.field_type == FormFieldType.TEXT:
+            form_fields_html += f"""
+        <div class="tyr-form-field">
+          <label for="{field_id}">{field.label}{" *" if field.required else ""}</label>
+          <input type="text" id="{field_id}" name="{field.name}" {required_attr} {placeholder_attr}>
+        </div>
+      """
+        elif field.field_type == FormFieldType.EMAIL:
+            form_fields_html += f"""
+        <div class="tyr-form-field">
+          <label for="{field_id}">{field.label}{" *" if field.required else ""}</label>
+          <input type="email" id="{field_id}" name="{field.name}" {required_attr} {placeholder_attr}>
+        </div>
+      """
+        elif field.field_type == FormFieldType.PHONE:
+            form_fields_html += f"""
+        <div class="tyr-form-field">
+          <label for="{field_id}">{field.label}{" *" if field.required else ""}</label>
+          <input type="tel" id="{field_id}" name="{field.name}" {required_attr} {placeholder_attr}>
+        </div>
+      """
+        elif field.field_type == FormFieldType.TEXTAREA:
+            form_fields_html += f"""
+        <div class="tyr-form-field">
+          <label for="{field_id}">{field.label}{" *" if field.required else ""}</label>
+          <textarea id="{field_id}" name="{field.name}" rows="4" {required_attr} {placeholder_attr}></textarea>
+        </div>
+      """
+        elif field.field_type == FormFieldType.SELECT:
+            options_html = ""
+            if field.options:
+                for option in field.options:
+                    options_html += f'<option value="{option}">{option}</option>'
+            form_fields_html += f"""
+        <div class="tyr-form-field">
+          <label for="{field_id}">{field.label}{" *" if field.required else ""}</label>
+          <select id="{field_id}" name="{field.name}" {required_attr}>
+            <option value="">Selecione...</option>
+            {options_html}
+          </select>
+        </div>
+      """
+        elif field.field_type == FormFieldType.NUMBER:
+            form_fields_html += f"""
+        <div class="tyr-form-field">
+          <label for="{field_id}">{field.label}{" *" if field.required else ""}</label>
+          <input type="number" id="{field_id}" name="{field.name}" {required_attr} {placeholder_attr}>
+        </div>
+      """
+        elif field.field_type == FormFieldType.DATE:
+            form_fields_html += f"""
+        <div class="tyr-form-field">
+          <label for="{field_id}">{field.label}{" *" if field.required else ""}</label>
+          <input type="date" id="{field_id}" name="{field.name}" {required_attr}>
+        </div>
+      """
+        elif field.field_type == FormFieldType.CHECKBOX:
+            form_fields_html += f"""
+        <div class="tyr-form-field">
+          <label>
+            <input type="checkbox" id="{field_id}" name="{field.name}" value="1" {required_attr}>
+            {field.label}
+          </label>
+        </div>
+      """
+    
+    # Widget JavaScript completo
+    widget_code = f"""
+(function() {{
+  'use strict';
+  
+  console.log('[TYR Form Widget] Script carregado para formulário {form.id}');
+  
+  // Verificar se já foi carregado
+  if (window.TYRForm_{form.id}) {{
+    console.log('[TYR Form Widget] Já foi carregado anteriormente');
+    return;
+  }}
+  
+  // Obter API URL do data attribute ou usar padrão
+  const scriptTag = document.currentScript || document.querySelector('script[data-form-id="{form.id}"]');
+  const apiUrl = scriptTag?.getAttribute('data-api-url') || 'http://localhost:8000';
+  
+  // Criar container do formulário
+  function createForm() {{
+    const container = document.createElement('div');
+    container.id = 'tyr-form-container-{form.id}';
+    container.className = 'tyr-form-container';
+    container.innerHTML = `
+      <style>
+        .tyr-form-container {{
+          font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+          max-width: 600px;
+          margin: 0 auto;
+          padding: 24px;
+          background: white;
+          border-radius: 8px;
+          box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }}
+        .tyr-form-field {{
+          margin-bottom: 16px;
+        }}
+        .tyr-form-field label {{
+          display: block;
+          font-weight: 500;
+          margin-bottom: 6px;
+          color: #333;
+          font-size: 14px;
+        }}
+        .tyr-form-field input,
+        .tyr-form-field textarea,
+        .tyr-form-field select {{
+          width: 100%;
+          padding: 10px;
+          border: 1px solid #ddd;
+          border-radius: 4px;
+          font-size: 14px;
+          box-sizing: border-box;
+          font-family: inherit;
+        }}
+        .tyr-form-field input:focus,
+        .tyr-form-field textarea:focus,
+        .tyr-form-field select:focus {{
+          outline: none;
+          border-color: {form.button_color};
+          box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+        }}
+        .tyr-form-submit {{
+          width: 100%;
+          padding: 12px;
+          background: {form.button_color};
+          color: white;
+          border: none;
+          border-radius: 4px;
+          font-size: 16px;
+          font-weight: 500;
+          cursor: pointer;
+          transition: background 0.2s;
+        }}
+        .tyr-form-submit:hover {{
+          opacity: 0.9;
+        }}
+        .tyr-form-submit:disabled {{
+          opacity: 0.6;
+          cursor: not-allowed;
+        }}
+        .tyr-form-message {{
+          padding: 12px;
+          border-radius: 4px;
+          margin-bottom: 16px;
+          display: none;
+        }}
+        .tyr-form-message.success {{
+          background: #d4edda;
+          color: #155724;
+          border: 1px solid #c3e6cb;
+        }}
+        .tyr-form-message.error {{
+          background: #f8d7da;
+          color: #721c24;
+          border: 1px solid #f5c6cb;
+        }}
+      </style>
+      <div class="tyr-form-message" id="tyr-form-message-{form.id}"></div>
+      <form id="tyr-form-{form.id}">
+        {form_fields_html}
+        <button type="submit" class="tyr-form-submit">{form.button_text}</button>
+      </form>
+    `;
+    
+    // Inserir após o script tag ou no body
+    if (scriptTag && scriptTag.parentNode) {{
+      scriptTag.parentNode.insertBefore(container, scriptTag.nextSibling);
+    }} else {{
+      document.body.appendChild(container);
+    }}
+    
+    // Adicionar event listener ao formulário
+    const formElement = document.getElementById('tyr-form-{form.id}');
+    formElement.addEventListener('submit', handleSubmit);
+  }}
+  
+  async function handleSubmit(e) {{
+    e.preventDefault();
+    
+    const formElement = document.getElementById('tyr-form-{form.id}');
+    const submitButton = formElement.querySelector('.tyr-form-submit');
+    const messageDiv = document.getElementById('tyr-form-message-{form.id}');
+    
+    // Desabilitar botão
+    submitButton.disabled = true;
+    submitButton.textContent = 'Enviando...';
+    
+    // Coletar dados do formulário
+    const formData = new FormData(formElement);
+    const data = {{}};
+    for (const [key, value] of formData.entries()) {{
+      data[key] = value;
+    }}
+    
+    try {{
+      const response = await fetch(`${{apiUrl}}/api/forms/submit`, {{
+        method: 'POST',
+        headers: {{
+          'Content-Type': 'application/json',
+        }},
+        body: JSON.stringify({{
+          form_id: {form.id},
+          data: data
+        }})
+      }});
+      
+      const result = await response.json();
+      
+      if (response.ok && result.success) {{
+        // Mostrar mensagem de sucesso
+        messageDiv.className = 'tyr-form-message success';
+        messageDiv.textContent = '{form.success_message}';
+        messageDiv.style.display = 'block';
+        
+        // Limpar formulário
+        formElement.reset();
+        
+        // Scroll para mensagem
+        messageDiv.scrollIntoView({{ behavior: 'smooth', block: 'nearest' }});
+      }} else {{
+        throw new Error(result.detail || 'Erro ao enviar formulário');
+      }}
+    }} catch (error) {{
+      console.error('[TYR Form Widget] Erro ao enviar formulário:', error);
+      messageDiv.className = 'tyr-form-message error';
+      messageDiv.textContent = 'Erro ao enviar formulário. Tente novamente.';
+      messageDiv.style.display = 'block';
+    }} finally {{
+      submitButton.disabled = false;
+      submitButton.textContent = '{form.button_text}';
+    }}
+  }}
+  
+  // API pública
+  window.TYRForm_{form.id} = {{
+    init: function() {{
+      createForm();
+    }}
+  }};
+  
+  // Auto-inicializar
+  if (document.readyState === 'loading') {{
+    document.addEventListener('DOMContentLoaded', createForm);
+  }} else {{
+    createForm();
+  }}
+}})();
+"""
+    
+    # Adicionar headers CORS específicos para widgets (permitir qualquer origem)
+    origin = request.headers.get("origin")
+    headers = {
+        "Content-Type": "application/javascript",
+    }
+    if origin:
+        headers["Access-Control-Allow-Origin"] = origin
+        headers["Access-Control-Allow-Methods"] = "GET, OPTIONS"
+        headers["Access-Control-Allow-Headers"] = "*"
+    else:
         headers["Access-Control-Allow-Origin"] = "*"
     
     return Response(content=widget_code, media_type="application/javascript", headers=headers)
