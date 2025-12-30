@@ -65,6 +65,11 @@ export function KPIOverview() {
   const [editingGoal, setEditingGoal] = useState<Goal | null>(null)
   const [completedGoal, setCompletedGoal] = useState<{ id: number; title: string } | null>(null)
 
+  // Recarregar KPIs quando a página é montada
+  useEffect(() => {
+    refreshGoals()
+  }, [refreshGoals])
+
   // Listener para eventos de meta completada
   useEffect(() => {
     const handleGoalCompleted = (event: CustomEvent) => {

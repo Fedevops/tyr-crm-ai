@@ -6,7 +6,7 @@ from app.database import get_session
 from app.models import (
     Item, ItemCreate, ItemUpdate, ItemResponse, ItemType,
     StockTransaction, StockTransactionCreate, StockTransactionResponse, StockTransactionType,
-    User
+    OrderItem, User
 )
 from app.dependencies import get_current_active_user, apply_ownership_filter, ensure_ownership, require_ownership, check_limit
 from app.services.audit_service import log_create, log_update, log_delete
@@ -300,6 +300,17 @@ async def delete_item(
         )
     
     require_ownership(item, current_user)
+    
+    # Verificar se o item está sendo usado em algum pedido
+    order_items = session.exec(
+        select(OrderItem).where(OrderItem.item_id == item_id)
+    ).first()
+    
+    if order_items:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Não é possível excluir este item pois ele está sendo usado em um ou mais pedidos. Considere desativá-lo ou removê-lo dos pedidos primeiro."
+        )
     
     session.delete(item)
     session.commit()

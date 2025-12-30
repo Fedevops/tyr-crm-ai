@@ -3,6 +3,7 @@ from typing import Optional, List, Dict
 from datetime import datetime
 from enum import Enum
 from pydantic import field_validator
+import uuid
 
 
 class UserRole(str, Enum):
@@ -206,6 +207,7 @@ class Lead(SQLModel, table=True):
     data_opcao_simples: Optional[datetime] = None
     data_exclusao_simples: Optional[datetime] = None
     agent_suggestion: Optional[str] = None  # Sugestão de abordagem gerada pelo agente
+    custom_attributes: Optional[Dict] = Field(default=None, sa_column=Column(JSON))  # Campos customizados
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)
 
@@ -284,8 +286,8 @@ class LeadResponse(SQLModel):
     source: Optional[str]
     score: Optional[int]
     assigned_to: Optional[int]  # DEPRECATED
-    owner_id: int
-    created_by_id: int
+    owner_id: Optional[int]
+    created_by_id: Optional[int]
     account_id: Optional[int]
     contact_id: Optional[int]
     notes: Optional[str]
@@ -329,6 +331,7 @@ class LeadResponse(SQLModel):
     data_opcao_simples: Optional[datetime]
     data_exclusao_simples: Optional[datetime]
     agent_suggestion: Optional[str]
+    custom_attributes: Optional[Dict] = None
     created_at: datetime
     updated_at: datetime
 
@@ -640,6 +643,7 @@ class AccountResponse(SQLModel):
     cnpj: Optional[str]
     razao_social: Optional[str]
     nome_fantasia: Optional[str]
+    custom_attributes: Optional[Dict] = None
     owner_id: int
     created_by_id: int
     created_at: datetime
@@ -702,6 +706,7 @@ class ContactResponse(SQLModel):
     department: Optional[str]
     linkedin_url: Optional[str]
     notes: Optional[str]
+    custom_attributes: Optional[Dict] = None
     owner_id: int
     created_by_id: int
     created_at: datetime
@@ -840,6 +845,7 @@ class OpportunityResponse(SQLModel):
     status: OpportunityStatus
     probability: Optional[int]
     notes: Optional[str]
+    custom_attributes: Optional[Dict] = None
     owner_id: int
     created_by_id: int
     created_at: datetime
@@ -982,6 +988,7 @@ class ProposalResponse(SQLModel):
     rejected_at: Optional[datetime]
     rejection_reason: Optional[str]
     notes: Optional[str]
+    custom_attributes: Optional[Dict] = None
     owner_id: int
     created_by_id: int
     created_at: datetime
@@ -1378,6 +1385,7 @@ class ItemResponse(SQLModel):
     track_stock: bool
     stock_quantity: Optional[int]
     low_stock_threshold: Optional[int]
+    custom_attributes: Optional[Dict] = None
     owner_id: int
     created_by_id: int
     created_at: datetime
@@ -1769,3 +1777,114 @@ class FormSubmitRequest(SQLModel):
     """Request para submissão pública de formulário"""
     form_id: int
     data: Dict[str, str]  # Dados do formulário
+
+
+# ==================== CUSTOM FIELDS AND MODULES ====================
+
+class CustomFieldType(str, Enum):
+    TEXT = "text"
+    NUMBER = "number"
+    EMAIL = "email"
+    DATE = "date"
+    BOOLEAN = "boolean"
+    SELECT = "select"
+    TEXTAREA = "textarea"
+    FILE = "file"
+    URL = "url"
+    RELATIONSHIP = "relationship"
+
+
+class CustomField(SQLModel, table=True):
+    """Campos customizados para módulos"""
+    id: Optional[uuid.UUID] = Field(default_factory=uuid.uuid4, primary_key=True)
+    tenant_id: int = Field(foreign_key="tenant.id", index=True)
+    module_target: str  # 'leads', 'orders', 'items', 'contacts', 'accounts', 'opportunities', 'proposals' ou nome de custom_module
+    field_label: str
+    field_name: str  # Slug único por tenant+module_target
+    field_type: CustomFieldType
+    options: Optional[List[str]] = Field(default=None, sa_column=Column(JSON))  # Para SELECT
+    required: bool = Field(default=False)
+    default_value: Optional[str] = None
+    order: int = Field(default=0)
+    relationship_target: Optional[str] = None  # Para campos RELATIONSHIP (ex: 'leads', 'contacts')
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class CustomFieldCreate(SQLModel):
+    module_target: str
+    field_label: str
+    field_name: str
+    field_type: CustomFieldType
+    options: Optional[List[str]] = None
+    required: bool = False
+    default_value: Optional[str] = None
+    order: int = 0
+    relationship_target: Optional[str] = None
+
+
+class CustomFieldUpdate(SQLModel):
+    field_label: Optional[str] = None
+    field_type: Optional[CustomFieldType] = None
+    options: Optional[List[str]] = None
+    required: Optional[bool] = None
+    default_value: Optional[str] = None
+    order: Optional[int] = None
+    relationship_target: Optional[str] = None
+
+
+class CustomFieldResponse(SQLModel):
+    id: uuid.UUID
+    tenant_id: int
+    module_target: str
+    field_label: str
+    field_name: str
+    field_type: str
+    options: Optional[List[str]] = None
+    required: bool
+    default_value: Optional[str] = None
+    order: int
+    relationship_target: Optional[str] = None
+    created_at: datetime
+    updated_at: datetime
+
+
+class CustomModule(SQLModel, table=True):
+    """Módulos customizados criados pelo usuário"""
+    id: Optional[uuid.UUID] = Field(default_factory=uuid.uuid4, primary_key=True)
+    tenant_id: int = Field(foreign_key="tenant.id", index=True)
+    name: str  # Nome do módulo (ex: 'Contratos')
+    slug: str  # Slug único por tenant (ex: 'contracts')
+    description: Optional[str] = None
+    icon: Optional[str] = None  # Nome do ícone (ex: 'FileText')
+    is_active: bool = Field(default=True)
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class CustomModuleCreate(SQLModel):
+    name: str
+    slug: str
+    description: Optional[str] = None
+    icon: Optional[str] = None
+    is_active: bool = True
+    fields: Optional[List["CustomFieldCreate"]] = None  # Campos a serem criados junto com o módulo
+
+
+class CustomModuleUpdate(SQLModel):
+    name: Optional[str] = None
+    description: Optional[str] = None
+    icon: Optional[str] = None
+    is_active: Optional[bool] = None
+
+
+class CustomModuleResponse(SQLModel):
+    id: uuid.UUID
+    tenant_id: int
+    name: str
+    slug: str
+    description: Optional[str] = None
+    icon: Optional[str] = None
+    is_active: bool
+    created_at: datetime
+    updated_at: datetime

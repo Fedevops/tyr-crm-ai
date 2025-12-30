@@ -185,6 +185,32 @@ export const formsApi = {
   deleteForm: (formId: number) => api.delete(`/api/forms/${formId}`),
 }
 
+// Custom Fields API functions
+export const customFieldsApi = {
+  getFields: (moduleTarget?: string) => api.get('/api/custom-fields', { params: { module_target: moduleTarget } }),
+  getField: (fieldId: string) => api.get(`/api/custom-fields/${fieldId}`),
+  createField: (data: any) => api.post('/api/custom-fields', data),
+  updateField: (fieldId: string, data: any) => api.put(`/api/custom-fields/${fieldId}`, data),
+  deleteField: (fieldId: string) => api.delete(`/api/custom-fields/${fieldId}`),
+}
+
+// Custom Modules API functions
+export const customModulesApi = {
+  getModules: () => api.get('/api/custom-modules'),
+  getModule: (moduleId: string) => api.get(`/api/custom-modules/${moduleId}`),
+  createModule: (data: any) => api.post('/api/custom-modules', data),
+  updateModule: (moduleId: string, data: any) => api.put(`/api/custom-modules/${moduleId}`, data),
+  deleteModule: (moduleId: string) => api.delete(`/api/custom-modules/${moduleId}`),
+  getModuleData: (moduleId: string, params?: { skip?: number, limit?: number }) => 
+    api.get(`/api/custom-modules/${moduleId}/data`, { params }),
+  createModuleData: (moduleId: string, data: any) => 
+    api.post(`/api/custom-modules/${moduleId}/data`, data),
+  updateModuleData: (moduleId: string, recordId: string, data: any) => 
+    api.put(`/api/custom-modules/${moduleId}/data/${recordId}`, data),
+  deleteModuleData: (moduleId: string, recordId: string) => 
+    api.delete(`/api/custom-modules/${moduleId}/data/${recordId}`),
+}
+
 export default api
 
 

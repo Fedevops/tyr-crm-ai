@@ -1,6 +1,7 @@
 import { createContext, useContext, useState, useCallback, ReactNode, useEffect } from 'react'
 import api from '@/lib/api'
 import { useToast } from '@/components/ui/use-toast'
+import { useAuth } from './AuthContext'
 
 export type MetricType = 'tasks_completed' | 'leads_created' | 'revenue_generated' | 'calls_made'
 export type GoalPeriod = 'monthly' | 'weekly'
@@ -42,8 +43,13 @@ export function KPIProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const { toast } = useToast()
+  const { isAuthenticated } = useAuth()
 
   const fetchGoals = useCallback(async () => {
+    if (!isAuthenticated) {
+      return
+    }
+    
     setLoading(true)
     setError(null)
     try {
@@ -70,15 +76,17 @@ export function KPIProvider({ children }: { children: ReactNode }) {
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [isAuthenticated])
 
   const refreshGoals = useCallback(async () => {
     await fetchGoals()
   }, [fetchGoals])
 
   useEffect(() => {
-    fetchGoals()
-  }, [fetchGoals])
+    if (isAuthenticated) {
+      fetchGoals()
+    }
+  }, [fetchGoals, isAuthenticated])
 
   const createGoal = useCallback(
     async (goalData: Omit<Goal, 'id' | 'tenant_id' | 'user_id' | 'current_value' | 'status' | 'period_start' | 'period_end' | 'created_at' | 'updated_at'>) => {

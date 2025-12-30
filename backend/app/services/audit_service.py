@@ -8,7 +8,7 @@ def log_action(
     session: Session,
     user: User,
     entity_type: str,
-    entity_id: int,
+    entity_id: Any,  # Aceita int ou str (para UUIDs)
     action: AuditAction,
     field_name: Optional[str] = None,
     old_value: Optional[str] = None,
@@ -34,7 +34,37 @@ def log_action(
     """
     import json
     
-    # Converter metadata dict para JSON string
+    # Converter entity_id para int se for UUID (usar hash ou armazenar como string no metadata)
+    # Para entidades com UUID, vamos armazenar o UUID no metadata e usar hash como entity_id
+    entity_id_int = entity_id
+    if isinstance(entity_id, str):
+        # Se for string (UUID), tentar converter para int se possível, senão usar 0
+        try:
+            # Tentar converter UUID para int (usando hash)
+            import uuid
+            uuid_obj = uuid.UUID(entity_id)
+            # Usar hash do UUID como entity_id (pode haver colisões, mas é melhor que nada)
+            entity_id_int = abs(hash(str(uuid_obj))) % (2**31)  # Limitar a 32 bits e garantir positivo
+            # Adicionar UUID ao metadata para referência completa
+            if metadata is None:
+                metadata = {}
+            metadata['uuid'] = entity_id
+        except (ValueError, AttributeError):
+            # Se não for UUID válido, converter para string e usar hash
+            entity_id_str = str(entity_id)
+            entity_id_int = abs(hash(entity_id_str)) % (2**31)
+            if metadata is None:
+                metadata = {}
+            metadata['original_id'] = entity_id_str
+    elif not isinstance(entity_id, int):
+        # Se não for int nem string, converter para string e usar hash
+        entity_id_str = str(entity_id)
+        entity_id_int = abs(hash(entity_id_str)) % (2**31)
+        if metadata is None:
+            metadata = {}
+        metadata['original_id'] = entity_id_str
+    
+    # Converter metadata dict para JSON string (após adicionar UUID se necessário)
     metadata_json = None
     if metadata:
         try:
@@ -51,7 +81,7 @@ def log_action(
         tenant_id=user.tenant_id,
         user_id=user.id,
         entity_type=entity_type,
-        entity_id=entity_id,
+        entity_id=entity_id_int,
         action=action,
         field_name=field_name,
         old_value=old_value_str,
@@ -71,7 +101,7 @@ def log_create(
     session: Session,
     user: User,
     entity_type: str,
-    entity_id: int,
+    entity_id: Any,  # Aceita int ou str (para UUIDs)
     metadata: Optional[Dict[str, Any]] = None
 ) -> AuditLog:
     """Registra criação de uma entidade"""
@@ -89,7 +119,7 @@ def log_update(
     session: Session,
     user: User,
     entity_type: str,
-    entity_id: int,
+    entity_id: Any,  # Aceita int ou str (para UUIDs)
     field_name: str,
     old_value: Any,
     new_value: Any,
@@ -113,7 +143,7 @@ def log_delete(
     session: Session,
     user: User,
     entity_type: str,
-    entity_id: int,
+    entity_id: Any,  # Aceita int ou str (para UUIDs)
     metadata: Optional[Dict[str, Any]] = None
 ) -> AuditLog:
     """Registra deleção de uma entidade"""

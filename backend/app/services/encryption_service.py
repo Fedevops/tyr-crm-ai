@@ -104,3 +104,4 @@ def decrypt_credentials(encrypted_credentials: str) -> Dict[str, Any]:
         logger.error(f"Erro ao descriptografar credenciais: {e}")
         raise ValueError(f"Falha ao descriptografar credenciais: {str(e)}")
 
+

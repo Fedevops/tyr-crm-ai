@@ -7,6 +7,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { AdvancedFilters } from '@/components/AdvancedFilters'
+import { DynamicForm } from '@/components/DynamicForm'
+import { customFieldsApi } from '@/lib/api'
 import { 
   Plus, 
   Trash2, 
@@ -152,6 +154,8 @@ export function Leads() {
   const [newComment, setNewComment] = useState('')
   const [addingComment, setAddingComment] = useState(false)
   const [users, setUsers] = useState<Array<{id: number, full_name: string, email: string}>>([])
+  const [customFields, setCustomFields] = useState<any[]>([])
+  const [customAttributes, setCustomAttributes] = useState<Record<string, any>>({})
   
   // Selection and pagination
   const [selectedLeads, setSelectedLeads] = useState<Set<number>>(new Set())
@@ -229,7 +233,17 @@ export function Leads() {
     fetchUsers()
     fetchLeads()
     fetchStats()
+    fetchCustomFields()
   }, [statusFilter, sourceFilter, searchTerm, currentPage, pageSize, advancedFilters, filterLogic])
+
+  const fetchCustomFields = async () => {
+    try {
+      const response = await customFieldsApi.getFields('leads')
+      setCustomFields(response.data || [])
+    } catch (error) {
+      console.error('Error fetching custom fields:', error)
+    }
+  }
 
   const fetchUsers = async () => {
     try {
@@ -708,7 +722,8 @@ export function Leads() {
         data_opcao_simples: formData.data_opcao_simples ? new Date(formData.data_opcao_simples).toISOString() : null,
         data_exclusao_simples: formData.data_exclusao_simples ? new Date(formData.data_exclusao_simples).toISOString() : null,
         agent_suggestion: formData.agent_suggestion || null,
-        owner_id: formData.owner_id || null
+        owner_id: formData.owner_id || null,
+        custom_attributes: Object.keys(customAttributes).length > 0 ? customAttributes : null
       }
 
       let response

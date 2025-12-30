@@ -1,9 +1,11 @@
 import { Link, useLocation } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
-import { LayoutDashboard, BookOpen, Users, Settings, LogOut, ListChecks, Workflow, Search, Building2, UserCircle, TrendingUp, FileText, Filter, History, Target, Radio, BarChart3, Package, ShoppingCart } from 'lucide-react'
+import { useState, useEffect } from 'react'
+import { LayoutDashboard, BookOpen, Users, Settings, LogOut, ListChecks, Workflow, Search, Building2, UserCircle, TrendingUp, FileText, Filter, History, Target, Radio, BarChart3, Package, ShoppingCart, Database } from 'lucide-react'
 import { useAuth } from '@/contexts/AuthContext'
 import { Button } from './ui/button'
 import { cn } from '@/lib/utils'
+import { customModulesApi } from '@/lib/api'
 
 const navigation = [
   { name: 'dashboard', href: '/dashboard', icon: LayoutDashboard },
@@ -30,6 +32,21 @@ export function Sidebar() {
   const { t } = useTranslation()
   const location = useLocation()
   const { logout } = useAuth()
+  const [customModules, setCustomModules] = useState<Array<{ id: string; name: string; slug: string; is_active: boolean }>>([])
+
+  useEffect(() => {
+    loadCustomModules()
+  }, [])
+
+  const loadCustomModules = async () => {
+    try {
+      const response = await customModulesApi.getModules()
+      const activeModules = (response.data || []).filter((m: any) => m.is_active)
+      setCustomModules(activeModules)
+    } catch (error) {
+      console.error('Erro ao carregar módulos customizados:', error)
+    }
+  }
 
   return (
     <div className="flex h-screen w-64 flex-col border-r bg-card shadow-sm">
@@ -57,7 +74,7 @@ export function Sidebar() {
           </div>
         </Link>
       </div>
-      <nav className="flex-1 space-y-1 px-3 py-4">
+      <nav className="flex-1 space-y-1 px-3 py-4 overflow-y-auto">
         {navigation.map((item) => {
           const Icon = item.icon
           const isActive = location.pathname === item.href
@@ -77,6 +94,35 @@ export function Sidebar() {
             </Link>
           )
         })}
+        
+        {/* Módulos Customizados */}
+        {customModules.length > 0 && (
+          <>
+            <div className="pt-4 pb-2 px-3">
+              <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                Módulos Customizados
+              </div>
+            </div>
+            {customModules.map((module) => {
+              const isActive = location.pathname === `/custom-module/${module.id}`
+              return (
+                <Link
+                  key={module.id}
+                  to={`/custom-module/${module.id}`}
+                  className={cn(
+                    'flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors',
+                    isActive
+                      ? 'bg-primary text-primary-foreground'
+                      : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'
+                  )}
+                >
+                  <Database className="h-5 w-5" />
+                  {module.name}
+                </Link>
+              )
+            })}
+          </>
+        )}
       </nav>
       <div className="border-t p-3">
         <Button

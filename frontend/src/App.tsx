@@ -25,6 +25,7 @@ import { LivePulseDashboard } from './pages/LivePulse/LivePulseDashboard'
 import { VisitReports } from './pages/VisitReports'
 import { CatalogManager } from './pages/CatalogManager'
 import { Orders } from './pages/Orders'
+import { CustomModulePage } from './pages/CustomModulePage'
 import { Toaster } from './components/ui/toaster'
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
@@ -252,6 +253,16 @@ function AppRoutes() {
           <ProtectedRoute>
             <Layout>
               <VisitReports />
+            </Layout>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/custom-module/:moduleId"
+        element={
+          <ProtectedRoute>
+            <Layout>
+              <CustomModulePage />
             </Layout>
           </ProtectedRoute>
         }

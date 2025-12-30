@@ -14,6 +14,8 @@ import {
   BarChart3,
   Plug,
   FileEdit,
+  Layers,
+  Database,
 } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -28,9 +30,11 @@ import { ProposalTemplates } from './sections/ProposalTemplates'
 import { UsageSection } from './sections/UsageSection'
 import { Integrations } from './sections/Integrations'
 import { FormBuilder } from './sections/FormBuilder'
+import { ModuleEditor } from './sections/ModuleEditor'
+import { CustomModuleManager } from './sections/CustomModuleManager'
 import { cn } from '@/lib/utils'
 
-type SettingsSection = 'profile' | 'branding' | 'team' | 'billing' | 'security' | 'apikeys' | 'livepulse' | 'proposal-templates' | 'usage' | 'integrations' | 'form-builder'
+type SettingsSection = 'profile' | 'branding' | 'team' | 'billing' | 'security' | 'apikeys' | 'livepulse' | 'proposal-templates' | 'usage' | 'integrations' | 'form-builder' | 'module-editor' | 'custom-modules'
 
 interface NavItem {
   id: SettingsSection
@@ -55,6 +59,8 @@ export function SettingsHub() {
     { id: 'proposal-templates', label: 'Templates de Proposta', icon: FileCode },
     { id: 'integrations', label: 'Integrações', icon: Plug },
     { id: 'form-builder', label: 'Form Builder', icon: FileEdit },
+    { id: 'module-editor', label: 'Editor de Campos', icon: Layers },
+    { id: 'custom-modules', label: 'Módulos Customizados', icon: Database },
   ]
 
   const renderSection = () => {
@@ -81,6 +87,10 @@ export function SettingsHub() {
         return <Integrations />
       case 'form-builder':
         return <FormBuilder />
+      case 'module-editor':
+        return <ModuleEditor />
+      case 'custom-modules':
+        return <CustomModuleManager />
       default:
         return <Profile />
     }

@@ -738,6 +738,26 @@ def migrate_items_tables():
                         print(f"Warning: Could not add image_url column to item: {e}")
                 else:
                     print("✓ image_url column already exists in item table")
+                
+                # Add custom_attributes column to item table if it doesn't exist
+                check_custom_attrs = text("""
+                    SELECT column_name 
+                    FROM information_schema.columns 
+                    WHERE table_name='item' AND column_name='custom_attributes'
+                """)
+                result = session.exec(check_custom_attrs).first()
+                
+                if not result:
+                    try:
+                        alter_query = text("ALTER TABLE item ADD COLUMN custom_attributes JSONB")
+                        session.exec(alter_query)
+                        session.commit()
+                        print("✓ Added custom_attributes column to item table")
+                    except Exception as e:
+                        session.rollback()
+                        print(f"Warning: Could not add image_url column to item: {e}")
+                else:
+                    print("✓ image_url column already exists in item table")
             
             # Add items column to proposal table if it doesn't exist
             proposal_table_check = text("""
@@ -1237,6 +1257,154 @@ def migrate_forms_tables():
             print(f"Migration warning (forms tables): {e}")
 
 
+def migrate_custom_fields_tables():
+    """Create custom_fields and custom_modules tables, and add custom_attributes columns"""
+    from app.models import CustomField, CustomModule
+    from sqlalchemy import text
+    
+    with Session(engine) as session:
+        try:
+            # Check if customfield table exists
+            table_check = text("""
+                SELECT EXISTS (
+                    SELECT FROM information_schema.tables 
+                    WHERE table_name = 'customfield'
+                )
+            """)
+            result = session.exec(table_check).first()
+            table_exists = result[0] if result else False
+            
+            if not table_exists:
+                create_customfield_table = text("""
+                    CREATE TABLE IF NOT EXISTS customfield (
+                        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                        tenant_id INTEGER NOT NULL,
+                        module_target VARCHAR(255) NOT NULL,
+                        field_label VARCHAR(255) NOT NULL,
+                        field_name VARCHAR(255) NOT NULL,
+                        field_type VARCHAR(50) NOT NULL,
+                        options JSONB,
+                        required BOOLEAN NOT NULL DEFAULT FALSE,
+                        default_value VARCHAR(255),
+                        "order" INTEGER NOT NULL DEFAULT 0,
+                        relationship_target VARCHAR(255),
+                        created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+                        updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+                        FOREIGN KEY (tenant_id) REFERENCES tenant(id),
+                        UNIQUE(tenant_id, module_target, field_name)
+                    )
+                """)
+                create_custommodule_table = text("""
+                    CREATE TABLE IF NOT EXISTS custommodule (
+                        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                        tenant_id INTEGER NOT NULL,
+                        name VARCHAR(255) NOT NULL,
+                        slug VARCHAR(255) NOT NULL,
+                        description TEXT,
+                        icon VARCHAR(100),
+                        is_active BOOLEAN NOT NULL DEFAULT TRUE,
+                        created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+                        updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+                        FOREIGN KEY (tenant_id) REFERENCES tenant(id),
+                        UNIQUE(tenant_id, slug)
+                    )
+                """)
+                session.exec(create_customfield_table)
+                session.exec(create_custommodule_table)
+                
+                # Criar índices
+                session.exec(text("CREATE INDEX IF NOT EXISTS idx_customfield_tenant_id ON customfield(tenant_id)"))
+                session.exec(text("CREATE INDEX IF NOT EXISTS idx_customfield_module_target ON customfield(module_target)"))
+                session.exec(text("CREATE INDEX IF NOT EXISTS idx_custommodule_tenant_id ON custommodule(tenant_id)"))
+                session.exec(text("CREATE INDEX IF NOT EXISTS idx_custommodule_slug ON custommodule(slug)"))
+                
+                session.commit()
+                print("✓ Created customfield and custommodule tables")
+            else:
+                print("✓ customfield and custommodule tables already exist")
+                # Verificar e corrigir tipo de id se necessário
+                try:
+                    # Verificar tipo da coluna id em custommodule
+                    check_id_type = text("""
+                        SELECT data_type 
+                        FROM information_schema.columns 
+                        WHERE table_name = 'custommodule' AND column_name = 'id'
+                    """)
+                    result = session.exec(check_id_type).first()
+                    if result and result[0] == 'integer':
+                        # A tabela foi criada com id INTEGER, precisamos alterar para UUID
+                        print("⚠️ Converting custommodule.id from INTEGER to UUID...")
+                        # Primeiro, criar uma nova coluna temporária
+                        session.exec(text("ALTER TABLE custommodule ADD COLUMN id_new UUID DEFAULT gen_random_uuid()"))
+                        session.commit()
+                        # Copiar dados (se houver)
+                        # Depois, remover a coluna antiga e renomear a nova
+                        session.exec(text("ALTER TABLE custommodule DROP CONSTRAINT custommodule_pkey"))
+                        session.exec(text("ALTER TABLE custommodule DROP COLUMN id"))
+                        session.exec(text("ALTER TABLE custommodule RENAME COLUMN id_new TO id"))
+                        session.exec(text("ALTER TABLE custommodule ADD PRIMARY KEY (id)"))
+                        session.commit()
+                        print("✓ Converted custommodule.id to UUID")
+                except Exception as e:
+                    print(f"⚠️ Could not convert custommodule.id type: {e}")
+                    session.rollback()
+                
+                try:
+                    # Verificar tipo da coluna id em customfield
+                    check_id_type = text("""
+                        SELECT data_type 
+                        FROM information_schema.columns 
+                        WHERE table_name = 'customfield' AND column_name = 'id'
+                    """)
+                    result = session.exec(check_id_type).first()
+                    if result and result[0] == 'integer':
+                        # A tabela foi criada com id INTEGER, precisamos alterar para UUID
+                        print("⚠️ Converting customfield.id from INTEGER to UUID...")
+                        # Primeiro, criar uma nova coluna temporária
+                        session.exec(text("ALTER TABLE customfield ADD COLUMN id_new UUID DEFAULT gen_random_uuid()"))
+                        session.commit()
+                        # Remover a coluna antiga e renomear a nova
+                        session.exec(text("ALTER TABLE customfield DROP CONSTRAINT customfield_pkey"))
+                        session.exec(text("ALTER TABLE customfield DROP COLUMN id"))
+                        session.exec(text("ALTER TABLE customfield RENAME COLUMN id_new TO id"))
+                        session.exec(text("ALTER TABLE customfield ADD PRIMARY KEY (id)"))
+                        session.commit()
+                        print("✓ Converted customfield.id to UUID")
+                except Exception as e:
+                    print(f"⚠️ Could not convert customfield.id type: {e}")
+                    session.rollback()
+            
+            # Adicionar coluna custom_attributes nas tabelas nativas
+            tables_to_migrate = ['lead', 'order', 'item', 'contact', 'account', 'opportunity', 'proposal']
+            for table_name in tables_to_migrate:
+                try:
+                    # Verificar se coluna já existe
+                    column_check = text(f"""
+                        SELECT EXISTS (
+                            SELECT FROM information_schema.columns 
+                            WHERE table_name = '{table_name}' AND column_name = 'custom_attributes'
+                        )
+                    """)
+                    result = session.exec(column_check).first()
+                    column_exists = result[0] if result else False
+                    
+                    if not column_exists:
+                        add_column = text(f"""
+                            ALTER TABLE {table_name} 
+                            ADD COLUMN custom_attributes JSONB
+                        """)
+                        session.exec(add_column)
+                        session.commit()
+                        print(f"✓ Added custom_attributes column to {table_name} table")
+                except Exception as e:
+                    print(f"Warning: Could not add custom_attributes to {table_name}: {e}")
+                    session.rollback()
+            
+        except Exception as e:
+            session.rollback()
+            print(f"Migration warning (custom fields tables): {e}")
+
+
 def init_db():
     """Initialize database tables"""
     SQLModel.metadata.create_all(engine)
@@ -1247,6 +1415,9 @@ def init_db():
     migrate_items_tables()
     migrate_tenant_limits()
     migrate_orders_tables()
+    migrate_integrations_tables()
+    migrate_forms_tables()
+    migrate_custom_fields_tables()
     # Add foreign keys for account_id and contact_id after tables are created
     migrate_lead_foreign_keys()
     # Garantir que todos os leads existentes tenham owner_id e created_by_id

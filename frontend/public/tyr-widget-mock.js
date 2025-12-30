@@ -134,3 +134,4 @@
   console.log('[TYR Widget] Widget inicializado. Visitor ID:', visitorId);
 })();
 
+

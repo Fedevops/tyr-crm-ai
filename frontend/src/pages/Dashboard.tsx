@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useAuth } from '@/contexts/AuthContext'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { TyrLoadingSpinner } from '@/components/TyrLoadingSpinner'
 import { 
   Users, BookOpen, Sparkles, CheckCircle2, Clock, AlertCircle, 
   TrendingUp, Target, Briefcase, Phone, Mail, Calendar,
@@ -185,6 +186,10 @@ export function Dashboard() {
     amount: stage.total_value,
     probability: stage.probability
   })) || []
+
+  if (loading) {
+    return <TyrLoadingSpinner />
+  }
 
   return (
     <div className="flex-1 space-y-6 p-6">
