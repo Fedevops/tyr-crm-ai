@@ -28,6 +28,14 @@ services:
       SECRET_KEY: your-secret-key-change-in-production
       ALGORITHM: HS256
       ACCESS_TOKEN_EXPIRE_MINUTES: 30
+      # LLM Configuration - valores padrão para Docker
+      # Para usar Ollama rodando no host, use: http://host.docker.internal:11434
+      # Para usar OpenAI, configure OPENAI_API_KEY no arquivo .env
+      LLM_PROVIDER: ${LLM_PROVIDER:-ollama}
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
+      OLLAMA_MODEL: ${OLLAMA_MODEL:-llama3}
+    env_file:
+      - ./backend/.env  # Carrega variáveis do arquivo .env se existir (crie este arquivo)
     ports:
       - "8000:8000"
     volumes:

@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { X, Plus, Filter } from 'lucide-react'
+import { X, Plus, Filter, XCircle } from 'lucide-react'
 import api from '@/lib/api'
 
 interface FilterField {
@@ -61,6 +61,10 @@ export function AdvancedFilters({ filters, onFiltersChange, logic, onLogicChange
 
   const removeFilter = (id: string) => {
     onFiltersChange(filters.filter(f => f.id !== id))
+  }
+
+  const clearAllFilters = () => {
+    onFiltersChange([])
   }
 
   const updateFilter = (id: string, updates: Partial<Filter>) => {
@@ -212,6 +216,17 @@ export function AdvancedFilters({ filters, onFiltersChange, logic, onLogicChange
             <div className="flex items-center justify-between">
               <CardTitle className="text-violet-900 dark:text-violet-100">Filtros Avançados</CardTitle>
               <div className="flex items-center gap-2">
+                {filters.length > 0 && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={clearAllFilters}
+                    className="flex items-center gap-2 border-red-300 hover:bg-red-50 dark:hover:bg-red-950/20 hover:border-red-400 text-red-600 dark:text-red-400 transition-all duration-200"
+                  >
+                    <XCircle className="h-4 w-4" />
+                    Limpar Filtros
+                  </Button>
+                )}
                 <span className="text-sm">Lógica:</span>
                 <select
                   value={logic}

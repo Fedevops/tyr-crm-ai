@@ -972,26 +972,6 @@ Veja o arquivo ENCONTRAR_ENDPOINT_RAPIDAPI.md para instruções detalhadas.'''
             logger.error(f"❌ [RAPIDAPI LINKEDIN] {error_msg}")
             return {'success': False, 'error': error_msg}
         
-        # Continuar processamento dos dados se chegou aqui com sucesso
-            status_code = None
-            error_detail = ""
-            if hasattr(e, 'response') and e.response:
-                status_code = e.response.status_code
-                error_detail = e.response.text[:500] if e.response.text else ""
-            
-            error_msg = f'Erro HTTP {status_code if status_code else "desconhecido"} na API RapidAPI LinkedIn'
-            if status_code == 401:
-                error_msg = 'API key do RapidAPI inválida ou expirada. Verifique sua chave no RapidAPI.'
-            elif status_code == 403:
-                error_msg = 'Acesso negado. Verifique se você está inscrito no plano da API no RapidAPI.'
-            elif status_code == 429:
-                error_msg = 'Limite de requisições do RapidAPI excedido. Aguarde ou faça upgrade do plano.'
-            elif status_code == 404:
-                error_msg = 'Perfil do LinkedIn não encontrado ou endpoint incorreto. Verifique a URL e o endpoint da API.'
-            elif status_code == 500:
-                error_msg = 'Erro interno do servidor RapidAPI. Tente novamente mais tarde.'
-            
-        
         # Extrair informações do perfil do LinkedIn
         # A estrutura pode variar dependendo da API do RapidAPI usada
         # Vou criar uma estrutura genérica que funciona com diferentes formatos
@@ -1001,10 +981,24 @@ Veja o arquivo ENCONTRAR_ENDPOINT_RAPIDAPI.md para instruções detalhadas.'''
             # Já temos o nome do lead, mas podemos validar
             pass
         
-        # Cargo/Posição
+        # Headline/Título Profissional
         if 'headline' in data:
+            enriched_data['linkedin_headline'] = data.get('headline', '')
+            # Também usar para position se não tiver
             if not lead_info.get('position') or lead_info.get('position') == '':
                 enriched_data['position'] = data.get('headline', '')
+        
+        # Sobre/About
+        if 'summary' in data or 'about' in data:
+            summary = data.get('summary') or data.get('about', '')
+            if summary:
+                enriched_data['linkedin_about'] = summary
+                # Adicionar ao contexto se já existir, ou criar novo
+                current_context = lead_info.get('context', '')
+                if current_context:
+                    enriched_data['context'] = f"{current_context}\n\nInformações do LinkedIn:\n{summary}"
+                else:
+                    enriched_data['context'] = f"Informações do LinkedIn:\n{summary}"
         
         # Localização
         if 'location' in data:
@@ -1032,7 +1026,7 @@ Veja o arquivo ENCONTRAR_ENDPOINT_RAPIDAPI.md para instruções detalhadas.'''
             if not lead_info.get('company'):
                 enriched_data['company'] = data.get('company', '')
         
-        # Experiências profissionais
+        # Experiências profissionais - salvar em JSON
         experiences = []
         if 'experiences' in data:
             experiences = data.get('experiences', [])
@@ -1040,42 +1034,134 @@ Veja o arquivo ENCONTRAR_ENDPOINT_RAPIDAPI.md para instruções detalhadas.'''
             experiences = data.get('experience', [])
         
         if experiences:
-            # Usar a experiência mais recente para enriquecer
-            latest_exp = experiences[0] if isinstance(experiences, list) else experiences
+            # Normalizar formato das experiências
+            normalized_experiences = []
+            exp_list = experiences if isinstance(experiences, list) else [experiences]
+            for exp in exp_list:
+                if isinstance(exp, dict):
+                    normalized_exp = {
+                        'position': exp.get('title') or exp.get('position') or exp.get('jobTitle', ''),
+                        'company': exp.get('company') or exp.get('companyName') or exp.get('company_name', ''),
+                        'start_date': exp.get('startDate') or exp.get('start_date') or exp.get('start', ''),
+                        'end_date': exp.get('endDate') or exp.get('end_date') or exp.get('end') or None,
+                        'description': exp.get('description') or exp.get('summary', '')
+                    }
+                    normalized_experiences.append(normalized_exp)
+            
+            if normalized_experiences:
+                enriched_data['linkedin_experience_json'] = json.dumps(normalized_experiences, ensure_ascii=False)
+            
+            # Usar a experiência mais recente para enriquecer campos básicos
+            latest_exp = exp_list[0] if exp_list else None
             if isinstance(latest_exp, dict):
                 if 'company' in latest_exp and not lead_info.get('company'):
-                    enriched_data['company'] = latest_exp.get('company', '')
+                    enriched_data['company'] = latest_exp.get('company', '') or latest_exp.get('companyName', '')
                 if 'title' in latest_exp and not lead_info.get('position'):
-                    enriched_data['position'] = latest_exp.get('title', '')
+                    enriched_data['position'] = latest_exp.get('title', '') or latest_exp.get('position', '')
                 if 'industry' in latest_exp:
                     enriched_data['industry'] = latest_exp.get('industry', '')
         
-        # Educação
+        # Educação - salvar em JSON
         if 'education' in data:
             education = data.get('education', [])
-            # Pode ser usado para contexto, mas não vamos adicionar campos específicos
+            if education:
+                normalized_education = []
+                edu_list = education if isinstance(education, list) else [education]
+                for edu in edu_list:
+                    if isinstance(edu, dict):
+                        normalized_edu = {
+                            'institution': edu.get('school') or edu.get('institution') or edu.get('schoolName', ''),
+                            'degree': edu.get('degree') or edu.get('fieldOfStudy') or edu.get('field_of_study', ''),
+                            'field': edu.get('fieldOfStudy') or edu.get('field_of_study') or edu.get('major', ''),
+                            'start_date': edu.get('startDate') or edu.get('start_date') or edu.get('start', ''),
+                            'end_date': edu.get('endDate') or edu.get('end_date') or edu.get('end') or None
+                        }
+                        normalized_education.append(normalized_edu)
+                
+                if normalized_education:
+                    enriched_data['linkedin_education_json'] = json.dumps(normalized_education, ensure_ascii=False)
         
-        # Sobre/Resumo
-        if 'summary' in data or 'about' in data:
-            summary = data.get('summary') or data.get('about', '')
-            if summary:
-                # Adicionar ao contexto se já existir, ou criar novo
-                current_context = lead_info.get('context', '')
-                if current_context:
-                    enriched_data['context'] = f"{current_context}\n\nInformações do LinkedIn:\n{summary}"
-                else:
-                    enriched_data['context'] = f"Informações do LinkedIn:\n{summary}"
+        # Certificações - salvar em JSON
+        if 'certifications' in data:
+            certifications = data.get('certifications', [])
+            if certifications:
+                normalized_certs = []
+                cert_list = certifications if isinstance(certifications, list) else [certifications]
+                for cert in cert_list:
+                    if isinstance(cert, dict):
+                        normalized_cert = {
+                            'name': cert.get('name') or cert.get('title') or cert.get('certificationName', ''),
+                            'issuer': cert.get('issuer') or cert.get('issuingOrganization') or cert.get('issuing_organization', ''),
+                            'issue_date': cert.get('issueDate') or cert.get('issue_date') or cert.get('issued', ''),
+                            'expiration_date': cert.get('expirationDate') or cert.get('expiration_date') or None,
+                            'credential_id': cert.get('credentialId') or cert.get('credential_id', '')
+                        }
+                        normalized_certs.append(normalized_cert)
+                
+                if normalized_certs:
+                    enriched_data['linkedin_certifications_json'] = json.dumps(normalized_certs, ensure_ascii=False)
         
-        # Habilidades/Skills (pode ser usado para contexto)
+        # Habilidades/Skills
         if 'skills' in data:
             skills = data.get('skills', [])
             if skills:
-                skills_text = ', '.join(skills) if isinstance(skills, list) else str(skills)
+                if isinstance(skills, list):
+                    skills_text = ', '.join(skills)
+                else:
+                    skills_text = str(skills)
+                enriched_data['linkedin_skills'] = skills_text
+                # Adicionar ao contexto também
                 current_context = enriched_data.get('context', lead_info.get('context', ''))
                 if current_context:
                     enriched_data['context'] = f"{current_context}\n\nHabilidades: {skills_text}"
                 else:
                     enriched_data['context'] = f"Habilidades: {skills_text}"
+        
+        # Artigos/Publicações - salvar em JSON
+        if 'articles' in data or 'publications' in data:
+            articles = data.get('articles') or data.get('publications', [])
+            if articles:
+                normalized_articles = []
+                art_list = articles if isinstance(articles, list) else [articles]
+                for article in art_list:
+                    if isinstance(article, dict):
+                        normalized_article = {
+                            'title': article.get('title') or article.get('name', ''),
+                            'url': article.get('url') or article.get('link', ''),
+                            'published_date': article.get('publishedDate') or article.get('published_date') or article.get('date', ''),
+                            'description': article.get('description') or article.get('summary', '')
+                        }
+                        normalized_articles.append(normalized_article)
+                
+                if normalized_articles:
+                    enriched_data['linkedin_articles_json'] = json.dumps(normalized_articles, ensure_ascii=False)
+        
+        # Conexões e Seguidores
+        if 'connections' in data:
+            connections = data.get('connections')
+            if isinstance(connections, (int, str)):
+                try:
+                    enriched_data['linkedin_connections_count'] = int(connections)
+                except (ValueError, TypeError):
+                    pass
+        
+        if 'followers' in data or 'followersCount' in data:
+            followers = data.get('followers') or data.get('followersCount')
+            if isinstance(followers, (int, str)):
+                try:
+                    enriched_data['linkedin_followers_count'] = int(followers)
+                except (ValueError, TypeError):
+                    pass
+        
+        # Atividades recentes (pode ser um resumo das últimas atividades)
+        if 'recentActivity' in data or 'activities' in data:
+            activity = data.get('recentActivity') or data.get('activities', '')
+            if activity:
+                if isinstance(activity, list):
+                    activity_text = '\n'.join([str(a) for a in activity[:5]])  # Últimas 5 atividades
+                else:
+                    activity_text = str(activity)
+                enriched_data['linkedin_recent_activity'] = activity_text
         
         # Telefone (raramente disponível no LinkedIn público, mas verificar)
         if 'phone' in data:

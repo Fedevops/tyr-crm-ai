@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { AdvancedFilters } from '@/components/AdvancedFilters'
 import { DynamicForm } from '@/components/DynamicForm'
 import { customFieldsApi } from '@/lib/api'
@@ -50,6 +51,18 @@ interface Lead {
   position: string | null
   website: string | null
   linkedin_url: string | null
+  // Campos do LinkedIn
+  linkedin_headline: string | null
+  linkedin_about: string | null
+  linkedin_experience_json: string | null
+  linkedin_education_json: string | null
+  linkedin_certifications_json: string | null
+  linkedin_skills: string | null
+  linkedin_articles_json: string | null
+  linkedin_recent_activity: string | null
+  linkedin_connections_count: number | null
+  linkedin_followers_count: number | null
+  linkedin_summary: string | null
   status: LeadStatus
   source: string | null
   score: number | null
@@ -134,13 +147,18 @@ export function Leads() {
   const { trackActivity } = useKPI()
   const [leads, setLeads] = useState<Lead[]>([])
   const [loading, setLoading] = useState(true)
-  const [showForm, setShowForm] = useState(false)
+  const [showCreateModal, setShowCreateModal] = useState(false)
+  const [showEditModal, setShowEditModal] = useState(false)
   const [editingId, setEditingId] = useState<number | null>(null)
   const [stats, setStats] = useState<any>(null)
   const [showImportModal, setShowImportModal] = useState(false)
   const [importing, setImporting] = useState(false)
   const [importResult, setImportResult] = useState<any>(null)
+  const [parsingPdf, setParsingPdf] = useState(false)
   const [showSequenceModal, setShowSequenceModal] = useState(false)
+  const [showBulkUpdateModal, setShowBulkUpdateModal] = useState(false)
+  const [bulkUpdateField, setBulkUpdateField] = useState<string>('')
+  const [bulkUpdateValue, setBulkUpdateValue] = useState<string>('')
   const [selectedLeadId, setSelectedLeadId] = useState<number | null>(null)
   const [sequences, setSequences] = useState<any[]>([])
   const [sequenceStartDate, setSequenceStartDate] = useState('')
@@ -184,6 +202,18 @@ export function Leads() {
     position: '',
     website: '',
     linkedin_url: '',
+    // Campos do LinkedIn
+    linkedin_headline: '',
+    linkedin_about: '',
+    linkedin_experience_json: '',
+    linkedin_education_json: '',
+    linkedin_certifications_json: '',
+    linkedin_skills: '',
+    linkedin_articles_json: '',
+    linkedin_recent_activity: '',
+    linkedin_connections_count: null as number | null,
+    linkedin_followers_count: null as number | null,
+    linkedin_summary: '',
     status: 'new' as LeadStatus,
     source: '',
     score: 0,
@@ -514,6 +544,131 @@ export function Leads() {
     window.location.href = `mailto:${emails}`
   }
 
+  const handleBulkDelete = async () => {
+    const selected = Array.from(selectedLeads)
+    if (selected.length === 0) {
+      alert('Selecione pelo menos um lead para apagar')
+      return
+    }
+
+    const confirmMessage = `Tem certeza que deseja apagar ${selected.length} lead(s)? Esta ação não pode ser desfeita.`
+    if (!confirm(confirmMessage)) return
+
+    const storedToken = localStorage.getItem('token')
+    if (!storedToken) {
+      alert('Sua sessão expirou. Por favor, faça login novamente.')
+      window.location.href = '/login'
+      return
+    }
+
+    try {
+      let success = 0
+      let errors = 0
+
+      for (const leadId of selected) {
+        try {
+          await api.delete(`/api/leads/${leadId}`)
+          success++
+        } catch (error: any) {
+          console.error(`Error deleting lead ${leadId}:`, error)
+          errors++
+        }
+      }
+
+      if (success > 0) {
+        alert(`${success} lead(s) apagado(s) com sucesso.${errors > 0 ? ` ${errors} erro(s) ocorreram.` : ''}`)
+        setSelectedLeads(new Set())
+        fetchLeads()
+        fetchStats()
+      } else {
+        alert(`Erro ao apagar leads. Tente novamente.`)
+      }
+    } catch (error: any) {
+      console.error('Error bulk deleting leads:', error)
+      if (error.response?.status === 401) {
+        alert('Sua sessão expirou. Por favor, faça login novamente.')
+        window.location.href = '/login'
+      } else {
+        alert(error.response?.data?.detail || 'Erro ao apagar leads')
+      }
+    }
+  }
+
+  const handleBulkUpdate = async () => {
+    const selected = Array.from(selectedLeads)
+    if (selected.length === 0) {
+      alert('Selecione pelo menos um lead para atualizar')
+      return
+    }
+
+    if (!bulkUpdateField) {
+      alert('Selecione um campo para atualizar')
+      return
+    }
+
+    const storedToken = localStorage.getItem('token')
+    if (!storedToken) {
+      alert('Sua sessão expirou. Por favor, faça login novamente.')
+      window.location.href = '/login'
+      return
+    }
+
+    try {
+      // Converter valor baseado no tipo do campo
+      let value: any = bulkUpdateValue
+      
+      // Campos numéricos
+      if (bulkUpdateField === 'score') {
+        value = bulkUpdateValue ? parseInt(bulkUpdateValue) : null
+      } else if (bulkUpdateField === 'capital_social') {
+        value = bulkUpdateValue ? parseFloat(bulkUpdateValue) : null
+      } else if (bulkUpdateField === 'owner_id') {
+        value = bulkUpdateValue ? parseInt(bulkUpdateValue) : null
+      }
+      // Campos booleanos
+      else if (bulkUpdateField === 'simples_nacional') {
+        value = bulkUpdateValue === 'true' || bulkUpdateValue === '1'
+      }
+      // Campos de data
+      else if (['last_contact', 'next_followup', 'data_abertura', 'data_situacao_cadastral', 
+                'data_opcao_simples', 'data_exclusao_simples'].includes(bulkUpdateField)) {
+        value = bulkUpdateValue || null
+      }
+      // Campos de texto - usar null se vazio
+      else if (!bulkUpdateValue || bulkUpdateValue.trim() === '') {
+        value = null
+      }
+
+      const response = await api.post('/api/leads/bulk-update', {
+        lead_ids: selected,
+        field: bulkUpdateField,
+        value: value
+      })
+
+      const message = response.data.message || `${response.data.updated_count || selected.length} lead(s) atualizado(s) com sucesso`
+      if (response.data.skipped_count > 0) {
+        alert(`${message}\n\nNota: ${response.data.skipped_count} lead(s) não puderam ser atualizados por falta de permissão.`)
+      } else {
+        alert(message)
+      }
+      
+      setShowBulkUpdateModal(false)
+      setBulkUpdateField('')
+      setBulkUpdateValue('')
+      setSelectedLeads(new Set())
+      fetchLeads()
+      fetchStats()
+    } catch (error: any) {
+      console.error('Error bulk updating leads:', error)
+      if (error.response?.status === 401) {
+        alert('Sua sessão expirou. Por favor, faça login novamente.')
+        window.location.href = '/login'
+      } else {
+        alert(error.response?.data?.detail || 'Erro ao atualizar leads')
+      }
+    }
+  }
+
   const totalPages = Math.ceil(totalLeads / pageSize)
 
   const fetchLeads = async () => {
@@ -682,6 +837,18 @@ export function Leads() {
         position: formData.position || null,
         website: formData.website || null,
         linkedin_url: formData.linkedin_url || null,
+        // Campos do LinkedIn
+        linkedin_headline: formData.linkedin_headline || null,
+        linkedin_about: formData.linkedin_about || null,
+        linkedin_experience_json: formData.linkedin_experience_json || null,
+        linkedin_education_json: formData.linkedin_education_json || null,
+        linkedin_certifications_json: formData.linkedin_certifications_json || null,
+        linkedin_skills: formData.linkedin_skills || null,
+        linkedin_articles_json: formData.linkedin_articles_json || null,
+        linkedin_recent_activity: formData.linkedin_recent_activity || null,
+        linkedin_connections_count: formData.linkedin_connections_count || null,
+        linkedin_followers_count: formData.linkedin_followers_count || null,
+        linkedin_summary: formData.linkedin_summary || null,
         source: formData.source || null,
         notes: formData.notes || null,
         tags: formData.tags || null,
@@ -739,7 +906,8 @@ export function Leads() {
         }
       }
       
-      setShowForm(false)
+      setShowCreateModal(false)
+      setShowEditModal(false)
       setEditingId(null)
       setFormData({
         name: '',
@@ -749,6 +917,18 @@ export function Leads() {
         position: '',
         website: '',
         linkedin_url: '',
+        // Campos do LinkedIn
+        linkedin_headline: '',
+        linkedin_about: '',
+        linkedin_experience_json: '',
+        linkedin_education_json: '',
+        linkedin_certifications_json: '',
+        linkedin_skills: '',
+        linkedin_articles_json: '',
+        linkedin_recent_activity: '',
+        linkedin_connections_count: null,
+        linkedin_followers_count: null,
+        linkedin_summary: '',
         status: 'new',
         source: '',
         score: 0,
@@ -798,6 +978,18 @@ export function Leads() {
       position: lead.position || '',
       website: lead.website || '',
       linkedin_url: lead.linkedin_url || '',
+      // Campos do LinkedIn
+      linkedin_headline: lead.linkedin_headline || '',
+      linkedin_about: lead.linkedin_about || '',
+      linkedin_experience_json: lead.linkedin_experience_json || '',
+      linkedin_education_json: lead.linkedin_education_json || '',
+      linkedin_certifications_json: lead.linkedin_certifications_json || '',
+      linkedin_skills: lead.linkedin_skills || '',
+      linkedin_articles_json: lead.linkedin_articles_json || '',
+      linkedin_recent_activity: lead.linkedin_recent_activity || '',
+      linkedin_connections_count: lead.linkedin_connections_count || null,
+      linkedin_followers_count: lead.linkedin_followers_count || null,
+      linkedin_summary: lead.linkedin_summary || '',
       status: lead.status,
       source: lead.source || '',
       score: lead.score || 0,
@@ -843,7 +1035,7 @@ export function Leads() {
       owner_id: lead.owner_id || null
     })
     setEditingId(lead.id)
-    setShowForm(true)
+    setShowEditModal(true)
   }
 
   const handleDelete = async (id: number) => {
@@ -903,6 +1095,737 @@ export function Leads() {
     }
   }
 
+  // Função helper para renderizar o formulário completo
+  const renderLeadForm = (isModal: boolean = false) => (
+    <form onSubmit={handleSubmit} className="space-y-4">
+      <div className="grid gap-4 md:grid-cols-2">
+        <div className="space-y-2">
+          <label className="text-sm font-medium">Nome *</label>
+          <Input
+            value={formData.name}
+            onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+            required
+          />
+        </div>
+        <div className="space-y-2">
+          <label className="text-sm font-medium">Email</label>
+          <Input
+            type="email"
+            value={formData.email}
+            onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+          />
+        </div>
+        <div className="space-y-2">
+          <label className="text-sm font-medium">Telefone</label>
+          <Input
+            value={formData.phone}
+            onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+          />
+        </div>
+        <div className="space-y-2">
+          <label className="text-sm font-medium">Empresa</label>
+          <Input
+            value={formData.company}
+            onChange={(e) => setFormData({ ...formData, company: e.target.value })}
+          />
+        </div>
+        <div className="space-y-2">
+          <label className="text-sm font-medium">Cargo</label>
+          <Input
+            value={formData.position}
+            onChange={(e) => setFormData({ ...formData, position: e.target.value })}
+          />
+        </div>
+        <div className="space-y-2">
+          <label className="text-sm font-medium">Site da Empresa</label>
+          <Input
+            type="url"
+            value={formData.website}
+            onChange={(e) => setFormData({ ...formData, website: e.target.value })}
+            placeholder="https://exemplo.com.br"
+          />
+        </div>
+        <div className="space-y-2">
+          <label className="text-sm font-medium">LinkedIn URL</label>
+          <Input
+            value={formData.linkedin_url}
+            onChange={(e) => setFormData({ ...formData, linkedin_url: e.target.value })}
+            placeholder="https://www.linkedin.com/in/usuario"
+          />
+        </div>
+        <div className="space-y-2">
+          <label className="text-sm font-medium">Fonte</label>
+          <select
+            value={formData.source || ''}
+            onChange={(e) => setFormData({ ...formData, source: e.target.value || null })}
+            className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background"
+          >
+            <option value="">Selecione uma fonte</option>
+            {availableSources.map((source) => (
+              <option key={source} value={source}>{source}</option>
+            ))}
+          </select>
+        </div>
+        <div className="space-y-2">
+          <label className="text-sm font-medium">Status</label>
+          <select
+            value={formData.status}
+            onChange={(e) => setFormData({ ...formData, status: e.target.value as LeadStatus })}
+            className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background"
+          >
+            {Object.entries(statusLabels).map(([value, label]) => (
+              <option key={value} value={value}>{label}</option>
+            ))}
+          </select>
+        </div>
+        <div className="space-y-2">
+          <label className="text-sm font-medium">Score (0-100)</label>
+          <Input
+            type="number"
+            min="0"
+            max="100"
+            value={formData.score}
+            onChange={(e) => setFormData({ ...formData, score: parseInt(e.target.value) || 0 })}
+          />
+        </div>
+        <div className="space-y-2">
+          <label className="text-sm font-medium">Responsável</label>
+          <select
+            value={formData.owner_id || ''}
+            onChange={(e) => setFormData({ ...formData, owner_id: e.target.value ? parseInt(e.target.value) : null })}
+            className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background"
+          >
+            <option value="">Sem responsável</option>
+            {users.map((user) => (
+              <option key={user.id} value={user.id}>
+                {user.full_name} ({user.email})
+              </option>
+            ))}
+          </select>
+        </div>
+      </div>
+      <div className="grid gap-4 md:grid-cols-2">
+        <div className="space-y-2">
+          <label className="text-sm font-medium">Endereço</label>
+          <Input
+            value={formData.address}
+            onChange={(e) => setFormData({ ...formData, address: e.target.value })}
+            placeholder="Rua, número, complemento"
+          />
+        </div>
+        <div className="space-y-2">
+          <label className="text-sm font-medium">Cidade</label>
+          <Input
+            value={formData.city}
+            onChange={(e) => setFormData({ ...formData, city: e.target.value })}
+          />
+        </div>
+        <div className="space-y-2">
+          <label className="text-sm font-medium">Estado</label>
+          <Input
+            value={formData.state}
+            onChange={(e) => setFormData({ ...formData, state: e.target.value })}
+            placeholder="SP, RJ, MG..."
+          />
+        </div>
+        <div className="space-y-2">
+          <label className="text-sm font-medium">CEP</label>
+          <Input
+            value={formData.zip_code}
+            onChange={(e) => setFormData({ ...formData, zip_code: e.target.value })}
+            placeholder="12345-678"
+          />
+        </div>
+        <div className="space-y-2">
+          <label className="text-sm font-medium">País</label>
+          <Input
+            value={formData.country}
+            onChange={(e) => setFormData({ ...formData, country: e.target.value })}
+            placeholder="Brasil"
+          />
+        </div>
+        <div className="space-y-2">
+          <label className="text-sm font-medium">Setor/Indústria</label>
+          <Input
+            value={formData.industry}
+            onChange={(e) => setFormData({ ...formData, industry: e.target.value })}
+            placeholder="Tecnologia, Saúde, Educação..."
+          />
+        </div>
+        <div className="space-y-2 md:col-span-2">
+          <label className="text-sm font-medium">Tamanho da Empresa</label>
+          <Input
+            value={formData.company_size}
+            onChange={(e) => setFormData({ ...formData, company_size: e.target.value })}
+            placeholder="50-200 funcionários, Startup, Grande empresa..."
+          />
+        </div>
+      </div>
+      <div className="space-y-2">
+        <label className="text-sm font-medium">Contexto da Empresa</label>
+        <Textarea
+          value={formData.context}
+          onChange={(e) => setFormData({ ...formData, context: e.target.value })}
+          rows={6}
+          placeholder="Resumo sobre a empresa, produtos/serviços, tecnologias utilizadas, dores identificadas, oportunidades de vendas..."
+        />
+        <p className="text-xs text-muted-foreground">
+          Este campo pode ser preenchido automaticamente quando uma tarefa de pesquisa for concluída.
+        </p>
+      </div>
+
+      {/* Seção LinkedIn */}
+      <div className="border-t pt-6 mt-6">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-lg font-semibold">Informações do LinkedIn</h3>
+          <div className="flex items-center gap-2">
+            <input
+              type="file"
+              accept=".pdf"
+              id={isModal ? "linkedin-pdf-upload-modal" : "linkedin-pdf-upload"}
+              className="hidden"
+              onChange={(e) => {
+                const file = e.target.files?.[0]
+                if (file) {
+                  handleLinkedInPdfUpload(file)
+                }
+                e.target.value = ''
+              }}
+              disabled={parsingPdf}
+            />
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => document.getElementById(isModal ? "linkedin-pdf-upload-modal" : "linkedin-pdf-upload")?.click()}
+              disabled={parsingPdf}
+              className="flex items-center gap-2"
+            >
+              {parsingPdf ? (
+                <>
+                  <Clock className="h-4 w-4 animate-spin" />
+                  Processando...
+                </>
+              ) : (
+                <>
+                  <Upload className="h-4 w-4" />
+                  Carregar PDF do LinkedIn
+                </>
+              )}
+            </Button>
+          </div>
+        </div>
+        {parsingPdf && (
+          <div className="mb-4 p-3 bg-blue-50 dark:bg-blue-950 rounded-lg border border-blue-200 dark:border-blue-800">
+            <p className="text-sm text-blue-700 dark:text-blue-300">
+              Processando PDF e extraindo informações com IA... Isso pode levar alguns segundos.
+            </p>
+          </div>
+        )}
+        <div className="grid gap-4 md:grid-cols-2">
+          <div className="space-y-2 md:col-span-2">
+            <label className="text-sm font-medium">Título Profissional (Headline)</label>
+            <Input
+              value={formData.linkedin_headline}
+              onChange={(e) => setFormData({ ...formData, linkedin_headline: e.target.value })}
+              placeholder="Ex: Especialista Backend | 10+ anos | Python, Django, FastAPI"
+            />
+          </div>
+          <div className="space-y-2 md:col-span-2">
+            <label className="text-sm font-medium">Sobre</label>
+            <Textarea
+              value={formData.linkedin_about}
+              onChange={(e) => setFormData({ ...formData, linkedin_about: e.target.value })}
+              rows={4}
+              placeholder="Texto completo do campo 'Sobre' do perfil LinkedIn"
+            />
+          </div>
+          <div className="space-y-2">
+            <label className="text-sm font-medium">Conexões</label>
+            <Input
+              type="number"
+              value={formData.linkedin_connections_count || ''}
+              onChange={(e) => setFormData({ ...formData, linkedin_connections_count: e.target.value ? parseInt(e.target.value) : null })}
+              placeholder="500"
+            />
+          </div>
+          <div className="space-y-2">
+            <label className="text-sm font-medium">Seguidores</label>
+            <Input
+              type="number"
+              value={formData.linkedin_followers_count || ''}
+              onChange={(e) => setFormData({ ...formData, linkedin_followers_count: e.target.value ? parseInt(e.target.value) : null })}
+              placeholder="5000"
+            />
+          </div>
+          <div className="space-y-2 md:col-span-2">
+            <label className="text-sm font-medium">Habilidades (separadas por vírgula)</label>
+            <Input
+              value={formData.linkedin_skills}
+              onChange={(e) => setFormData({ ...formData, linkedin_skills: e.target.value })}
+              placeholder="Python, Django, FastAPI, PostgreSQL, AWS"
+            />
+          </div>
+          <div className="space-y-2 md:col-span-2">
+            <label className="text-sm font-medium">Experiência Profissional (JSON)</label>
+            <Textarea
+              value={formData.linkedin_experience_json}
+              onChange={(e) => setFormData({ ...formData, linkedin_experience_json: e.target.value })}
+              rows={4}
+              placeholder='[{"position": "Especialista Backend", "company": "Empresa", "start_date": "2023-01", "end_date": null, "description": "..."}]'
+            />
+            <p className="text-xs text-muted-foreground">
+              Formato JSON com histórico profissional
+            </p>
+          </div>
+          <div className="space-y-2 md:col-span-2">
+            <label className="text-sm font-medium">Educação (JSON)</label>
+            <Textarea
+              value={formData.linkedin_education_json}
+              onChange={(e) => setFormData({ ...formData, linkedin_education_json: e.target.value })}
+              rows={3}
+              placeholder='[{"institution": "Universidade", "degree": "Graduação", "field": "Ciência da Computação", "start_date": "2012", "end_date": "2016"}]'
+            />
+            <p className="text-xs text-muted-foreground">
+              Formato JSON com histórico educacional
+            </p>
+          </div>
+          <div className="space-y-2 md:col-span-2">
+            <label className="text-sm font-medium">Certificações (JSON)</label>
+            <Textarea
+              value={formData.linkedin_certifications_json}
+              onChange={(e) => setFormData({ ...formData, linkedin_certifications_json: e.target.value })}
+              rows={3}
+              placeholder='[{"name": "Certificação", "issuer": "Organização", "issue_date": "2023-02"}]'
+            />
+            <p className="text-xs text-muted-foreground">
+              Formato JSON com certificações
+            </p>
+          </div>
+          <div className="space-y-2 md:col-span-2">
+            <label className="text-sm font-medium">Artigos Publicados (JSON)</label>
+            <Textarea
+              value={formData.linkedin_articles_json}
+              onChange={(e) => setFormData({ ...formData, linkedin_articles_json: e.target.value })}
+              rows={3}
+              placeholder='[{"title": "Título do Artigo", "published_date": "2023-01", "url": "https://..."}]'
+            />
+            <p className="text-xs text-muted-foreground">
+              Formato JSON com artigos/publicações
+            </p>
+          </div>
+          <div className="space-y-2 md:col-span-2">
+            <label className="text-sm font-medium">Atividades Recentes</label>
+            <Textarea
+              value={formData.linkedin_recent_activity}
+              onChange={(e) => setFormData({ ...formData, linkedin_recent_activity: e.target.value })}
+              rows={3}
+              placeholder="Resumo das atividades recentes no LinkedIn"
+            />
+          </div>
+          <div className="space-y-2 md:col-span-2">
+            <label className="text-sm font-medium">Resumo e Insights (IA)</label>
+            <Textarea
+              value={formData.linkedin_summary}
+              onChange={(e) => setFormData({ ...formData, linkedin_summary: e.target.value })}
+              rows={4}
+              placeholder="Resumo gerado pela IA com insights principais sobre o perfil"
+            />
+            <p className="text-xs text-muted-foreground">
+              Este campo pode ser preenchido automaticamente durante o enriquecimento do LinkedIn
+            </p>
+          </div>
+        </div>
+      </div>
+
+      {/* Seção Casa dos Dados */}
+      <div className="border-t pt-6 mt-6">
+        <h3 className="text-lg font-semibold mb-4">Dados Fiscais (Casa dos Dados)</h3>
+        <div className="grid gap-4 md:grid-cols-2">
+          <div className="space-y-2">
+            <label className="text-sm font-medium">CNPJ</label>
+            <Input
+              value={formData.cnpj}
+              onChange={(e) => setFormData({ ...formData, cnpj: e.target.value })}
+              placeholder="00.000.000/0000-00"
+            />
+          </div>
+          <div className="space-y-2">
+            <label className="text-sm font-medium">Razão Social</label>
+            <Input
+              value={formData.razao_social}
+              onChange={(e) => setFormData({ ...formData, razao_social: e.target.value })}
+            />
+          </div>
+          <div className="space-y-2">
+            <label className="text-sm font-medium">Nome Fantasia</label>
+            <Input
+              value={formData.nome_fantasia}
+              onChange={(e) => setFormData({ ...formData, nome_fantasia: e.target.value })}
+            />
+          </div>
+          <div className="space-y-2">
+            <label className="text-sm font-medium">Data de Abertura</label>
+            <Input
+              type="date"
+              value={formData.data_abertura}
+              onChange={(e) => setFormData({ ...formData, data_abertura: e.target.value })}
+            />
+          </div>
+          <div className="space-y-2">
+            <label className="text-sm font-medium">Capital Social (R$)</label>
+            <Input
+              type="number"
+              step="0.01"
+              value={formData.capital_social}
+              onChange={(e) => setFormData({ ...formData, capital_social: e.target.value })}
+              placeholder="0.00"
+            />
+          </div>
+          <div className="space-y-2">
+            <label className="text-sm font-medium">Situação Cadastral</label>
+            <Input
+              value={formData.situacao_cadastral}
+              onChange={(e) => setFormData({ ...formData, situacao_cadastral: e.target.value })}
+            />
+          </div>
+          <div className="space-y-2">
+            <label className="text-sm font-medium">Data Situação Cadastral</label>
+            <Input
+              type="date"
+              value={formData.data_situacao_cadastral}
+              onChange={(e) => setFormData({ ...formData, data_situacao_cadastral: e.target.value })}
+            />
+          </div>
+          <div className="space-y-2">
+            <label className="text-sm font-medium">Motivo Situação Cadastral</label>
+            <Input
+              value={formData.motivo_situacao_cadastral}
+              onChange={(e) => setFormData({ ...formData, motivo_situacao_cadastral: e.target.value })}
+            />
+          </div>
+          <div className="space-y-2">
+            <label className="text-sm font-medium">Natureza Jurídica</label>
+            <Input
+              value={formData.natureza_juridica}
+              onChange={(e) => setFormData({ ...formData, natureza_juridica: e.target.value })}
+            />
+          </div>
+          <div className="space-y-2">
+            <label className="text-sm font-medium">Porte</label>
+            <Input
+              value={formData.porte}
+              onChange={(e) => setFormData({ ...formData, porte: e.target.value })}
+              placeholder="ME, EPP, Grande..."
+            />
+          </div>
+        </div>
+
+        <h4 className="text-md font-semibold mt-6 mb-4">Endereço Fiscal</h4>
+        <div className="grid gap-4 md:grid-cols-2">
+          <div className="space-y-2">
+            <label className="text-sm font-medium">Logradouro</label>
+            <Input
+              value={formData.logradouro}
+              onChange={(e) => setFormData({ ...formData, logradouro: e.target.value })}
+            />
+          </div>
+          <div className="space-y-2">
+            <label className="text-sm font-medium">Número</label>
+            <Input
+              value={formData.numero}
+              onChange={(e) => setFormData({ ...formData, numero: e.target.value })}
+            />
+          </div>
+          <div className="space-y-2">
+            <label className="text-sm font-medium">Complemento</label>
+            <Input
+              value={formData.complemento}
+              onChange={(e) => setFormData({ ...formData, complemento: e.target.value })}
+            />
+          </div>
+          <div className="space-y-2">
+            <label className="text-sm font-medium">Bairro</label>
+            <Input
+              value={formData.bairro}
+              onChange={(e) => setFormData({ ...formData, bairro: e.target.value })}
+            />
+          </div>
+          <div className="space-y-2">
+            <label className="text-sm font-medium">CEP</label>
+            <Input
+              value={formData.cep}
+              onChange={(e) => setFormData({ ...formData, cep: e.target.value })}
+              placeholder="00000-000"
+            />
+          </div>
+          <div className="space-y-2">
+            <label className="text-sm font-medium">Município</label>
+            <Input
+              value={formData.municipio}
+              onChange={(e) => setFormData({ ...formData, municipio: e.target.value })}
+            />
+          </div>
+          <div className="space-y-2">
+            <label className="text-sm font-medium">UF</label>
+            <Input
+              value={formData.uf}
+              onChange={(e) => setFormData({ ...formData, uf: e.target.value.toUpperCase() })}
+              placeholder="SP"
+              maxLength={2}
+            />
+          </div>
+        </div>
+
+        <h4 className="text-md font-semibold mt-6 mb-4">CNAE</h4>
+        <div className="grid gap-4 md:grid-cols-2">
+          <div className="space-y-2">
+            <label className="text-sm font-medium">CNAE Principal - Código</label>
+            <Input
+              value={formData.cnae_principal_codigo}
+              onChange={(e) => setFormData({ ...formData, cnae_principal_codigo: e.target.value })}
+            />
+          </div>
+          <div className="space-y-2 md:col-span-2">
+            <label className="text-sm font-medium">CNAE Principal - Descrição</label>
+            <Input
+              value={formData.cnae_principal_descricao}
+              onChange={(e) => setFormData({ ...formData, cnae_principal_descricao: e.target.value })}
+            />
+          </div>
+          <div className="space-y-2 md:col-span-2">
+            <label className="text-sm font-medium">CNAEs Secundários (JSON)</label>
+            <Textarea
+              value={formData.cnaes_secundarios_json}
+              onChange={(e) => setFormData({ ...formData, cnaes_secundarios_json: e.target.value })}
+              rows={3}
+              placeholder='[{"codigo": "1234-5/67", "descricao": "Atividade secundária"}]'
+            />
+          </div>
+        </div>
+
+        <h4 className="text-md font-semibold mt-6 mb-4">Contato e Outros</h4>
+        <div className="grid gap-4 md:grid-cols-2">
+          <div className="space-y-2">
+            <label className="text-sm font-medium">Telefone da Empresa</label>
+            <Input
+              value={formData.telefone_empresa}
+              onChange={(e) => setFormData({ ...formData, telefone_empresa: e.target.value })}
+            />
+          </div>
+          <div className="space-y-2">
+            <label className="text-sm font-medium">Email da Empresa</label>
+            <Input
+              type="email"
+              value={formData.email_empresa}
+              onChange={(e) => setFormData({ ...formData, email_empresa: e.target.value })}
+            />
+          </div>
+          <div className="space-y-2 md:col-span-2">
+            <label className="text-sm font-medium">Sócios (JSON)</label>
+            <Textarea
+              value={formData.socios_json}
+              onChange={(e) => setFormData({ ...formData, socios_json: e.target.value })}
+              rows={3}
+              placeholder='[{"nome": "João Silva", "qualificacao": "Sócio-Administrador", "cpf_cnpj": "123.456.789-00"}]'
+            />
+          </div>
+          <div className="space-y-2 flex items-center gap-2">
+            <input
+              type="checkbox"
+              checked={formData.simples_nacional}
+              onChange={(e) => setFormData({ ...formData, simples_nacional: e.target.checked })}
+              className="h-4 w-4"
+            />
+            <label className="text-sm font-medium">Optante do Simples Nacional</label>
+          </div>
+          <div className="space-y-2">
+            <label className="text-sm font-medium">Data Opção Simples</label>
+            <Input
+              type="date"
+              value={formData.data_opcao_simples}
+              onChange={(e) => setFormData({ ...formData, data_opcao_simples: e.target.value })}
+            />
+          </div>
+          <div className="space-y-2">
+            <label className="text-sm font-medium">Data Exclusão Simples</label>
+            <Input
+              type="date"
+              value={formData.data_exclusao_simples}
+              onChange={(e) => setFormData({ ...formData, data_exclusao_simples: e.target.value })}
+            />
+          </div>
+        </div>
+      </div>
+
+      <div className="space-y-2">
+        <label className="text-sm font-medium">Notas</label>
+        <Textarea
+          value={formData.notes}
+          onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
+          rows={4}
+        />
+      </div>
+
+      {/* Campos customizados */}
+      {customFields.length > 0 && (
+        <div className="border-t pt-6 mt-6">
+          <h3 className="text-lg font-semibold mb-4">Campos Customizados</h3>
+          <DynamicForm
+            fields={customFields}
+            defaultValues={customAttributes}
+            onChange={(data) => setCustomAttributes(data)}
+            showSubmitButton={false}
+          />
+        </div>
+      )}
+
+      <div className={`flex gap-2 ${isModal ? 'justify-end pt-4 border-t' : ''}`}>
+        <Button 
+          type="submit"
+          className="bg-gradient-to-r from-emerald-600 to-emerald-700 hover:from-emerald-700 hover:to-emerald-800 text-white shadow-md hover:shadow-lg transition-all duration-200"
+        >
+          Salvar
+        </Button>
+        <Button
+          type="button"
+          variant="outline"
+          className="border-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800"
+          onClick={() => {
+            setShowCreateModal(false)
+            setShowEditModal(false)
+            setEditingId(null)
+            setFormData({
+              name: '',
+              email: '',
+              phone: '',
+              company: '',
+              position: '',
+              website: '',
+              linkedin_url: '',
+              linkedin_headline: '',
+              linkedin_about: '',
+              linkedin_experience_json: '',
+              linkedin_education_json: '',
+              linkedin_certifications_json: '',
+              linkedin_skills: '',
+              linkedin_articles_json: '',
+              linkedin_recent_activity: '',
+              linkedin_connections_count: null,
+              linkedin_followers_count: null,
+              linkedin_summary: '',
+              status: 'new',
+              source: '',
+              score: 0,
+              notes: '',
+              tags: '',
+              address: '',
+              city: '',
+              state: '',
+              zip_code: '',
+              country: '',
+              industry: '',
+              company_size: '',
+              context: '',
+              razao_social: '',
+              nome_fantasia: '',
+              cnpj: '',
+              data_abertura: '',
+              capital_social: '',
+              situacao_cadastral: '',
+              data_situacao_cadastral: '',
+              motivo_situacao_cadastral: '',
+              natureza_juridica: '',
+              porte: '',
+              logradouro: '',
+              numero: '',
+              bairro: '',
+              cep: '',
+              municipio: '',
+              uf: '',
+              complemento: '',
+              cnae_principal_codigo: '',
+              cnae_principal_descricao: '',
+              cnaes_secundarios_json: '',
+              telefone_empresa: '',
+              email_empresa: '',
+              socios_json: '',
+              simples_nacional: false,
+              data_opcao_simples: '',
+              data_exclusao_simples: '',
+              agent_suggestion: '',
+              owner_id: null
+            })
+            setCustomAttributes({})
+          }}
+        >
+          Cancelar
+        </Button>
+      </div>
+    </form>
+  )
+
+  const handleLinkedInPdfUpload = async (file: File) => {
+    if (!file.name.toLowerCase().endsWith('.pdf')) {
+      alert('Por favor, selecione um arquivo PDF')
+      return
+    }
+
+    const storedToken = localStorage.getItem('token')
+    if (!storedToken) {
+      alert('Sua sessão expirou. Por favor, faça login novamente.')
+      window.location.href = '/login'
+      return
+    }
+
+    setParsingPdf(true)
+
+    try {
+      const formData = new FormData()
+      formData.append('file', file)
+
+      const response = await api.post('/api/leads/parse-linkedin-pdf', formData, {
+        headers: {
+          'Content-Type': 'multipart/form-data',
+        },
+      })
+
+      if (response.data.success && response.data.data) {
+        const extractedData = response.data.data
+        
+        // Preencher campos do formulário com dados extraídos
+        setFormData(prev => ({
+          ...prev,
+          linkedin_headline: extractedData.linkedin_headline || prev.linkedin_headline,
+          linkedin_about: extractedData.linkedin_about || prev.linkedin_about,
+          linkedin_experience_json: extractedData.linkedin_experience_json || prev.linkedin_experience_json,
+          linkedin_education_json: extractedData.linkedin_education_json || prev.linkedin_education_json,
+          linkedin_certifications_json: extractedData.linkedin_certifications_json || prev.linkedin_certifications_json,
+          linkedin_skills: extractedData.linkedin_skills || prev.linkedin_skills,
+          linkedin_articles_json: extractedData.linkedin_articles_json || prev.linkedin_articles_json,
+          linkedin_recent_activity: extractedData.linkedin_recent_activity || prev.linkedin_recent_activity,
+          linkedin_connections_count: extractedData.linkedin_connections_count || prev.linkedin_connections_count,
+          linkedin_followers_count: extractedData.linkedin_followers_count || prev.linkedin_followers_count,
+          linkedin_summary: extractedData.linkedin_summary || prev.linkedin_summary,
+        }))
+
+        alert('PDF processado com sucesso! Os campos do LinkedIn foram preenchidos automaticamente.')
+      } else {
+        alert('Erro ao processar PDF. Tente novamente.')
+      }
+    } catch (error: any) {
+      console.error('Error parsing LinkedIn PDF:', error)
+      if (error.response?.status === 401) {
+        alert('Sua sessão expirou. Por favor, faça login novamente.')
+        window.location.href = '/login'
+      } else {
+        alert(error.response?.data?.detail || 'Erro ao processar PDF. Verifique se o arquivo é válido e se o LLM está configurado.')
+      }
+    } finally {
+      setParsingPdf(false)
+    }
+  }
+
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file) return
@@ -951,6 +1874,19 @@ export function Leads() {
     }
   }
 
+  // Lista de fontes disponíveis para leads
+  const availableSources = [
+    'Prospecção',
+    'Website',
+    'LinkedIn',
+    'Referral',
+    'Email Marketing',
+    'Redes Sociais',
+    'Evento',
+    'Parceiro',
+    'Outro'
+  ]
+  
   const uniqueSources = Array.from(new Set(leads.map(l => l.source).filter(Boolean)))
 
   if (loading && !stats) {
@@ -974,7 +1910,7 @@ export function Leads() {
             Importar CSV
           </Button>
           <Button 
-            onClick={() => setShowForm(!showForm)}
+            onClick={() => setShowCreateModal(true)}
             className="bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white shadow-md hover:shadow-lg transition-all duration-200"
           >
             <Plus className="mr-2 h-4 w-4" />
@@ -1274,485 +2210,98 @@ export function Leads() {
         </CardContent>
       </Card>
 
-      {/* Form */}
-      {showForm && (
-        <Card className="border-t-4 border-t-emerald-500 bg-gradient-to-br from-emerald-50/30 to-white dark:from-emerald-950/10 dark:to-background">
-          <CardHeader className="bg-gradient-to-r from-emerald-50/50 to-transparent dark:from-emerald-950/20">
-            <CardTitle className="text-emerald-900 dark:text-emerald-100">{editingId ? 'Editar Lead' : 'Novo Lead'}</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <form onSubmit={handleSubmit} className="space-y-4">
-              <div className="grid gap-4 md:grid-cols-2">
-                <div className="space-y-2">
-                  <label className="text-sm font-medium">Nome *</label>
-                  <Input
-                    value={formData.name}
-                    onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                    required
-                  />
-                </div>
-                <div className="space-y-2">
-                  <label className="text-sm font-medium">Email</label>
-                  <Input
-                    type="email"
-                    value={formData.email}
-                    onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <label className="text-sm font-medium">Telefone</label>
-                  <Input
-                    value={formData.phone}
-                    onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <label className="text-sm font-medium">Empresa</label>
-                  <Input
-                    value={formData.company}
-                    onChange={(e) => setFormData({ ...formData, company: e.target.value })}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <label className="text-sm font-medium">Cargo</label>
-                  <Input
-                    value={formData.position}
-                    onChange={(e) => setFormData({ ...formData, position: e.target.value })}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <label className="text-sm font-medium">Site da Empresa</label>
-                  <Input
-                    type="url"
-                    value={formData.website}
-                    onChange={(e) => setFormData({ ...formData, website: e.target.value })}
-                    placeholder="https://exemplo.com.br"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <label className="text-sm font-medium">LinkedIn</label>
-                  <Input
-                    value={formData.linkedin_url}
-                    onChange={(e) => setFormData({ ...formData, linkedin_url: e.target.value })}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <label className="text-sm font-medium">Fonte</label>
-                  <Input
-                    value={formData.source}
-                    onChange={(e) => setFormData({ ...formData, source: e.target.value })}
-                    placeholder="Website, LinkedIn, Referral, etc."
-                  />
-                </div>
-                <div className="space-y-2">
-                  <label className="text-sm font-medium">Status</label>
-                  <select
-                    value={formData.status}
-                    onChange={(e) => setFormData({ ...formData, status: e.target.value as LeadStatus })}
-                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background"
-                  >
-                    {Object.entries(statusLabels).map(([value, label]) => (
-                      <option key={value} value={value}>{label}</option>
-                    ))}
-                  </select>
-                </div>
-                <div className="space-y-2">
-                  <label className="text-sm font-medium">Score (0-100)</label>
-                  <Input
-                    type="number"
-                    min="0"
-                    max="100"
-                    value={formData.score}
-                    onChange={(e) => setFormData({ ...formData, score: parseInt(e.target.value) || 0 })}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <label className="text-sm font-medium">Responsável</label>
-                  <select
-                    value={formData.owner_id || ''}
-                    onChange={(e) => setFormData({ ...formData, owner_id: e.target.value ? parseInt(e.target.value) : null })}
-                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background"
-                  >
-                    <option value="">Sem responsável</option>
-                    {users.map((user) => (
-                      <option key={user.id} value={user.id}>
-                        {user.full_name} ({user.email})
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-              <div className="grid gap-4 md:grid-cols-2">
-                <div className="space-y-2">
-                  <label className="text-sm font-medium">Endereço</label>
-                  <Input
-                    value={formData.address}
-                    onChange={(e) => setFormData({ ...formData, address: e.target.value })}
-                    placeholder="Rua, número, complemento"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <label className="text-sm font-medium">Cidade</label>
-                  <Input
-                    value={formData.city}
-                    onChange={(e) => setFormData({ ...formData, city: e.target.value })}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <label className="text-sm font-medium">Estado</label>
-                  <Input
-                    value={formData.state}
-                    onChange={(e) => setFormData({ ...formData, state: e.target.value })}
-                    placeholder="SP, RJ, MG..."
-                  />
-                </div>
-                <div className="space-y-2">
-                  <label className="text-sm font-medium">CEP</label>
-                  <Input
-                    value={formData.zip_code}
-                    onChange={(e) => setFormData({ ...formData, zip_code: e.target.value })}
-                    placeholder="12345-678"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <label className="text-sm font-medium">País</label>
-                  <Input
-                    value={formData.country}
-                    onChange={(e) => setFormData({ ...formData, country: e.target.value })}
-                    placeholder="Brasil"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <label className="text-sm font-medium">Setor/Indústria</label>
-                  <Input
-                    value={formData.industry}
-                    onChange={(e) => setFormData({ ...formData, industry: e.target.value })}
-                    placeholder="Tecnologia, Saúde, Educação..."
-                  />
-                </div>
-                <div className="space-y-2 md:col-span-2">
-                  <label className="text-sm font-medium">Tamanho da Empresa</label>
-                  <Input
-                    value={formData.company_size}
-                    onChange={(e) => setFormData({ ...formData, company_size: e.target.value })}
-                    placeholder="50-200 funcionários, Startup, Grande empresa..."
-                  />
-                </div>
-              </div>
-              <div className="space-y-2">
-                <label className="text-sm font-medium">Contexto da Empresa</label>
-                <Textarea
-                  value={formData.context}
-                  onChange={(e) => setFormData({ ...formData, context: e.target.value })}
-                  rows={6}
-                  placeholder="Resumo sobre a empresa, produtos/serviços, tecnologias utilizadas, dores identificadas, oportunidades de vendas..."
-                />
-                <p className="text-xs text-muted-foreground">
-                  Este campo pode ser preenchido automaticamente quando uma tarefa de pesquisa for concluída.
-                </p>
-              </div>
+      {/* Modal de Criação */}
+      <Dialog open={showCreateModal} onOpenChange={(open) => {
+        setShowCreateModal(open)
+        if (!open) {
+          setEditingId(null)
+          // Reset form data
+          setFormData({
+            name: '',
+            email: '',
+            phone: '',
+            company: '',
+            position: '',
+            website: '',
+            linkedin_url: '',
+            linkedin_headline: '',
+            linkedin_about: '',
+            linkedin_experience_json: '',
+            linkedin_education_json: '',
+            linkedin_certifications_json: '',
+            linkedin_skills: '',
+            linkedin_articles_json: '',
+            linkedin_recent_activity: '',
+            linkedin_connections_count: null,
+            linkedin_followers_count: null,
+            linkedin_summary: '',
+            status: 'new',
+            source: '',
+            score: 0,
+            notes: '',
+            tags: '',
+            address: '',
+            city: '',
+            state: '',
+            zip_code: '',
+            country: '',
+            industry: '',
+            company_size: '',
+            context: '',
+            razao_social: '',
+            nome_fantasia: '',
+            cnpj: '',
+            data_abertura: '',
+            capital_social: '',
+            situacao_cadastral: '',
+            data_situacao_cadastral: '',
+            motivo_situacao_cadastral: '',
+            natureza_juridica: '',
+            porte: '',
+            logradouro: '',
+            numero: '',
+            bairro: '',
+            cep: '',
+            municipio: '',
+            uf: '',
+            complemento: '',
+            cnae_principal_codigo: '',
+            cnae_principal_descricao: '',
+            cnaes_secundarios_json: '',
+            telefone_empresa: '',
+            email_empresa: '',
+            socios_json: '',
+            simples_nacional: false,
+            data_opcao_simples: '',
+            data_exclusao_simples: '',
+            agent_suggestion: '',
+            owner_id: null
+          })
+          setCustomAttributes({})
+        }
+      }}>
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Novo Lead</DialogTitle>
+          </DialogHeader>
+          {renderLeadForm(true)}
+        </DialogContent>
+      </Dialog>
 
-              {/* Seção Casa dos Dados */}
-              <div className="border-t pt-6 mt-6">
-                <h3 className="text-lg font-semibold mb-4">Dados Fiscais (Casa dos Dados)</h3>
-                <div className="grid gap-4 md:grid-cols-2">
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium">CNPJ</label>
-                    <Input
-                      value={formData.cnpj}
-                      onChange={(e) => setFormData({ ...formData, cnpj: e.target.value })}
-                      placeholder="00.000.000/0000-00"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium">Razão Social</label>
-                    <Input
-                      value={formData.razao_social}
-                      onChange={(e) => setFormData({ ...formData, razao_social: e.target.value })}
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium">Nome Fantasia</label>
-                    <Input
-                      value={formData.nome_fantasia}
-                      onChange={(e) => setFormData({ ...formData, nome_fantasia: e.target.value })}
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium">Data de Abertura</label>
-                    <Input
-                      type="date"
-                      value={formData.data_abertura}
-                      onChange={(e) => setFormData({ ...formData, data_abertura: e.target.value })}
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium">Capital Social (R$)</label>
-                    <Input
-                      type="number"
-                      step="0.01"
-                      value={formData.capital_social}
-                      onChange={(e) => setFormData({ ...formData, capital_social: e.target.value })}
-                      placeholder="0.00"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium">Situação Cadastral</label>
-                    <Input
-                      value={formData.situacao_cadastral}
-                      onChange={(e) => setFormData({ ...formData, situacao_cadastral: e.target.value })}
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium">Data Situação Cadastral</label>
-                    <Input
-                      type="date"
-                      value={formData.data_situacao_cadastral}
-                      onChange={(e) => setFormData({ ...formData, data_situacao_cadastral: e.target.value })}
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium">Motivo Situação Cadastral</label>
-                    <Input
-                      value={formData.motivo_situacao_cadastral}
-                      onChange={(e) => setFormData({ ...formData, motivo_situacao_cadastral: e.target.value })}
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium">Natureza Jurídica</label>
-                    <Input
-                      value={formData.natureza_juridica}
-                      onChange={(e) => setFormData({ ...formData, natureza_juridica: e.target.value })}
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium">Porte</label>
-                    <Input
-                      value={formData.porte}
-                      onChange={(e) => setFormData({ ...formData, porte: e.target.value })}
-                      placeholder="ME, EPP, Grande..."
-                    />
-                  </div>
-                </div>
-
-                <h4 className="text-md font-semibold mt-6 mb-4">Endereço Fiscal</h4>
-                <div className="grid gap-4 md:grid-cols-2">
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium">Logradouro</label>
-                    <Input
-                      value={formData.logradouro}
-                      onChange={(e) => setFormData({ ...formData, logradouro: e.target.value })}
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium">Número</label>
-                    <Input
-                      value={formData.numero}
-                      onChange={(e) => setFormData({ ...formData, numero: e.target.value })}
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium">Complemento</label>
-                    <Input
-                      value={formData.complemento}
-                      onChange={(e) => setFormData({ ...formData, complemento: e.target.value })}
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium">Bairro</label>
-                    <Input
-                      value={formData.bairro}
-                      onChange={(e) => setFormData({ ...formData, bairro: e.target.value })}
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium">CEP</label>
-                    <Input
-                      value={formData.cep}
-                      onChange={(e) => setFormData({ ...formData, cep: e.target.value })}
-                      placeholder="00000-000"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium">Município</label>
-                    <Input
-                      value={formData.municipio}
-                      onChange={(e) => setFormData({ ...formData, municipio: e.target.value })}
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium">UF</label>
-                    <Input
-                      value={formData.uf}
-                      onChange={(e) => setFormData({ ...formData, uf: e.target.value.toUpperCase() })}
-                      placeholder="SP"
-                      maxLength={2}
-                    />
-                  </div>
-                </div>
-
-                <h4 className="text-md font-semibold mt-6 mb-4">CNAE</h4>
-                <div className="grid gap-4 md:grid-cols-2">
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium">CNAE Principal - Código</label>
-                    <Input
-                      value={formData.cnae_principal_codigo}
-                      onChange={(e) => setFormData({ ...formData, cnae_principal_codigo: e.target.value })}
-                    />
-                  </div>
-                  <div className="space-y-2 md:col-span-2">
-                    <label className="text-sm font-medium">CNAE Principal - Descrição</label>
-                    <Input
-                      value={formData.cnae_principal_descricao}
-                      onChange={(e) => setFormData({ ...formData, cnae_principal_descricao: e.target.value })}
-                    />
-                  </div>
-                  <div className="space-y-2 md:col-span-2">
-                    <label className="text-sm font-medium">CNAEs Secundários (JSON)</label>
-                    <Textarea
-                      value={formData.cnaes_secundarios_json}
-                      onChange={(e) => setFormData({ ...formData, cnaes_secundarios_json: e.target.value })}
-                      rows={3}
-                      placeholder='[{"codigo": "1234-5/67", "descricao": "Atividade secundária"}]'
-                    />
-                  </div>
-                </div>
-
-                <h4 className="text-md font-semibold mt-6 mb-4">Contato e Outros</h4>
-                <div className="grid gap-4 md:grid-cols-2">
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium">Telefone da Empresa</label>
-                    <Input
-                      value={formData.telefone_empresa}
-                      onChange={(e) => setFormData({ ...formData, telefone_empresa: e.target.value })}
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium">Email da Empresa</label>
-                    <Input
-                      type="email"
-                      value={formData.email_empresa}
-                      onChange={(e) => setFormData({ ...formData, email_empresa: e.target.value })}
-                    />
-                  </div>
-                  <div className="space-y-2 md:col-span-2">
-                    <label className="text-sm font-medium">Sócios (JSON)</label>
-                    <Textarea
-                      value={formData.socios_json}
-                      onChange={(e) => setFormData({ ...formData, socios_json: e.target.value })}
-                      rows={3}
-                      placeholder='[{"nome": "João Silva", "qualificacao": "Sócio-Administrador", "cpf_cnpj": "123.456.789-00"}]'
-                    />
-                  </div>
-                  <div className="space-y-2 flex items-center gap-2">
-                    <input
-                      type="checkbox"
-                      checked={formData.simples_nacional}
-                      onChange={(e) => setFormData({ ...formData, simples_nacional: e.target.checked })}
-                      className="h-4 w-4"
-                    />
-                    <label className="text-sm font-medium">Optante do Simples Nacional</label>
-                  </div>
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium">Data Opção Simples</label>
-                    <Input
-                      type="date"
-                      value={formData.data_opcao_simples}
-                      onChange={(e) => setFormData({ ...formData, data_opcao_simples: e.target.value })}
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium">Data Exclusão Simples</label>
-                    <Input
-                      type="date"
-                      value={formData.data_exclusao_simples}
-                      onChange={(e) => setFormData({ ...formData, data_exclusao_simples: e.target.value })}
-                    />
-                  </div>
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <label className="text-sm font-medium">Notas</label>
-                <Textarea
-                  value={formData.notes}
-                  onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
-                  rows={4}
-                />
-              </div>
-              <div className="flex gap-2">
-                <Button 
-                  type="submit"
-                  className="bg-gradient-to-r from-emerald-600 to-emerald-700 hover:from-emerald-700 hover:to-emerald-800 text-white shadow-md hover:shadow-lg transition-all duration-200"
-                >
-                  Salvar
-                </Button>
-                <Button
-                  type="button"
-                  variant="outline"
-                  className="border-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800"
-                  onClick={() => {
-                    setShowForm(false)
-                    setEditingId(null)
-                    setFormData({
-                      name: '',
-                      email: '',
-                      phone: '',
-                      company: '',
-                      position: '',
-                      website: '',
-                      linkedin_url: '',
-                      status: 'new',
-                      source: '',
-                      score: 0,
-                      notes: '',
-                      tags: '',
-                      address: '',
-                      city: '',
-                      state: '',
-                      zip_code: '',
-                      country: '',
-                      industry: '',
-                      company_size: '',
-                      context: '',
-                      // Campos Casa dos Dados
-                      razao_social: '',
-                      nome_fantasia: '',
-                      cnpj: '',
-                      data_abertura: '',
-                      capital_social: '',
-                      situacao_cadastral: '',
-                      data_situacao_cadastral: '',
-                      motivo_situacao_cadastral: '',
-                      natureza_juridica: '',
-                      porte: '',
-                      logradouro: '',
-                      numero: '',
-                      bairro: '',
-                      cep: '',
-                      municipio: '',
-                      uf: '',
-                      complemento: '',
-                      cnae_principal_codigo: '',
-                      cnae_principal_descricao: '',
-                      cnaes_secundarios_json: '',
-                      telefone_empresa: '',
-                      email_empresa: '',
-                      socios_json: '',
-                      simples_nacional: false,
-                      data_opcao_simples: '',
-                      data_exclusao_simples: '',
-                      agent_suggestion: ''
-                    })
-                  }}
-                >
-                  Cancelar
-                </Button>
-              </div>
-            </form>
-        </CardContent>
-      </Card>
-      )}
+      {/* Modal de Edição */}
+      <Dialog open={showEditModal} onOpenChange={(open) => {
+        setShowEditModal(open)
+        if (!open) {
+          setEditingId(null)
+        }
+      }}>
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Editar Lead</DialogTitle>
+          </DialogHeader>
+          {renderLeadForm(true)}
+        </DialogContent>
+      </Dialog>
 
       {/* Leads List */}
       {leads.length === 0 ? (
@@ -1812,6 +2361,23 @@ export function Leads() {
                     <Workflow className="h-4 w-4 mr-1" />
                     Associar Cadência
                   </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => setShowBulkUpdateModal(true)}
+                  >
+                    <Edit className="h-4 w-4 mr-1" />
+                    Atualizar em Massa
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={handleBulkDelete}
+                    className="border-red-300 hover:bg-red-50 dark:hover:bg-red-950/20 text-red-600 dark:text-red-400"
+                  >
+                    <Trash2 className="h-4 w-4 mr-1" />
+                    Apagar
+                  </Button>
                 </div>
               </div>
             </CardContent>
@@ -1835,13 +2401,20 @@ export function Leads() {
                       className="mt-1 h-4 w-4"
                     />
                     <div className="flex-1">
-                      <CardTitle className="flex items-center gap-2">
+                      <CardTitle className="flex items-center gap-2 flex-wrap">
                         {lead.name}
                         <span className={`inline-block rounded-full px-2 py-1 text-xs ${statusColors[lead.status]}`}>
                           {statusLabels[lead.status]}
                         </span>
-                        {lead.score !== null && lead.score > 0 && (
-                          <span className="text-sm text-muted-foreground">
+                        {lead.score !== null && (
+                          <span className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-semibold ${
+                            lead.score >= 70 
+                              ? 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400' 
+                              : lead.score >= 40 
+                              ? 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400'
+                              : 'bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-400'
+                          }`}>
+                            <TrendingUp className="h-3 w-3" />
                             Score: {lead.score}
                           </span>
                         )}
@@ -2030,6 +2603,163 @@ export function Leads() {
             </div>
           </CardContent>
         </Card>
+      )}
+
+      {/* Modal de Atualização em Massa */}
+      {showBulkUpdateModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <Card className="w-full max-w-md">
+            <CardHeader>
+              <CardTitle>Atualizar {selectedLeads.size} Lead(s) em Massa</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-4">
+                <p className="text-sm text-muted-foreground">
+                  Selecione o campo que deseja atualizar e informe o novo valor.
+                </p>
+                
+                <div className="space-y-2">
+                  <label className="block text-sm font-medium">Campo</label>
+                  <select
+                    value={bulkUpdateField}
+                    onChange={(e) => {
+                      setBulkUpdateField(e.target.value)
+                      setBulkUpdateValue('')
+                    }}
+                    className="w-full px-3 py-2 border rounded-md"
+                  >
+                    <option value="">Selecione um campo</option>
+                    <optgroup label="Informações Básicas">
+                      <option value="status">Status</option>
+                      <option value="source">Fonte</option>
+                      <option value="score">Score</option>
+                      <option value="owner_id">Responsável</option>
+                      <option value="company">Empresa</option>
+                      <option value="position">Cargo</option>
+                      <option value="industry">Indústria</option>
+                      <option value="company_size">Tamanho da Empresa</option>
+                    </optgroup>
+                    <optgroup label="Contato">
+                      <option value="email">E-mail</option>
+                      <option value="phone">Telefone</option>
+                      <option value="website">Website</option>
+                      <option value="linkedin_url">LinkedIn</option>
+                    </optgroup>
+                    <optgroup label="Localização">
+                      <option value="city">Cidade</option>
+                      <option value="state">Estado</option>
+                      <option value="zip_code">CEP</option>
+                      <option value="country">País</option>
+                      <option value="address">Endereço</option>
+                    </optgroup>
+                    <optgroup label="Outros">
+                      <option value="notes">Observações</option>
+                      <option value="tags">Tags</option>
+                      <option value="context">Contexto</option>
+                    </optgroup>
+                  </select>
+                </div>
+
+                {bulkUpdateField && (
+                  <div className="space-y-2">
+                    <label className="block text-sm font-medium">
+                      {bulkUpdateField === 'status' ? 'Status' :
+                       bulkUpdateField === 'source' ? 'Fonte' :
+                       bulkUpdateField === 'score' ? 'Score (0-100)' :
+                       bulkUpdateField === 'owner_id' ? 'Responsável' :
+                       bulkUpdateField === 'simples_nacional' ? 'Simples Nacional' :
+                       'Valor'}
+                    </label>
+                    {bulkUpdateField === 'status' ? (
+                      <select
+                        value={bulkUpdateValue}
+                        onChange={(e) => setBulkUpdateValue(e.target.value)}
+                        className="w-full px-3 py-2 border rounded-md"
+                      >
+                        <option value="">Selecione um status</option>
+                        {Object.entries(statusLabels).map(([value, label]) => (
+                          <option key={value} value={value}>{label}</option>
+                        ))}
+                      </select>
+                    ) : bulkUpdateField === 'source' ? (
+                      <select
+                        value={bulkUpdateValue}
+                        onChange={(e) => setBulkUpdateValue(e.target.value)}
+                        className="w-full px-3 py-2 border rounded-md"
+                      >
+                        <option value="">Selecione uma fonte</option>
+                        {availableSources.map((source) => (
+                          <option key={source} value={source}>{source}</option>
+                        ))}
+                      </select>
+                    ) : bulkUpdateField === 'owner_id' ? (
+                      <select
+                        value={bulkUpdateValue}
+                        onChange={(e) => setBulkUpdateValue(e.target.value)}
+                        className="w-full px-3 py-2 border rounded-md"
+                      >
+                        <option value="">Sem responsável (limpar campo)</option>
+                        {users.map((user) => (
+                          <option key={user.id} value={user.id.toString()}>
+                            {user.full_name} ({user.email})
+                          </option>
+                        ))}
+                      </select>
+                    ) : bulkUpdateField === 'simples_nacional' ? (
+                      <select
+                        value={bulkUpdateValue}
+                        onChange={(e) => setBulkUpdateValue(e.target.value)}
+                        className="w-full px-3 py-2 border rounded-md"
+                      >
+                        <option value="">Selecione</option>
+                        <option value="true">Sim</option>
+                        <option value="false">Não</option>
+                      </select>
+                    ) : bulkUpdateField === 'score' ? (
+                      <Input
+                        type="number"
+                        min="0"
+                        max="100"
+                        value={bulkUpdateValue}
+                        onChange={(e) => setBulkUpdateValue(e.target.value)}
+                        placeholder="0-100"
+                      />
+                    ) : (
+                      <Input
+                        type="text"
+                        value={bulkUpdateValue}
+                        onChange={(e) => setBulkUpdateValue(e.target.value)}
+                        placeholder={`Digite o valor para ${bulkUpdateField}`}
+                      />
+                    )}
+                    <p className="text-xs text-muted-foreground">
+                      Deixe em branco para limpar o campo
+                    </p>
+                  </div>
+                )}
+
+                <div className="flex gap-2 justify-end pt-4">
+                  <Button
+                    variant="outline"
+                    onClick={() => {
+                      setShowBulkUpdateModal(false)
+                      setBulkUpdateField('')
+                      setBulkUpdateValue('')
+                    }}
+                  >
+                    Cancelar
+                  </Button>
+                  <Button
+                    onClick={handleBulkUpdate}
+                    disabled={!bulkUpdateField}
+                  >
+                    Atualizar {selectedLeads.size} Lead(s)
+                  </Button>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
       )}
 
       {/* Modal de Associar Cadência */}
@@ -2222,6 +2952,16 @@ export function Leads() {
                 >
                   Histórico
                 </button>
+                <button
+                  onClick={() => setActiveTab('linkedin')}
+                  className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
+                    activeTab === 'linkedin'
+                      ? 'border-primary text-primary'
+                      : 'border-transparent text-muted-foreground hover:text-foreground'
+                  }`}
+                >
+                  LinkedIn
+                </button>
               </div>
             </div>
 
@@ -2273,10 +3013,18 @@ export function Leads() {
                     {selectedLeadDetail.score !== null && (
                       <div>
                         <label className="text-sm font-medium text-muted-foreground">Score</label>
-                        <p className="text-base mt-1 flex items-center gap-2">
-                          <TrendingUp className="h-4 w-4" />
-                          {selectedLeadDetail.score}
-                        </p>
+                        <div className="mt-1 flex items-center gap-2">
+                          <span className={`inline-flex items-center gap-2 rounded-lg px-4 py-2 text-lg font-bold ${
+                            selectedLeadDetail.score >= 70 
+                              ? 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400' 
+                              : selectedLeadDetail.score >= 40 
+                              ? 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400'
+                              : 'bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-400'
+                          }`}>
+                            <TrendingUp className="h-5 w-5" />
+                            {selectedLeadDetail.score}/100
+                          </span>
+                        </div>
                       </div>
                     )}
                     {selectedLeadDetail.tags && (
@@ -2662,6 +3410,214 @@ export function Leads() {
                       </div>
                     )}
                   </div>
+                </div>
+              )}
+
+              {/* Aba: LinkedIn */}
+              {activeTab === 'linkedin' && (
+                <div className="space-y-6">
+                  {selectedLeadDetail.linkedin_url ? (
+                    <>
+                      <div className="flex items-center justify-between mb-4">
+                        <h3 className="text-lg font-semibold">Perfil LinkedIn</h3>
+                        <a
+                          href={selectedLeadDetail.linkedin_url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-blue-600 dark:text-blue-400 hover:underline flex items-center gap-2"
+                        >
+                          <LinkIcon className="h-4 w-4" />
+                          Abrir no LinkedIn
+                        </a>
+                      </div>
+
+                      {/* Headline */}
+                      {selectedLeadDetail.linkedin_headline && (
+                        <div className="bg-blue-50 dark:bg-blue-950 p-4 rounded-lg border border-blue-200 dark:border-blue-800">
+                          <label className="text-sm font-medium text-blue-700 dark:text-blue-300 mb-2 block">Título Profissional</label>
+                          <p className="text-base font-medium">{selectedLeadDetail.linkedin_headline}</p>
+                        </div>
+                      )}
+
+                      {/* About/Sobre */}
+                      {selectedLeadDetail.linkedin_about && (
+                        <div>
+                          <label className="text-sm font-medium text-muted-foreground mb-2 block">Sobre</label>
+                          <div className="bg-gray-50 dark:bg-gray-900 p-4 rounded-lg">
+                            <p className="text-sm whitespace-pre-wrap leading-relaxed">{selectedLeadDetail.linkedin_about}</p>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Métricas */}
+                      {(selectedLeadDetail.linkedin_connections_count || selectedLeadDetail.linkedin_followers_count) && (
+                        <div className="grid gap-4 md:grid-cols-2">
+                          {selectedLeadDetail.linkedin_connections_count && (
+                            <div className="bg-gray-50 dark:bg-gray-900 p-4 rounded-lg">
+                              <label className="text-sm font-medium text-muted-foreground mb-1 block">Conexões</label>
+                              <p className="text-2xl font-bold">{selectedLeadDetail.linkedin_connections_count.toLocaleString()}</p>
+                            </div>
+                          )}
+                          {selectedLeadDetail.linkedin_followers_count && (
+                            <div className="bg-gray-50 dark:bg-gray-900 p-4 rounded-lg">
+                              <label className="text-sm font-medium text-muted-foreground mb-1 block">Seguidores</label>
+                              <p className="text-2xl font-bold">{selectedLeadDetail.linkedin_followers_count.toLocaleString()}</p>
+                            </div>
+                          )}
+                        </div>
+                      )}
+
+                      {/* Skills */}
+                      {selectedLeadDetail.linkedin_skills && (
+                        <div>
+                          <label className="text-sm font-medium text-muted-foreground mb-2 block">Habilidades</label>
+                          <div className="flex flex-wrap gap-2">
+                            {selectedLeadDetail.linkedin_skills.split(',').map((skill, idx) => (
+                              <span
+                                key={idx}
+                                className="px-3 py-1 bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200 rounded-full text-sm"
+                              >
+                                {skill.trim()}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Experiência */}
+                      {selectedLeadDetail.linkedin_experience_json && (
+                        <div>
+                          <label className="text-sm font-medium text-muted-foreground mb-2 block">Experiência Profissional</label>
+                          <div className="space-y-3">
+                            {(() => {
+                              try {
+                                const experiences = JSON.parse(selectedLeadDetail.linkedin_experience_json)
+                                return Array.isArray(experiences) ? experiences.map((exp: any, idx: number) => (
+                                  <div key={idx} className="bg-gray-50 dark:bg-gray-900 p-4 rounded-lg border-l-4 border-l-blue-500">
+                                    <div className="font-medium">{exp.position || exp.title || 'Cargo não especificado'}</div>
+                                    <div className="text-sm text-muted-foreground">{exp.company || exp.companyName || ''}</div>
+                                    {exp.start_date && (
+                                      <div className="text-xs text-muted-foreground mt-1">
+                                        {exp.start_date} {exp.end_date ? `- ${exp.end_date}` : '- Presente'}
+                                      </div>
+                                    )}
+                                    {exp.description && (
+                                      <p className="text-sm mt-2 text-muted-foreground">{exp.description}</p>
+                                    )}
+                                  </div>
+                                )) : null
+                              } catch {
+                                return <p className="text-sm text-muted-foreground">Erro ao processar experiência</p>
+                              }
+                            })()}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Educação */}
+                      {selectedLeadDetail.linkedin_education_json && (
+                        <div>
+                          <label className="text-sm font-medium text-muted-foreground mb-2 block">Educação</label>
+                          <div className="space-y-3">
+                            {(() => {
+                              try {
+                                const educations = JSON.parse(selectedLeadDetail.linkedin_education_json)
+                                return Array.isArray(educations) ? educations.map((edu: any, idx: number) => (
+                                  <div key={idx} className="bg-gray-50 dark:bg-gray-900 p-4 rounded-lg border-l-4 border-l-green-500">
+                                    <div className="font-medium">{edu.institution || edu.school || 'Instituição não especificada'}</div>
+                                    <div className="text-sm text-muted-foreground">{edu.degree || edu.field || ''}</div>
+                                    {edu.start_date && (
+                                      <div className="text-xs text-muted-foreground mt-1">
+                                        {edu.start_date} {edu.end_date ? `- ${edu.end_date}` : ''}
+                                      </div>
+                                    )}
+                                  </div>
+                                )) : null
+                              } catch {
+                                return <p className="text-sm text-muted-foreground">Erro ao processar educação</p>
+                              }
+                            })()}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Certificações */}
+                      {selectedLeadDetail.linkedin_certifications_json && (
+                        <div>
+                          <label className="text-sm font-medium text-muted-foreground mb-2 block">Certificações</label>
+                          <div className="space-y-2">
+                            {(() => {
+                              try {
+                                const certifications = JSON.parse(selectedLeadDetail.linkedin_certifications_json)
+                                return Array.isArray(certifications) ? certifications.map((cert: any, idx: number) => (
+                                  <div key={idx} className="bg-gray-50 dark:bg-gray-900 p-3 rounded-lg">
+                                    <div className="font-medium">{cert.name || cert.title || 'Certificação'}</div>
+                                    <div className="text-sm text-muted-foreground">{cert.issuer || cert.issuingOrganization || ''}</div>
+                                    {cert.issue_date && (
+                                      <div className="text-xs text-muted-foreground mt-1">Emitido em: {cert.issue_date}</div>
+                                    )}
+                                  </div>
+                                )) : null
+                              } catch {
+                                return <p className="text-sm text-muted-foreground">Erro ao processar certificações</p>
+                              }
+                            })()}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Artigos */}
+                      {selectedLeadDetail.linkedin_articles_json && (
+                        <div>
+                          <label className="text-sm font-medium text-muted-foreground mb-2 block">Artigos Publicados</label>
+                          <div className="space-y-2">
+                            {(() => {
+                              try {
+                                const articles = JSON.parse(selectedLeadDetail.linkedin_articles_json)
+                                return Array.isArray(articles) ? articles.map((article: any, idx: number) => (
+                                  <div key={idx} className="bg-gray-50 dark:bg-gray-900 p-3 rounded-lg">
+                                    <div className="font-medium">{article.title || 'Artigo'}</div>
+                                    {article.published_date && (
+                                      <div className="text-xs text-muted-foreground mt-1">Publicado em: {article.published_date}</div>
+                                    )}
+                                  </div>
+                                )) : null
+                              } catch {
+                                return <p className="text-sm text-muted-foreground">Erro ao processar artigos</p>
+                              }
+                            })()}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Atividades Recentes */}
+                      {selectedLeadDetail.linkedin_recent_activity && (
+                        <div>
+                          <label className="text-sm font-medium text-muted-foreground mb-2 block">Atividades Recentes</label>
+                          <div className="bg-gray-50 dark:bg-gray-900 p-4 rounded-lg">
+                            <p className="text-sm whitespace-pre-wrap">{selectedLeadDetail.linkedin_recent_activity}</p>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Resumo IA */}
+                      {selectedLeadDetail.linkedin_summary && (
+                        <div>
+                          <label className="text-sm font-medium text-muted-foreground mb-2 block">Resumo e Insights (IA)</label>
+                          <div className="bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-950 dark:to-indigo-950 p-4 rounded-lg border border-blue-200 dark:border-blue-800">
+                            <p className="text-sm whitespace-pre-wrap leading-relaxed">{selectedLeadDetail.linkedin_summary}</p>
+                          </div>
+                        </div>
+                      )}
+                    </>
+                  ) : (
+                    <div className="text-center py-12">
+                      <p className="text-sm text-muted-foreground mb-2">URL do LinkedIn não cadastrada.</p>
+                      <p className="text-xs text-muted-foreground">
+                        Adicione a URL do LinkedIn do lead para enriquecer automaticamente os dados do perfil.
+                      </p>
+                    </div>
+                  )}
                 </div>
               )}
             </CardContent>

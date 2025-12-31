@@ -11,9 +11,19 @@ cd tyr-crm-ai
 
 2. **Configure as variáveis de ambiente (opcional):**
 ```bash
-# Backend
-cp backend/.env.example backend/.env
-# Edite backend/.env e adicione sua OPENAI_API_KEY se desejar usar IA real
+# Backend - crie o arquivo .env
+cd backend
+cat > .env << EOF
+# Configuração do LLM
+LLM_PROVIDER=ollama
+OLLAMA_BASE_URL=http://host.docker.internal:11434
+OLLAMA_MODEL=llama3
+
+# Ou use OpenAI:
+# LLM_PROVIDER=openai
+# OPENAI_API_KEY=sua-chave-aqui
+EOF
+cd ..
 ```
 
 3. **Inicie todos os serviços:**
@@ -135,6 +145,11 @@ npm run dev
 - `ALGORITHM`: Algoritmo JWT (padrão: HS256)
 - `ACCESS_TOKEN_EXPIRE_MINUTES`: Tempo de expiração do token (padrão: 30)
 - `OPENAI_API_KEY`: Chave da API OpenAI (opcional, para IA real)
+- `LLM_PROVIDER`: Provedor de LLM - "openai" ou "ollama" (padrão: "openai")
+- `OLLAMA_BASE_URL`: URL base do Ollama (padrão: "http://localhost:11434")
+  - **Em ambiente Docker**: Use `http://host.docker.internal:11434` se o Ollama estiver rodando no host
+  - **Em ambiente local**: Use `http://localhost:11434`
+- `OLLAMA_MODEL`: Modelo do Ollama a ser usado (padrão: "llama3")
 
 ### Variáveis de Ambiente do Frontend
 
@@ -155,6 +170,48 @@ npm run dev
 - Verifique se o Python 3.11+ está instalado
 - Certifique-se de que todas as dependências foram instaladas
 - Verifique se o banco de dados está acessível
+
+### Erro "Connection refused" ao processar PDF do LinkedIn
+Este erro ocorre quando o sistema tenta usar o Ollama mas não consegue se conectar. Soluções:
+
+**Opção 1: Usar OpenAI (Recomendado para produção)**
+```bash
+# No arquivo backend/.env
+LLM_PROVIDER=openai
+OPENAI_API_KEY=sua-chave-aqui
+```
+
+**Opção 2: Configurar Ollama em Docker (RECOMENDADO - já configurado por padrão)**
+1. Certifique-se de que o Ollama está rodando no seu computador (não dentro do container)
+2. Crie o arquivo `backend/.env` com:
+```bash
+LLM_PROVIDER=ollama
+OLLAMA_BASE_URL=http://host.docker.internal:11434
+OLLAMA_MODEL=llama3
+```
+
+**Nota**: O `docker-compose.yml` já está configurado para usar `host.docker.internal:11434` por padrão. Você só precisa criar o arquivo `.env` se quiser sobrescrever essas configurações.
+
+**Opção 3: Rodar Ollama em Docker também**
+Adicione ao `docker-compose.yml`:
+```yaml
+  ollama:
+    image: ollama/ollama:latest
+    container_name: tyr-ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+```
+
+E configure no `backend/.env`:
+```bash
+LLM_PROVIDER=ollama
+OLLAMA_BASE_URL=http://ollama:11434
+OLLAMA_MODEL=llama3
+```
+
+**Nota**: Se usar a Opção 3, adicione `ollama` aos `depends_on` do serviço `backend` no docker-compose.yml
 
 ## 📚 Estrutura do Projeto
 

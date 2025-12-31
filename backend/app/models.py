@@ -158,6 +158,18 @@ class Lead(SQLModel, table=True):
     position: Optional[str] = None
     website: Optional[str] = None
     linkedin_url: Optional[str] = None
+    # Campos do LinkedIn para enriquecimento e geração de notas customizadas
+    linkedin_headline: Optional[str] = None  # Título profissional (ex: "Especialista Backend | 10+ anos | Python, Django, FastAPI")
+    linkedin_about: Optional[str] = None  # Texto completo do "Sobre"
+    linkedin_experience_json: Optional[str] = None  # JSON com histórico profissional
+    linkedin_education_json: Optional[str] = None  # JSON com histórico educacional
+    linkedin_certifications_json: Optional[str] = None  # JSON com certificações
+    linkedin_skills: Optional[str] = None  # Lista de habilidades (string separada por vírgula ou JSON)
+    linkedin_articles_json: Optional[str] = None  # JSON com artigos/publicações
+    linkedin_recent_activity: Optional[str] = None  # Texto resumido das atividades recentes
+    linkedin_connections_count: Optional[int] = None  # Número de conexões
+    linkedin_followers_count: Optional[int] = None  # Número de seguidores
+    linkedin_summary: Optional[str] = None  # Resumo gerado pela IA com insights principais
     status: LeadStatus = LeadStatus.NEW
     source: Optional[str] = None  # origem do lead (website, linkedin, referral, etc)
     score: Optional[int] = Field(default=0)  # score de qualificação (0-100)
@@ -222,6 +234,18 @@ class LeadCreate(SQLModel):
     position: Optional[str] = None
     website: Optional[str] = None
     linkedin_url: Optional[str] = None
+    # Campos do LinkedIn
+    linkedin_headline: Optional[str] = None
+    linkedin_about: Optional[str] = None
+    linkedin_experience_json: Optional[str] = None
+    linkedin_education_json: Optional[str] = None
+    linkedin_certifications_json: Optional[str] = None
+    linkedin_skills: Optional[str] = None
+    linkedin_articles_json: Optional[str] = None
+    linkedin_recent_activity: Optional[str] = None
+    linkedin_connections_count: Optional[int] = None
+    linkedin_followers_count: Optional[int] = None
+    linkedin_summary: Optional[str] = None
     status: Optional[LeadStatus] = LeadStatus.NEW
     source: Optional[str] = None
     score: Optional[int] = 0
@@ -282,6 +306,18 @@ class LeadResponse(SQLModel):
     position: Optional[str]
     website: Optional[str]
     linkedin_url: Optional[str]
+    # Campos do LinkedIn
+    linkedin_headline: Optional[str]
+    linkedin_about: Optional[str]
+    linkedin_experience_json: Optional[str]
+    linkedin_education_json: Optional[str]
+    linkedin_certifications_json: Optional[str]
+    linkedin_skills: Optional[str]
+    linkedin_articles_json: Optional[str]
+    linkedin_recent_activity: Optional[str]
+    linkedin_connections_count: Optional[int]
+    linkedin_followers_count: Optional[int]
+    linkedin_summary: Optional[str]
     status: LeadStatus
     source: Optional[str]
     score: Optional[int]

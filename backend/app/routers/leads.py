@@ -20,6 +20,8 @@ from app.services.audit_service import log_convert
 from app.services.enrichment_service import enrich_lead
 from app.services.kpi_service import track_kpi_activity
 from app.models import GoalMetricType
+from app.utils.pdf_parser import extract_text_from_pdf, parse_linkedin_data_with_llm
+from app.services.lead_scoring import calculate_lead_score, should_recalculate_score
 import pandas as pd
 import logging
 
@@ -125,9 +127,11 @@ async def get_filter_fields():
         ("phone", "string", "Telefone"),
         ("company", "string", "Empresa"),
         ("position", "string", "Cargo"),
+        ("linkedin_url", "string", "LinkedIn"),
         ("status", "enum", "Status"),
         ("source", "string", "Origem"),
         ("score", "number", "Score"),
+        ("owner_id", "number", "Responsável"),
     ]
     
     # Campos Casa dos Dados
@@ -243,6 +247,16 @@ async def create_lead(
     session.add(lead)
     session.commit()
     session.refresh(lead)
+    
+    # Calcular score automaticamente
+    try:
+        lead.score = calculate_lead_score(lead, session)
+        session.add(lead)
+        session.commit()
+        session.refresh(lead)
+    except Exception as score_error:
+        logger.warning(f"⚠️ [SCORING] Erro ao calcular score na criação do lead {lead.id}: {score_error}")
+        # Não falhar a operação principal se o scoring falhar
     
     # Track KPI activity for lead creation
     try:
@@ -1059,6 +1073,122 @@ async def import_leads_csv(
         )
 
 
+@router.post("/parse-linkedin-pdf")
+async def parse_linkedin_pdf(
+    file: UploadFile = File(...),
+    current_user: User = Depends(get_current_active_user)
+):
+    """
+    Processa um PDF de exportação do LinkedIn e extrai informações usando IA
+    
+    Args:
+        file: Arquivo PDF do LinkedIn
+        
+    Returns:
+        JSON com dados extraídos do LinkedIn
+    """
+    # Validar tipo de arquivo
+    if not file.filename or not file.filename.lower().endswith('.pdf'):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Arquivo deve ser um PDF (.pdf)"
+        )
+    
+    # Validar tamanho máximo (10MB)
+    MAX_FILE_SIZE = 10 * 1024 * 1024  # 10MB
+    file_content = await file.read()
+    if len(file_content) > MAX_FILE_SIZE:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Arquivo muito grande. Tamanho máximo: 10MB"
+        )
+    
+    # Resetar posição do arquivo para leitura
+    await file.seek(0)
+    
+    try:
+        logger.info(f"📄 [PDF PARSER] Processando PDF: {file.filename}")
+        
+        # Verificar se LLM está disponível antes de processar
+        from app.agents.llm_helper import is_llm_available
+        if not is_llm_available():
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="LLM não está disponível. Verifique se o Ollama está rodando ou configure a API key do OpenAI no arquivo .env"
+            )
+        
+        # Extrair texto do PDF
+        text = await extract_text_from_pdf(file)
+        
+        if not text or len(text.strip()) < 100:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="PDF não contém texto suficiente para análise. Pode ser um PDF escaneado (imagem)."
+            )
+        
+        # Analisar texto com LLM
+        try:
+            parsed_data = await parse_linkedin_data_with_llm(text)
+        except ValueError as llm_error:
+            error_msg = str(llm_error)
+            # Melhorar mensagem de erro para conexão recusada
+            if "Connection refused" in error_msg or "111" in error_msg:
+                raise HTTPException(
+                    status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                    detail="Não foi possível conectar ao Ollama. Verifique se o Ollama está rodando. Em ambiente Docker, use 'host.docker.internal:11434' ou configure a URL correta no .env (OLLAMA_BASE_URL)"
+                )
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Erro ao processar PDF com LLM: {error_msg}"
+            )
+        
+        logger.info(f"✅ [PDF PARSER] Dados extraídos com sucesso: {len(parsed_data)} campos")
+        
+        return {
+            "success": True,
+            "data": parsed_data,
+            "message": "PDF processado com sucesso"
+        }
+        
+    except HTTPException:
+        raise
+    except ValueError as e:
+        error_msg = str(e)
+        logger.error(f"❌ [PDF PARSER] Erro de validação: {error_msg}")
+        # Verificar se é erro de conexão
+        if "Connection refused" in error_msg or "111" in error_msg or "conexão" in error_msg.lower():
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Não foi possível conectar ao Ollama. Verifique se o Ollama está rodando. Em ambiente Docker, configure OLLAMA_BASE_URL no .env (ex: http://host.docker.internal:11434)"
+            )
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=error_msg
+        )
+    except Exception as e:
+        error_msg = str(e)
+        logger.error(f"❌ [PDF PARSER] Erro ao processar PDF: {error_msg}")
+        import traceback
+        traceback.print_exc()
+        
+        # Mensagens de erro mais específicas
+        if "Connection refused" in error_msg or "111" in error_msg:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Não foi possível conectar ao Ollama. Verifique se o Ollama está rodando. Em ambiente Docker, configure OLLAMA_BASE_URL no .env (ex: http://host.docker.internal:11434)"
+            )
+        elif "LLM não está configurado" in error_msg or "LLM não está disponível" in error_msg:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="LLM não está configurado. Configure OpenAI (OPENAI_API_KEY) ou Ollama (OLLAMA_BASE_URL) no arquivo .env"
+            )
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Erro ao processar PDF: {error_msg}"
+            )
+
+
 @router.get("/{lead_id}", response_model=LeadResponse)
 async def get_lead(
     lead_id: int,
@@ -1091,6 +1221,27 @@ async def update_lead(
             detail="Lead not found"
         )
     require_ownership(lead, current_user)
+    
+    # Salvar estado antigo para verificar mudanças relevantes
+    # Criar um objeto temporário com os valores atuais
+    old_values = {
+        'email': lead.email,
+        'phone': lead.phone,
+        'linkedin_url': lead.linkedin_url,
+        'linkedin_headline': lead.linkedin_headline,
+        'linkedin_about': lead.linkedin_about,
+        'linkedin_experience_json': lead.linkedin_experience_json,
+        'linkedin_education_json': lead.linkedin_education_json,
+        'cnpj': lead.cnpj,
+        'situacao_cadastral': lead.situacao_cadastral,
+        'capital_social': lead.capital_social,
+        'porte': lead.porte,
+        'industry': lead.industry,
+        'status': lead.status,
+        'last_contact': lead.last_contact,
+        'next_followup': lead.next_followup,
+        'owner_id': lead.owner_id
+    }
     
     # Atualizar campos, mas manter ownership e tenant
     lead_dict = lead_data.dict()
@@ -1130,6 +1281,25 @@ async def update_lead(
     session.add(lead)
     session.commit()
     session.refresh(lead)
+    
+    # Recalcular score se houver mudanças relevantes
+    # Criar objeto temporário com valores antigos para comparação
+    class OldLead:
+        def __init__(self, values):
+            for key, value in values.items():
+                setattr(self, key, value)
+    
+    old_lead_obj = OldLead(old_values)
+    if should_recalculate_score(old_lead_obj, lead):
+        try:
+            lead.score = calculate_lead_score(lead, session)
+            session.add(lead)
+            session.commit()
+            session.refresh(lead)
+        except Exception as score_error:
+            logger.warning(f"⚠️ [SCORING] Erro ao recalcular score do lead {lead.id}: {score_error}")
+            # Não falhar a operação principal se o scoring falhar
+    
     return lead
 
 
@@ -1185,6 +1355,16 @@ async def create_lead_comment(
     lead.updated_at = datetime.utcnow()
     session.add(lead)
     session.commit()
+    
+    # Recalcular score após adicionar comentário
+    try:
+        lead.score = calculate_lead_score(lead, session)
+        session.add(lead)
+        session.commit()
+        session.refresh(lead)
+    except Exception as score_error:
+        logger.warning(f"⚠️ [SCORING] Erro ao recalcular score do lead {lead.id} após comentário: {score_error}")
+        # Não falhar a operação principal se o scoring falhar
     
     # Get user info for response
     user = session.get(User, current_user.id)
@@ -1297,6 +1477,171 @@ async def update_lead_status(
     session.commit()
     session.refresh(lead)
     return lead
+
+
+class BulkUpdateRequest(BaseModel):
+    """Request para atualização em massa de leads"""
+    lead_ids: List[int] = Field(..., description="Lista de IDs dos leads a atualizar")
+    field: str = Field(..., description="Nome do campo a atualizar")
+    value: Optional[Any] = Field(None, description="Valor a ser definido (None para limpar o campo)")
+
+
+@router.post("/bulk-update")
+async def bulk_update_leads(
+    update_data: BulkUpdateRequest,
+    session: Session = Depends(get_session),
+    current_user: User = Depends(get_current_active_user)
+):
+    """
+    Atualiza múltiplos leads em massa
+    Permite atualizar qualquer campo de uma lista de leads
+    """
+    if not update_data.lead_ids:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Nenhum lead especificado"
+        )
+    
+    # Campos que não podem ser atualizados em massa (por segurança)
+    protected_fields = ['id', 'tenant_id', 'created_at', 'updated_at', 'created_by_id']
+    
+    if update_data.field in protected_fields:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Campo '{update_data.field}' não pode ser atualizado em massa"
+        )
+    
+    # Verificar se o campo existe no modelo Lead
+    if not hasattr(Lead, update_data.field):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Campo '{update_data.field}' não existe no modelo Lead"
+        )
+    
+    # Buscar os leads do tenant
+    all_leads = session.exec(
+        select(Lead).where(
+            and_(
+                Lead.tenant_id == current_user.tenant_id,
+                Lead.id.in_(update_data.lead_ids)
+            )
+        )
+    ).all()
+    
+    if len(all_leads) == 0:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Nenhum lead encontrado"
+        )
+    
+    # Filtrar apenas os leads que o usuário tem permissão (owner ou admin)
+    is_admin = current_user.role == UserRole.ADMIN or current_user.role.value == "admin"
+    
+    logger.info(f"🔐 [BULK UPDATE] User {current_user.id} (role: {current_user.role}, is_admin: {is_admin}) tentando atualizar {len(all_leads)} leads")
+    
+    if is_admin:
+        # Admin pode atualizar todos os leads do tenant
+        leads = all_leads
+        logger.info(f"✅ [BULK UPDATE] Admin - permitindo atualização de todos os {len(leads)} leads")
+    else:
+        # Usuário normal só pode atualizar seus próprios leads (ou leads sem owner)
+        leads = [lead for lead in all_leads if lead.owner_id == current_user.id or lead.owner_id is None]
+        logger.info(f"👤 [BULK UPDATE] Usuário normal - permitindo atualização de {len(leads)} leads (próprios ou sem owner)")
+    
+    if len(leads) == 0:
+        logger.warning(f"⚠️ [BULK UPDATE] Nenhum lead pode ser atualizado. Total selecionado: {len(all_leads)}")
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Você não tem permissão para atualizar nenhum dos leads selecionados"
+        )
+    
+    # Se alguns leads não puderam ser atualizados, avisar mas continuar
+    skipped_count = len(all_leads) - len(leads)
+    
+    # Converter valor se necessário
+    value = update_data.value
+    
+    # Tratamento especial para campos enum
+    if update_data.field == 'status':
+        try:
+            value = LeadStatus(update_data.value) if update_data.value else None
+        except ValueError:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Status inválido: {update_data.value}"
+            )
+    
+    # Tratamento especial para campos numéricos
+    if update_data.field in ['score', 'capital_social']:
+        if value is not None:
+            try:
+                value = float(value) if update_data.field == 'capital_social' else int(value)
+            except (ValueError, TypeError):
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Valor inválido para campo numérico: {update_data.value}"
+                )
+    
+    # Tratamento especial para campos de data
+    if update_data.field in ['last_contact', 'next_followup', 'data_abertura', 'data_situacao_cadastral', 
+                             'data_opcao_simples', 'data_exclusao_simples']:
+        if value:
+            try:
+                if isinstance(value, str):
+                    value = datetime.fromisoformat(value.replace('Z', '+00:00'))
+                elif isinstance(value, datetime):
+                    pass  # Já é datetime
+            except (ValueError, TypeError):
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Formato de data inválido: {update_data.value}"
+                )
+    
+    # Tratamento especial para campos booleanos
+    if update_data.field == 'simples_nacional':
+        if value is not None:
+            value = bool(value)
+    
+    # Atualizar todos os leads
+    updated_count = 0
+    for lead in leads:
+        try:
+            setattr(lead, update_data.field, value)
+            lead.updated_at = datetime.utcnow()
+            session.add(lead)
+            updated_count += 1
+        except Exception as e:
+            logger.error(f"Erro ao atualizar lead {lead.id}: {e}")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Erro ao atualizar lead {lead.id}: {str(e)}"
+            )
+    
+    session.commit()
+    
+    # Recalcular score para todos os leads atualizados
+    # (sempre recalcular em bulk update, pois pode ter mudado campos relevantes)
+    for lead in leads:
+        try:
+            session.refresh(lead)
+            lead.score = calculate_lead_score(lead, session)
+            session.add(lead)
+        except Exception as score_error:
+            logger.warning(f"⚠️ [SCORING] Erro ao recalcular score do lead {lead.id} em bulk update: {score_error}")
+            # Não falhar a operação principal se o scoring falhar
+    
+    session.commit()
+    
+    message = f"{updated_count} lead(s) atualizado(s) com sucesso"
+    if skipped_count > 0:
+        message += f". {skipped_count} lead(s) não puderam ser atualizados (sem permissão)"
+    
+    return {
+        "success": True,
+        "message": message,
+        "updated_count": updated_count,
+        "skipped_count": skipped_count
+    }
 
 
 @router.patch("/{lead_id}/assign", response_model=LeadResponse)

@@ -259,6 +259,244 @@ async def search_casadosdados_api(params: ProspectingParams) -> Dict[str, Any]:
         )
 
 
+async def process_socios_to_leads(
+    empresa_data: Dict[str, Any],
+    tenant_id: int,
+    session: Session
+) -> List[Lead]:
+    """
+    Processa dados de uma empresa da Casa dos Dados e cria leads baseados nos sócios.
+    Cria um lead para cada sócio, usando o nome do sócio como nome do lead.
+    """
+    leads_created = []
+    
+    try:
+        # Extrair CNPJ (formato API v5)
+        cnpj = empresa_data.get('cnpj', '').replace('.', '').replace('/', '').replace('-', '')
+        if not cnpj or len(cnpj) != 14:
+            logger.warning(f"⚠️ [PROSPECTING] CNPJ inválido: {empresa_data.get('cnpj')}")
+            return leads_created
+        
+        razao_social = empresa_data.get('razao_social', '')
+        nome_fantasia = empresa_data.get('nome_fantasia', '')
+        company_name = nome_fantasia or razao_social or f"Empresa {cnpj}"
+        
+        # Extrair sócios do quadro societário
+        socios = empresa_data.get('quadro_societario', [])
+        
+        if not socios or len(socios) == 0:
+            # Se não houver sócios, não criar lead (não criar com nome da empresa)
+            logger.info(f"📋 [PROSPECTING] Nenhum sócio encontrado para CNPJ {cnpj}, pulando criação de lead")
+            return leads_created
+        
+        # Processar apenas o primeiro sócio
+        primeiro_socio = socios[0]
+        socio_nome = primeiro_socio.get('nome', '').strip()
+        
+        if not socio_nome:
+            logger.warning(f"⚠️ [PROSPECTING] Primeiro sócio sem nome para CNPJ {cnpj}")
+            return leads_created
+        
+        # Verificar se já existe lead com esse nome e CNPJ
+        existing_lead = session.exec(
+            select(Lead).where(
+                and_(
+                    Lead.tenant_id == tenant_id,
+                    Lead.cnpj == cnpj,
+                    Lead.name == socio_nome
+                )
+            )
+        ).first()
+        
+        if existing_lead:
+            logger.info(f"📋 [PROSPECTING] Lead {socio_nome} com CNPJ {cnpj} já existe. Atualizando...")
+            lead = existing_lead
+        else:
+            # Criar novo lead APENAS com nome do sócio (não da empresa)
+            lead = Lead(
+                tenant_id=tenant_id,
+                name=socio_nome,
+                cnpj=cnpj,
+                company=company_name,
+                source='Prospecção'
+            )
+            session.add(lead)
+            session.flush()
+        
+        # Preencher todos os dados da empresa no lead
+        await _fill_lead_with_empresa_data(lead, empresa_data)
+        leads_created.append(lead)
+        
+        return leads_created
+        
+    except Exception as e:
+        logger.error(f"❌ [PROSPECTING] Erro ao processar sócios: {e}")
+        return leads_created
+
+
+async def _fill_lead_with_empresa_data(lead: Lead, empresa_data: Dict[str, Any]) -> None:
+    """
+    Preenche um lead com todos os dados da empresa
+    """
+    # Preencher campos da empresa (formato API v5)
+    if 'razao_social' in empresa_data:
+        lead.razao_social = empresa_data.get('razao_social')
+        if not lead.company:
+            lead.company = empresa_data.get('razao_social')
+    
+    if 'nome_fantasia' in empresa_data:
+        lead.nome_fantasia = empresa_data.get('nome_fantasia')
+    
+    # Data de abertura (formato API v5: "data_abertura" como string YYYY-MM-DD)
+    if 'data_abertura' in empresa_data:
+        try:
+            data_str = empresa_data.get('data_abertura')
+            if data_str:
+                lead.data_abertura = datetime.strptime(data_str, '%Y-%m-%d')
+        except Exception:
+            pass
+    
+    # Capital social (formato API v5: integer)
+    if 'capital_social' in empresa_data:
+        try:
+            capital = empresa_data.get('capital_social')
+            if capital is not None:
+                lead.capital_social = float(capital)
+        except (ValueError, TypeError):
+            pass
+    
+    # Situação cadastral (formato API v5: objeto com situacao_cadastral, motivo, data)
+    if 'situacao_cadastral' in empresa_data:
+        situacao_obj = empresa_data.get('situacao_cadastral', {})
+        if isinstance(situacao_obj, dict):
+            lead.situacao_cadastral = situacao_obj.get('situacao_cadastral', '')
+            lead.motivo_situacao_cadastral = situacao_obj.get('motivo', '')
+            if situacao_obj.get('data'):
+                try:
+                    lead.data_situacao_cadastral = datetime.strptime(situacao_obj.get('data'), '%Y-%m-%d')
+                except Exception:
+                    pass
+        elif isinstance(situacao_obj, str):
+            lead.situacao_cadastral = situacao_obj
+    
+    # Endereço (formato API v5)
+    if 'endereco' in empresa_data:
+        endereco = empresa_data.get('endereco', {})
+        lead.logradouro = endereco.get('logradouro')
+        lead.numero = endereco.get('numero')
+        lead.bairro = endereco.get('bairro')
+        lead.cep = endereco.get('cep')
+        lead.municipio = endereco.get('municipio')
+        lead.uf = endereco.get('uf')
+        lead.complemento = endereco.get('complemento')
+        
+        # Montar endereço completo
+        endereco_parts = []
+        if lead.logradouro:
+            endereco_parts.append(lead.logradouro)
+        if lead.numero:
+            endereco_parts.append(lead.numero)
+        if lead.complemento:
+            endereco_parts.append(lead.complemento)
+        if lead.bairro:
+            endereco_parts.append(lead.bairro)
+        if lead.municipio:
+            endereco_parts.append(lead.municipio)
+        if lead.uf:
+            endereco_parts.append(lead.uf)
+        if lead.cep:
+            endereco_parts.append(f"CEP: {lead.cep}")
+        
+        if endereco_parts:
+            lead.address = ', '.join(endereco_parts)
+        
+        lead.city = lead.municipio
+        lead.state = lead.uf
+        lead.zip_code = lead.cep
+    
+    # Natureza jurídica (formato API v5)
+    if 'codigo_natureza_juridica' in empresa_data:
+        lead.natureza_juridica = str(empresa_data.get('codigo_natureza_juridica', ''))
+    
+    # Porte (formato API v5: objeto porte_empresa com codigo e descricao)
+    if 'porte_empresa' in empresa_data:
+        porte_obj = empresa_data.get('porte_empresa', {})
+        if isinstance(porte_obj, dict):
+            lead.porte = porte_obj.get('descricao', '') or porte_obj.get('codigo', '')
+        elif isinstance(porte_obj, str):
+            lead.porte = porte_obj
+    
+    # Sócios (formato API v5: quadro_societario)
+    if 'quadro_societario' in empresa_data:
+        socios = empresa_data.get('quadro_societario', [])
+        if socios:
+            socios_data = []
+            for socio in socios:
+                socios_data.append({
+                    'nome': socio.get('nome', ''),
+                    'qualificacao': socio.get('qualificacao_socio', ''),
+                    'cpf_cnpj': socio.get('documento', ''),
+                    'data_entrada': socio.get('data_entrada_sociedade', ''),
+                    'qualificacao_codigo': socio.get('qualificacao_socio_codigo', ''),
+                    'pais': socio.get('pais_socio', ''),
+                    'representante_legal': socio.get('nome_representante_legal', ''),
+                    'cpf_representante': socio.get('cpf_representante_legal', '')
+                })
+            lead.socios_json = json.dumps(socios_data, ensure_ascii=False)
+    
+    # Telefone e Email (formato API v5 - campos: contato_telefonico e contato_email)
+    if 'contato_telefonico' in empresa_data:
+        telefone_data = empresa_data.get('contato_telefonico')
+        telefone = None
+        
+        if telefone_data:
+            if isinstance(telefone_data, dict):
+                telefone = telefone_data.get('completo')
+                if not telefone and telefone_data.get('ddd') and telefone_data.get('numero'):
+                    telefone = f"({telefone_data.get('ddd')}) {telefone_data.get('numero')}"
+                elif not telefone:
+                    telefone = telefone_data.get('numero')
+            elif isinstance(telefone_data, list) and len(telefone_data) > 0:
+                primeiro = telefone_data[0]
+                if isinstance(primeiro, dict):
+                    telefone = primeiro.get('completo')
+                    if not telefone and primeiro.get('ddd') and primeiro.get('numero'):
+                        telefone = f"({primeiro.get('ddd')}) {primeiro.get('numero')}"
+                    elif not telefone:
+                        telefone = primeiro.get('numero')
+                else:
+                    telefone = primeiro
+            elif isinstance(telefone_data, str):
+                telefone = telefone_data
+            
+            if telefone:
+                lead.telefone_empresa = str(telefone)
+                if not lead.phone:
+                    lead.phone = str(telefone)
+    
+    # Email (formato API v5 - campo: contato_email)
+    if 'contato_email' in empresa_data:
+        email_data = empresa_data.get('contato_email')
+        email = None
+        
+        if email_data:
+            if isinstance(email_data, dict):
+                email = email_data.get('email')
+            elif isinstance(email_data, list) and len(email_data) > 0:
+                primeiro = email_data[0]
+                if isinstance(primeiro, dict):
+                    email = primeiro.get('email')
+                else:
+                    email = primeiro
+            elif isinstance(email_data, str):
+                email = email_data
+            
+            if email:
+                lead.email_empresa = str(email)
+                if not lead.email:
+                    lead.email = str(email)
+
+
 async def process_empresa_to_lead(
     empresa_data: Dict[str, Any],
     tenant_id: int,
@@ -297,214 +535,21 @@ async def process_empresa_to_lead(
                 tenant_id=tenant_id,
                 name=name,
                 cnpj=cnpj,
-                source='Prospecção - Casa dos Dados'
+                source='Prospecção'
             )
             session.add(lead)
             session.flush()
         
-        # Preencher campos da empresa (formato API v5)
-        if 'razao_social' in empresa_data:
-            lead.razao_social = empresa_data.get('razao_social')
-            if not lead.company:
-                lead.company = empresa_data.get('razao_social')
-        
-        if 'nome_fantasia' in empresa_data:
-            lead.nome_fantasia = empresa_data.get('nome_fantasia')
-        
-        # Data de abertura (formato API v5: "data_abertura" como string YYYY-MM-DD)
-        if 'data_abertura' in empresa_data:
-            try:
-                data_str = empresa_data.get('data_abertura')
-                if data_str:
-                    lead.data_abertura = datetime.strptime(data_str, '%Y-%m-%d')
-            except Exception:
-                pass
-        
-        # Capital social (formato API v5: integer)
-        if 'capital_social' in empresa_data:
-            try:
-                capital = empresa_data.get('capital_social')
-                if capital is not None:
-                    lead.capital_social = float(capital)
-            except (ValueError, TypeError):
-                pass
-        
-        # Situação cadastral (formato API v5: objeto com situacao_cadastral, motivo, data)
-        if 'situacao_cadastral' in empresa_data:
-            situacao_obj = empresa_data.get('situacao_cadastral', {})
-            if isinstance(situacao_obj, dict):
-                lead.situacao_cadastral = situacao_obj.get('situacao_cadastral', '')
-                lead.motivo_situacao_cadastral = situacao_obj.get('motivo', '')
-                if situacao_obj.get('data'):
-                    try:
-                        lead.data_situacao_cadastral = datetime.strptime(situacao_obj.get('data'), '%Y-%m-%d')
-                    except Exception:
-                        pass
-            elif isinstance(situacao_obj, str):
-                lead.situacao_cadastral = situacao_obj
-        
-        # Endereço (formato API v5)
-        if 'endereco' in empresa_data:
-            endereco = empresa_data.get('endereco', {})
-            lead.logradouro = endereco.get('logradouro')
-            lead.numero = endereco.get('numero')
-            lead.bairro = endereco.get('bairro')
-            lead.cep = endereco.get('cep')
-            lead.municipio = endereco.get('municipio')
-            lead.uf = endereco.get('uf')
-            lead.complemento = endereco.get('complemento')
-            
-            # Montar endereço completo
-            endereco_parts = []
-            if lead.logradouro:
-                endereco_parts.append(lead.logradouro)
-            if lead.numero:
-                endereco_parts.append(lead.numero)
-            if lead.complemento:
-                endereco_parts.append(lead.complemento)
-            if lead.bairro:
-                endereco_parts.append(lead.bairro)
-            if lead.municipio:
-                endereco_parts.append(lead.municipio)
-            if lead.uf:
-                endereco_parts.append(lead.uf)
-            if lead.cep:
-                endereco_parts.append(f"CEP: {lead.cep}")
-            
-            if endereco_parts:
-                lead.address = ', '.join(endereco_parts)
-            
-            lead.city = lead.municipio
-            lead.state = lead.uf
-            lead.zip_code = lead.cep
-        
-        # CNAE (formato API v5 não retorna diretamente, mas pode estar em outras partes)
-        # Nota: A API v5 pode não retornar CNAE no resultado "simples"
-        # Se tipo_resultado for "completo", pode ter mais campos
-        
-        # Natureza jurídica (formato API v5)
-        if 'codigo_natureza_juridica' in empresa_data:
-            lead.natureza_juridica = str(empresa_data.get('codigo_natureza_juridica', ''))
-        if 'descricao_natureza_juridica' in empresa_data:
-            # Pode usar a descrição também se necessário
-            pass
-        
-        # Porte (formato API v5: objeto porte_empresa com codigo e descricao)
-        if 'porte_empresa' in empresa_data:
-            porte_obj = empresa_data.get('porte_empresa', {})
-            if isinstance(porte_obj, dict):
-                lead.porte = porte_obj.get('descricao', '') or porte_obj.get('codigo', '')
-            elif isinstance(porte_obj, str):
-                lead.porte = porte_obj
-        
-        # Sócios (formato API v5: quadro_societario)
-        if 'quadro_societario' in empresa_data:
-            socios = empresa_data.get('quadro_societario', [])
-            if socios:
-                socios_data = []
-                for socio in socios:
-                    socios_data.append({
-                        'nome': socio.get('nome', ''),
-                        'qualificacao': socio.get('qualificacao_socio', ''),
-                        'cpf_cnpj': socio.get('documento', ''),
-                        'data_entrada': socio.get('data_entrada_sociedade', ''),
-                        'qualificacao_codigo': socio.get('qualificacao_socio_codigo', ''),
-                        'pais': socio.get('pais_socio', ''),
-                        'representante_legal': socio.get('nome_representante_legal', ''),
-                        'cpf_representante': socio.get('cpf_representante_legal', '')
-                    })
-                lead.socios_json = json.dumps(socios_data, ensure_ascii=False)
-        
-        # Telefone e Email (formato API v5 - campos: contato_telefonico e contato_email)
-        # A API v5 retorna contato_telefonico como objeto {completo, ddd, numero, tipo} ou array/string
-        if 'contato_telefonico' in empresa_data:
-            telefone_data = empresa_data.get('contato_telefonico')
-            telefone = None
-            
-            if telefone_data:
-                # Pode ser objeto, array ou string
-                if isinstance(telefone_data, dict):
-                    # É um objeto com {completo, ddd, numero, tipo}
-                    telefone = telefone_data.get('completo')
-                    if not telefone and telefone_data.get('ddd') and telefone_data.get('numero'):
-                        telefone = f"({telefone_data.get('ddd')}) {telefone_data.get('numero')}"
-                    elif not telefone:
-                        telefone = telefone_data.get('numero')
-                elif isinstance(telefone_data, list) and len(telefone_data) > 0:
-                    # É um array - pegar o primeiro e verificar se é objeto
-                    primeiro = telefone_data[0]
-                    if isinstance(primeiro, dict):
-                        telefone = primeiro.get('completo')
-                        if not telefone and primeiro.get('ddd') and primeiro.get('numero'):
-                            telefone = f"({primeiro.get('ddd')}) {primeiro.get('numero')}"
-                        elif not telefone:
-                            telefone = primeiro.get('numero')
-                    else:
-                        telefone = primeiro
-                elif isinstance(telefone_data, str):
-                    telefone = telefone_data
-                
-                if telefone:
-                    lead.telefone_empresa = str(telefone)
-                    # Também preencher o campo phone principal se estiver vazio
-                    if not lead.phone:
-                        lead.phone = str(telefone)
-        
-        # Email (formato API v5 - campo: contato_email)
-        # A API v5 retorna contato_email como objeto {email, valido, dominio} ou array/string
-        if 'contato_email' in empresa_data:
-            email_data = empresa_data.get('contato_email')
-            email = None
-            
-            if email_data:
-                # Pode ser objeto, array ou string
-                if isinstance(email_data, dict):
-                    # É um objeto com {email, valido, dominio}
-                    email = email_data.get('email')
-                elif isinstance(email_data, list) and len(email_data) > 0:
-                    # É um array - pegar o primeiro e verificar se é objeto
-                    primeiro = email_data[0]
-                    if isinstance(primeiro, dict):
-                        email = primeiro.get('email')
-                    else:
-                        email = primeiro
-                elif isinstance(email_data, str):
-                    email = email_data
-                
-                if email:
-                    lead.email_empresa = str(email)
-                    # Também preencher o campo email principal se estiver vazio
-                    if not lead.email:
-                        lead.email = str(email)
-        
-        # Fallback: verificar campos antigos caso a API mude
-        if not lead.telefone_empresa:
-            if 'telefone' in empresa_data:
-                telefone = empresa_data.get('telefone')
-                if telefone:
-                    if isinstance(telefone, list) and len(telefone) > 0:
-                        telefone = telefone[0]
-                    lead.telefone_empresa = str(telefone)
-                    if not lead.phone:
-                        lead.phone = str(telefone)
-        
-        if not lead.email_empresa:
-            if 'email' in empresa_data:
-                email = empresa_data.get('email')
-                if email:
-                    if isinstance(email, list) and len(email) > 0:
-                        email = email[0]
-                    lead.email_empresa = str(email)
-                    if not lead.email:
-                        lead.email = str(email)
-        
-        lead.updated_at = datetime.utcnow()
-        session.add(lead)
-        session.flush()
+        # Preencher todos os dados da empresa
+        await _fill_lead_with_empresa_data(lead, empresa_data)
         
         return lead
         
     except Exception as e:
+        logger.error(f"❌ [PROSPECTING] Erro ao processar empresa: {e}")
+        import traceback
+        traceback.print_exc()
+        return None
         logger.error(f"❌ [PROSPECTING] Erro ao processar empresa: {e}")
         import traceback
         traceback.print_exc()
@@ -651,38 +696,32 @@ async def search_companies(
         else:
             logger.info(f"✅ [PROSPECTING] Empresas já têm dados de contato ou enriquecimento não necessário")
         
-        # Se auto_import está ativado, processar empresas e criar leads
+        # Se auto_import está ativado, processar empresas e criar leads baseados nos sócios
         if params.auto_import:
-            logger.info(f"🚀 [PROSPECTING] Processando {len(empresas)} empresas para criar leads...")
+            logger.info(f"🚀 [PROSPECTING] Processando {len(empresas)} empresas para criar leads baseados nos sócios...")
             
             for empresa in empresas:
                 try:
-                    cnpj_empresa = empresa.get('cnpj', '').replace('.', '').replace('/', '').replace('-', '')
+                    # Processar sócios e criar leads (não criar com nome da empresa)
+                    leads = await process_socios_to_leads(empresa, current_user.tenant_id, session)
                     
-                    # Verificar se já existe antes de processar
-                    existing_lead = session.exec(
-                        select(Lead).where(
-                            and_(
-                                Lead.tenant_id == current_user.tenant_id,
-                                Lead.cnpj == cnpj_empresa
-                            )
-                        )
-                    ).first()
-                    
-                    lead = await process_empresa_to_lead(empresa, current_user.tenant_id, session)
-                    if lead:
-                        if existing_lead:
-                            # Lead existente foi atualizado
-                            if lead.id not in [l.id for l in leads_updated]:
-                                leads_updated.append(lead)
-                        else:
-                            # Novo lead
-                            if lead.id not in [l.id for l in leads_created]:
-                                leads_created.append(lead)
-                        
-                        # Agendar enriquecimento em background
-                        if lead.cnpj:
-                            background_tasks.add_task(process_enrichment_background, lead.id, lead.cnpj)
+                    for lead in leads:
+                        if lead:
+                            # Verificar se é novo ou atualizado
+                            if lead.id:
+                                existing_lead = session.get(Lead, lead.id)
+                                if existing_lead and existing_lead.id:
+                                    # Lead existente foi atualizado
+                                    if lead.id not in [l.id for l in leads_updated]:
+                                        leads_updated.append(lead)
+                                else:
+                                    # Novo lead
+                                    if lead.id not in [l.id for l in leads_created]:
+                                        leads_created.append(lead)
+                                
+                                # Agendar enriquecimento em background
+                                if lead.cnpj:
+                                    background_tasks.add_task(process_enrichment_background, lead.id, lead.cnpj)
                             
                 except Exception as e:
                     errors.append(f"Erro ao processar empresa {empresa.get('cnpj', 'N/A')}: {str(e)}")
@@ -724,7 +763,7 @@ async def import_prospecting_results(
 ):
     """
     Importa resultados de prospecção como leads
-    Recebe lista de empresas e cria leads
+    Recebe lista de empresas e cria leads baseados nos sócios (primeiro sócio)
     """
     leads_created = []
     leads_updated = []
@@ -733,11 +772,22 @@ async def import_prospecting_results(
     try:
         for empresa in empresas:
             try:
-                lead = await process_empresa_to_lead(empresa, current_user.tenant_id, session)
-                if lead:
+                # Processar sócios e criar leads
+                leads = await process_socios_to_leads(empresa, current_user.tenant_id, session)
+                
+                for lead in leads:
                     if lead.id and not any(l.id == lead.id for l in leads_created + leads_updated):
-                        if session.get(Lead, lead.id) == lead:
-                            leads_updated.append(lead)
+                        # Verificar se é novo ou atualizado
+                        existing = session.get(Lead, lead.id)
+                        if existing and existing.id:
+                            # Verificar se foi atualizado comparando timestamps ou outros campos
+                            if lead.id in [l.id for l in leads_updated]:
+                                continue
+                            # Se já existe no banco, é atualização
+                            if session.is_modified(lead) or (existing and existing.name != lead.name):
+                                leads_updated.append(lead)
+                            else:
+                                leads_created.append(lead)
                         else:
                             leads_created.append(lead)
                     
@@ -747,6 +797,7 @@ async def import_prospecting_results(
                         
             except Exception as e:
                 errors.append(f"Erro ao processar empresa {empresa.get('cnpj', 'N/A')}: {str(e)}")
+                logger.error(f"❌ [PROSPECTING] Erro ao processar empresa: {e}")
         
         session.commit()
         

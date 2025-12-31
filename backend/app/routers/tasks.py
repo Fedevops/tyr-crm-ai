@@ -12,7 +12,11 @@ from app.models import (
 )
 from app.dependencies import get_current_active_user, apply_ownership_filter, ensure_ownership, require_ownership
 from app.services.kpi_service import track_kpi_activity
+from app.services.lead_scoring import calculate_lead_score
 from app.models import GoalMetricType
+import logging
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -457,6 +461,51 @@ async def update_task(
                                 lead.company_size = enriched_data['company_size']
                                 fields_updated.append('tamanho da empresa')
                             
+                            # Campos do LinkedIn
+                            if enriched_data.get('linkedin_headline') and not lead.linkedin_headline:
+                                lead.linkedin_headline = enriched_data['linkedin_headline']
+                                fields_updated.append('headline LinkedIn')
+                            
+                            if enriched_data.get('linkedin_about') and not lead.linkedin_about:
+                                lead.linkedin_about = enriched_data['linkedin_about']
+                                fields_updated.append('sobre LinkedIn')
+                            
+                            if enriched_data.get('linkedin_experience_json') and not lead.linkedin_experience_json:
+                                lead.linkedin_experience_json = enriched_data['linkedin_experience_json']
+                                fields_updated.append('experiência LinkedIn')
+                            
+                            if enriched_data.get('linkedin_education_json') and not lead.linkedin_education_json:
+                                lead.linkedin_education_json = enriched_data['linkedin_education_json']
+                                fields_updated.append('educação LinkedIn')
+                            
+                            if enriched_data.get('linkedin_certifications_json') and not lead.linkedin_certifications_json:
+                                lead.linkedin_certifications_json = enriched_data['linkedin_certifications_json']
+                                fields_updated.append('certificações LinkedIn')
+                            
+                            if enriched_data.get('linkedin_skills') and not lead.linkedin_skills:
+                                lead.linkedin_skills = enriched_data['linkedin_skills']
+                                fields_updated.append('habilidades LinkedIn')
+                            
+                            if enriched_data.get('linkedin_articles_json') and not lead.linkedin_articles_json:
+                                lead.linkedin_articles_json = enriched_data['linkedin_articles_json']
+                                fields_updated.append('artigos LinkedIn')
+                            
+                            if enriched_data.get('linkedin_recent_activity') and not lead.linkedin_recent_activity:
+                                lead.linkedin_recent_activity = enriched_data['linkedin_recent_activity']
+                                fields_updated.append('atividades LinkedIn')
+                            
+                            if enriched_data.get('linkedin_connections_count') is not None and lead.linkedin_connections_count is None:
+                                lead.linkedin_connections_count = enriched_data['linkedin_connections_count']
+                                fields_updated.append('conexões LinkedIn')
+                            
+                            if enriched_data.get('linkedin_followers_count') is not None and lead.linkedin_followers_count is None:
+                                lead.linkedin_followers_count = enriched_data['linkedin_followers_count']
+                                fields_updated.append('seguidores LinkedIn')
+                            
+                            if enriched_data.get('linkedin_summary') and not lead.linkedin_summary:
+                                lead.linkedin_summary = enriched_data['linkedin_summary']
+                                fields_updated.append('resumo LinkedIn')
+                            
                             # Contexto sempre atualiza (pode ser melhorado)
                             if enriched_data.get('context'):
                                 if lead.context:
@@ -485,6 +534,16 @@ async def update_task(
                             
                             session.add(lead)
                             session.commit()
+                            
+                            # Recalcular score após enriquecimento
+                            try:
+                                lead.score = calculate_lead_score(lead, session)
+                                session.add(lead)
+                                session.commit()
+                                logger.info(f"📊 [SCORING] Score do lead {lead.id} recalculado após enriquecimento")
+                            except Exception as score_error:
+                                logger.warning(f"⚠️ [SCORING] Erro ao recalcular score do lead {lead.id} após enriquecimento: {score_error}")
+                                # Não falhar a operação principal se o scoring falhar
                             
                             # Adicionar resumo na tarefa
                             method_used = research_result.get('method', 'scraping_direto')
@@ -589,6 +648,19 @@ async def update_task(
         session.commit()
         session.refresh(task)
         print(f"✅ [BACKEND] Tarefa {task.id} salva com sucesso. Status: {task.status}")
+        
+        # Recalcular score do lead se a task foi completada
+        if was_not_completed and task.status == TaskStatus.COMPLETED:
+            try:
+                lead = session.get(Lead, task.lead_id)
+                if lead:
+                    lead.score = calculate_lead_score(lead, session)
+                    session.add(lead)
+                    session.commit()
+                    logger.info(f"📊 [SCORING] Score do lead {lead.id} recalculado após conclusão da task {task.id}")
+            except Exception as score_error:
+                logger.warning(f"⚠️ [SCORING] Erro ao recalcular score do lead após conclusão da task {task.id}: {score_error}")
+                # Não falhar a operação principal se o scoring falhar
         
         # Track KPI activity if task was just completed
         if was_not_completed and task.status == TaskStatus.COMPLETED:

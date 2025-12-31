@@ -14,7 +14,7 @@ class Settings(BaseSettings):
     openai_model: str = "gpt-4"
     
     # Ollama Configuration
-    ollama_base_url: str = "http://localhost:11434"  # URL padrão do Ollama
+    ollama_base_url: str = "http://localhost:11434"  # URL padrão do Ollama (use host.docker.internal em Docker)
     ollama_model: str = "llama3"  # ou "mistral", "codellama", etc.
     
     # DeepSeek Configuration
