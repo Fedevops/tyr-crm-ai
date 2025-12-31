@@ -406,6 +406,7 @@ class Sequence(SQLModel, table=True):
     description: Optional[str] = None
     is_active: bool = True
     steps: str  # JSON string com array de steps: [{"type": "email", "delay_days": 0, "template": "..."}, ...]
+    default_start_date: Optional[datetime] = None  # Data de início padrão para a primeira tarefa
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)
 
@@ -415,6 +416,7 @@ class SequenceCreate(SQLModel):
     description: Optional[str] = None
     is_active: bool = True
     steps: str  # JSON string
+    default_start_date: Optional[datetime] = None  # Data de início padrão para a primeira tarefa
 
 
 class SequenceResponse(SQLModel):
@@ -424,6 +426,7 @@ class SequenceResponse(SQLModel):
     description: Optional[str]
     is_active: bool
     steps: str
+    default_start_date: Optional[datetime] = None
     created_at: datetime
     updated_at: datetime
 
@@ -1082,6 +1085,8 @@ class GoalMetricType(str, Enum):
     LEADS_CREATED = "leads_created"
     REVENUE_GENERATED = "revenue_generated"
     CALLS_MADE = "calls_made"
+    MEETINGS_SCHEDULED = "meetings_scheduled"
+    MEETINGS_COMPLETED = "meetings_completed"
 
 
 class GoalPeriod(str, Enum):
@@ -1484,6 +1489,7 @@ class PlanLimitDefaults(SQLModel, table=True):
     max_users: int = Field(default=3)
     max_items: int = Field(default=50)
     max_api_calls: int = Field(default=1000)  # Por mês
+    max_tokens: int = Field(default=100000)  # Tokens LLM por mês
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)
 
@@ -1497,6 +1503,7 @@ class TenantLimit(SQLModel, table=True):
     max_users: int = Field(default=3)
     max_items: int = Field(default=50)
     max_api_calls: int = Field(default=1000)  # Por mês
+    max_tokens: int = Field(default=100000)  # Tokens LLM por mês
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)
 
@@ -1509,6 +1516,64 @@ class ApiCallLog(SQLModel, table=True):
     method: str  # GET, POST, PUT, DELETE, etc.
     user_id: Optional[int] = Field(foreign_key="user.id", default=None)
     created_at: datetime = Field(default_factory=datetime.utcnow, index=True)
+
+
+class LLMTokenUsage(SQLModel, table=True):
+    """Log de uso de tokens LLM para tracking"""
+    id: Optional[int] = Field(default=None, primary_key=True)
+    tenant_id: int = Field(foreign_key="tenant.id", index=True)
+    user_id: Optional[int] = Field(foreign_key="user.id", default=None, index=True)
+    provider: str  # "openai" ou "ollama"
+    model: str  # Nome do modelo usado
+    prompt_tokens: int = Field(default=0)  # Tokens do prompt
+    completion_tokens: int = Field(default=0)  # Tokens da resposta
+    total_tokens: int = Field(default=0)  # Total de tokens
+    endpoint: Optional[str] = None  # Endpoint que gerou o uso (ex: /api/leads/generate-insight)
+    feature: Optional[str] = None  # Feature usada (ex: "insight_generation", "linkedin_message")
+    created_at: datetime = Field(default_factory=datetime.utcnow, index=True)
+
+
+# ==================== NOTIFICATIONS MODELS ====================
+
+class NotificationType(str, Enum):
+    """Tipos de notificação"""
+    TASK_DUE_TODAY = "task_due_today"
+    TASK_OVERDUE = "task_overdue"
+    APPOINTMENT_TODAY = "appointment_today"
+    APPOINTMENT_UPCOMING = "appointment_upcoming"
+    LIMIT_WARNING = "limit_warning"
+    LIMIT_EXCEEDED = "limit_exceeded"
+    EMAIL_RECEIVED = "email_received"
+    SYSTEM_ALERT = "system_alert"
+
+
+class Notification(SQLModel, table=True):
+    """Notificações para usuários"""
+    id: Optional[int] = Field(default=None, primary_key=True)
+    tenant_id: int = Field(foreign_key="tenant.id", index=True)
+    user_id: int = Field(foreign_key="user.id", index=True)
+    type: NotificationType
+    title: str
+    message: str
+    is_read: bool = Field(default=False, index=True)
+    action_url: Optional[str] = None  # URL para ação relacionada (ex: /tasks/123)
+    metadata_json: Optional[Dict] = Field(default=None, sa_column=Column(JSON))  # Dados extras (ex: task_id, appointment_id)
+    created_at: datetime = Field(default_factory=datetime.utcnow, index=True)
+    read_at: Optional[datetime] = None
+
+
+class NotificationResponse(SQLModel):
+    id: int
+    tenant_id: int
+    user_id: int
+    type: str
+    title: str
+    message: str
+    is_read: bool
+    action_url: Optional[str] = None
+    metadata_json: Optional[Dict] = None
+    created_at: datetime
+    read_at: Optional[datetime] = None
 
 
 # ==================== ORDERS MODELS ====================
@@ -1656,6 +1721,92 @@ class OrderResponse(SQLModel):
     # Dados relacionados
     contact_name: Optional[str] = None
     account_name: Optional[str] = None
+
+
+# ==================== APPOINTMENTS ====================
+
+class AppointmentStatus(str, Enum):
+    SCHEDULED = "scheduled"
+    COMPLETED = "completed"
+    CANCELLED = "cancelled"
+    RESCHEDULED = "rescheduled"
+    NO_SHOW = "no_show"
+
+
+class Appointment(SQLModel, table=True):
+    """Agendamentos/Reuniões com Leads"""
+    id: Optional[int] = Field(default=None, primary_key=True)
+    tenant_id: int = Field(foreign_key="tenant.id", index=True)
+    lead_id: int = Field(foreign_key="lead.id", index=True)
+    title: str
+    description: Optional[str] = None
+    scheduled_at: datetime  # Data e hora agendada
+    duration_minutes: int = Field(default=30)  # Duração em minutos
+    location: Optional[str] = None  # Local da reunião (presencial, online, endereço)
+    meeting_url: Optional[str] = None  # URL para reunião online (Zoom, Meet, etc.)
+    status: AppointmentStatus = AppointmentStatus.SCHEDULED
+    notes: Optional[str] = None  # Notas da reunião (preenchidas após)
+    outcome: Optional[str] = None  # Resultado da reunião
+    completed_at: Optional[datetime] = None  # Quando foi completada
+    cancelled_at: Optional[datetime] = None  # Quando foi cancelada
+    # Ownership
+    owner_id: Optional[int] = Field(foreign_key="user.id", index=True, default=None)
+    created_by_id: Optional[int] = Field(foreign_key="user.id", index=True, default=None)
+    # Timestamps
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    
+    # Relationships
+    lead: Optional["Lead"] = Relationship()
+
+
+class AppointmentCreate(SQLModel):
+    lead_id: int
+    title: str
+    description: Optional[str] = None
+    scheduled_at: datetime
+    duration_minutes: int = 30
+    location: Optional[str] = None
+    meeting_url: Optional[str] = None
+    owner_id: Optional[int] = None
+    notes: Optional[str] = None
+
+
+class AppointmentUpdate(SQLModel):
+    title: Optional[str] = None
+    description: Optional[str] = None
+    scheduled_at: Optional[datetime] = None
+    duration_minutes: Optional[int] = None
+    location: Optional[str] = None
+    meeting_url: Optional[str] = None
+    status: Optional[AppointmentStatus] = None
+    notes: Optional[str] = None
+    outcome: Optional[str] = None
+    owner_id: Optional[int] = None
+
+
+class AppointmentResponse(SQLModel):
+    id: int
+    tenant_id: int
+    lead_id: int
+    title: str
+    description: Optional[str]
+    scheduled_at: datetime
+    duration_minutes: int
+    location: Optional[str]
+    meeting_url: Optional[str]
+    status: AppointmentStatus
+    notes: Optional[str]
+    outcome: Optional[str]
+    completed_at: Optional[datetime]
+    cancelled_at: Optional[datetime]
+    owner_id: Optional[int]
+    created_by_id: Optional[int]
+    created_at: datetime
+    updated_at: datetime
+    # Lead info (opcional, pode ser incluído via join)
+    lead_name: Optional[str] = None
+    lead_company: Optional[str] = None
 
 
 # ==================== INTEGRATIONS ====================

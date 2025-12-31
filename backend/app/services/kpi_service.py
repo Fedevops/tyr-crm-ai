@@ -3,7 +3,8 @@ from sqlmodel import Session, select, func, and_, or_
 from datetime import datetime
 from app.models import (
     Goal, ActivityLog, GoalMetricType, GoalStatus, GoalPeriod,
-    Lead, Task, TaskType, TaskStatus, Opportunity, OpportunityStatus
+    Lead, Task, TaskType, TaskStatus, Opportunity, OpportunityStatus,
+    Appointment, AppointmentStatus
 )
 
 
@@ -139,6 +140,37 @@ def calculate_initial_goal_value(
                     Task.completed_at.isnot(None),
                     Task.completed_at >= period_start,
                     Task.completed_at <= period_end
+                )
+            )
+        ).one()
+        return float(count or 0)
+    
+    elif metric_type == GoalMetricType.MEETINGS_SCHEDULED:
+        # Contar reuniões agendadas pelo usuário no período
+        count = session.exec(
+            select(func.count(Appointment.id)).where(
+                and_(
+                    Appointment.tenant_id == tenant_id,
+                    Appointment.owner_id == user_id,
+                    Appointment.status == AppointmentStatus.SCHEDULED,
+                    Appointment.scheduled_at >= period_start,
+                    Appointment.scheduled_at <= period_end
+                )
+            )
+        ).one()
+        return float(count or 0)
+    
+    elif metric_type == GoalMetricType.MEETINGS_COMPLETED:
+        # Contar reuniões completadas pelo usuário no período
+        count = session.exec(
+            select(func.count(Appointment.id)).where(
+                and_(
+                    Appointment.tenant_id == tenant_id,
+                    Appointment.owner_id == user_id,
+                    Appointment.status == AppointmentStatus.COMPLETED,
+                    Appointment.completed_at.isnot(None),
+                    Appointment.completed_at >= period_start,
+                    Appointment.completed_at <= period_end
                 )
             )
         ).one()

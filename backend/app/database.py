@@ -889,6 +889,7 @@ def migrate_tenant_limits():
                         max_users INTEGER NOT NULL DEFAULT 3,
                         max_items INTEGER NOT NULL DEFAULT 50,
                         max_api_calls INTEGER NOT NULL DEFAULT 1000,
+                        max_tokens INTEGER NOT NULL DEFAULT 100000,
                         created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
                         updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
                         FOREIGN KEY (tenant_id) REFERENCES tenant(id)
@@ -908,6 +909,24 @@ def migrate_tenant_limits():
                 """)
                 session.exec(create_tenantlimit)
                 session.exec(create_apicalllog)
+                create_llmtokenusage = text("""
+                    CREATE TABLE IF NOT EXISTS llmtokenusage (
+                        id SERIAL PRIMARY KEY,
+                        tenant_id INTEGER NOT NULL,
+                        user_id INTEGER,
+                        provider VARCHAR(50) NOT NULL,
+                        model VARCHAR(100) NOT NULL,
+                        prompt_tokens INTEGER NOT NULL DEFAULT 0,
+                        completion_tokens INTEGER NOT NULL DEFAULT 0,
+                        total_tokens INTEGER NOT NULL DEFAULT 0,
+                        endpoint VARCHAR(500),
+                        feature VARCHAR(100),
+                        created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+                        FOREIGN KEY (tenant_id) REFERENCES tenant(id),
+                        FOREIGN KEY (user_id) REFERENCES "user"(id)
+                    )
+                """)
+                session.exec(create_llmtokenusage)
                 
                 # Criar índices para melhor performance
                 try:
@@ -1417,6 +1436,263 @@ def migrate_custom_fields_tables():
             print(f"Migration warning (custom fields tables): {e}")
 
 
+def migrate_sequence_table():
+    """Adiciona coluna default_start_date à tabela sequence se não existir"""
+    with Session(engine) as session:
+        try:
+            # Verificar se a tabela sequence existe
+            table_check = text("""
+                SELECT EXISTS (
+                    SELECT FROM information_schema.tables 
+                    WHERE table_name = 'sequence'
+                )
+            """)
+            result = session.exec(table_check).first()
+            table_exists = result[0] if result else False
+            
+            if not table_exists:
+                print("⚠️ Tabela sequence não existe. Será criada pelo SQLModel.")
+                return
+            
+            # Verificar se a coluna já existe
+            column_check = text("""
+                SELECT EXISTS (
+                    SELECT FROM information_schema.columns 
+                    WHERE table_name = 'sequence' AND column_name = 'default_start_date'
+                )
+            """)
+            result = session.exec(column_check).first()
+            column_exists = result[0] if result else False
+            
+            if not column_exists:
+                # Adicionar coluna
+                add_column = text("""
+                    ALTER TABLE sequence 
+                    ADD COLUMN default_start_date TIMESTAMP WITH TIME ZONE
+                """)
+                session.exec(add_column)
+                session.commit()
+                print("✓ Adicionada coluna default_start_date à tabela sequence")
+            else:
+                print("- Coluna default_start_date já existe na tabela sequence")
+                
+        except Exception as e:
+            session.rollback()
+            print(f"⚠️ Erro na migração da tabela sequence: {e}")
+
+
+def migrate_goal_metric_type_enum():
+    """Adiciona novos valores ao enum GoalMetricType se não existirem"""
+    with Session(engine) as session:
+        try:
+            # Verificar se o enum existe
+            enum_check = text("""
+                SELECT EXISTS (
+                    SELECT 1 FROM pg_type WHERE typname = 'goalmetrictype'
+                )
+            """)
+            result = session.exec(enum_check).first()
+            enum_exists = result[0] if result else False
+            
+            if not enum_exists:
+                print("⚠️ Enum goalmetrictype não existe. Será criado pelo SQLModel.")
+                return
+            
+            # Valores a adicionar
+            new_values = ['MEETINGS_SCHEDULED', 'MEETINGS_COMPLETED']
+            
+            for value in new_values:
+                try:
+                    # Verificar se o valor já existe
+                    value_check = text(f"""
+                        SELECT EXISTS (
+                            SELECT 1 FROM pg_enum 
+                            WHERE enumlabel = '{value}' 
+                            AND enumtypid = (SELECT oid FROM pg_type WHERE typname = 'goalmetrictype')
+                        )
+                    """)
+                    result = session.exec(value_check).first()
+                    value_exists = result[0] if result else False
+                    
+                    if not value_exists:
+                        # Adicionar valor ao enum
+                        # Nota: ALTER TYPE ... ADD VALUE não pode ser executado em uma transação
+                        # Por isso, precisamos fazer commit antes
+                        session.commit()
+                        # Usar DO block para evitar erro se já existir
+                        add_value_do = text(f"""
+                            DO $$ BEGIN
+                                IF NOT EXISTS (
+                                    SELECT 1 FROM pg_enum 
+                                    WHERE enumlabel = '{value}' 
+                                    AND enumtypid = (SELECT oid FROM pg_type WHERE typname = 'goalmetrictype')
+                                ) THEN
+                                    ALTER TYPE goalmetrictype ADD VALUE '{value}';
+                                END IF;
+                            END $$;
+                        """)
+                        session.exec(add_value_do)
+                        session.commit()
+                        print(f"✓ Adicionado valor '{value}' ao enum goalmetrictype")
+                    else:
+                        print(f"- Valor '{value}' já existe no enum goalmetrictype")
+                except Exception as e:
+                    session.rollback()
+                    # Se o valor já existe, pode dar erro, mas isso é OK
+                    if 'already exists' in str(e).lower() or 'duplicate' in str(e).lower():
+                        print(f"- Valor '{value}' já existe no enum (erro esperado)")
+                    else:
+                        print(f"⚠️ Erro ao adicionar valor '{value}' ao enum: {e}")
+                        
+        except Exception as e:
+            session.rollback()
+            print(f"⚠️ Erro na migração do enum goalmetrictype: {e}")
+
+
+def migrate_llm_tokens_tracking():
+    """Adiciona coluna max_tokens na tabela tenantlimit e cria tabela llmtokenusage"""
+    with Session(engine) as session:
+        try:
+            # Verificar se a coluna max_tokens já existe
+            check_column = text("""
+                SELECT EXISTS (
+                    SELECT FROM information_schema.columns 
+                    WHERE table_name = 'tenantlimit' 
+                    AND column_name = 'max_tokens'
+                )
+            """)
+            result = session.exec(check_column).first()
+            column_exists = result[0] if result else False
+            
+            if not column_exists:
+                # Adicionar coluna max_tokens
+                # Primeiro adicionar como nullable, depois atualizar valores existentes, depois tornar NOT NULL
+                add_max_tokens = text("""
+                    ALTER TABLE tenantlimit 
+                    ADD COLUMN max_tokens INTEGER
+                """)
+                session.exec(add_max_tokens)
+                session.commit()
+                
+                # Atualizar valores existentes com default
+                update_existing = text("""
+                    UPDATE tenantlimit 
+                    SET max_tokens = 100000 
+                    WHERE max_tokens IS NULL
+                """)
+                session.exec(update_existing)
+                session.commit()
+                
+                # Tornar NOT NULL
+                set_not_null = text("""
+                    ALTER TABLE tenantlimit 
+                    ALTER COLUMN max_tokens SET NOT NULL,
+                    ALTER COLUMN max_tokens SET DEFAULT 100000
+                """)
+                session.exec(set_not_null)
+                session.commit()
+                print("✅ Coluna max_tokens adicionada à tabela tenantlimit")
+            else:
+                print("✓ Coluna max_tokens já existe na tabela tenantlimit")
+            
+            # Verificar se a tabela llmtokenusage existe
+            check_table = text("""
+                SELECT EXISTS (
+                    SELECT FROM information_schema.tables 
+                    WHERE table_name = 'llmtokenusage'
+                )
+            """)
+            table_result = session.exec(check_table).first()
+            table_exists = table_result[0] if table_result else False
+            
+            if not table_exists:
+                # Criar tabela llmtokenusage
+                create_table = text("""
+                    CREATE TABLE IF NOT EXISTS llmtokenusage (
+                        id SERIAL PRIMARY KEY,
+                        tenant_id INTEGER NOT NULL,
+                        user_id INTEGER,
+                        provider VARCHAR(50) NOT NULL,
+                        model VARCHAR(100) NOT NULL,
+                        prompt_tokens INTEGER NOT NULL DEFAULT 0,
+                        completion_tokens INTEGER NOT NULL DEFAULT 0,
+                        total_tokens INTEGER NOT NULL DEFAULT 0,
+                        endpoint VARCHAR(500),
+                        feature VARCHAR(100),
+                        created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+                        FOREIGN KEY (tenant_id) REFERENCES tenant(id),
+                        FOREIGN KEY (user_id) REFERENCES "user"(id)
+                    )
+                """)
+                session.exec(create_table)
+                # Criar índices
+                idx_tenant = text("CREATE INDEX IF NOT EXISTS idx_llmtokenusage_tenant_id ON llmtokenusage(tenant_id)")
+                idx_created = text("CREATE INDEX IF NOT EXISTS idx_llmtokenusage_created_at ON llmtokenusage(created_at)")
+                idx_tenant_created = text("CREATE INDEX IF NOT EXISTS idx_llmtokenusage_tenant_created ON llmtokenusage(tenant_id, created_at)")
+                session.exec(idx_tenant)
+                session.exec(idx_created)
+                session.exec(idx_tenant_created)
+                session.commit()
+                logger.info("✅ Tabela llmtokenusage criada")
+        except Exception as e:
+            logger.error(f"❌ Erro ao migrar tracking de tokens LLM: {e}")
+            session.rollback()
+
+
+def migrate_notifications_table():
+    """Cria tabela de notificações"""
+    with Session(engine) as session:
+        try:
+            # Verificar se a tabela existe
+            check_table = text("""
+                SELECT EXISTS (
+                    SELECT FROM information_schema.tables 
+                    WHERE table_name = 'notification'
+                )
+            """)
+            table_result = session.exec(check_table).first()
+            table_exists = table_result[0] if table_result else False
+            
+            if not table_exists:
+                # Criar tabela notification
+                create_table = text("""
+                    CREATE TABLE IF NOT EXISTS notification (
+                        id SERIAL PRIMARY KEY,
+                        tenant_id INTEGER NOT NULL,
+                        user_id INTEGER NOT NULL,
+                        type VARCHAR(50) NOT NULL,
+                        title VARCHAR(500) NOT NULL,
+                        message TEXT NOT NULL,
+                        is_read BOOLEAN NOT NULL DEFAULT FALSE,
+                        action_url VARCHAR(500),
+                        metadata_json JSONB,
+                        created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+                        read_at TIMESTAMP WITH TIME ZONE,
+                        FOREIGN KEY (tenant_id) REFERENCES tenant(id),
+                        FOREIGN KEY (user_id) REFERENCES "user"(id)
+                    )
+                """)
+                session.exec(create_table)
+                # Criar índices
+                idx_tenant = text("CREATE INDEX IF NOT EXISTS idx_notification_tenant_id ON notification(tenant_id)")
+                idx_user = text("CREATE INDEX IF NOT EXISTS idx_notification_user_id ON notification(user_id)")
+                idx_is_read = text("CREATE INDEX IF NOT EXISTS idx_notification_is_read ON notification(is_read)")
+                idx_created = text("CREATE INDEX IF NOT EXISTS idx_notification_created_at ON notification(created_at)")
+                idx_user_read = text("CREATE INDEX IF NOT EXISTS idx_notification_user_read ON notification(user_id, is_read)")
+                session.exec(idx_tenant)
+                session.exec(idx_user)
+                session.exec(idx_is_read)
+                session.exec(idx_created)
+                session.exec(idx_user_read)
+                session.commit()
+                logger.info("✅ Tabela notification criada")
+            else:
+                print("✓ Tabela notification já existe")
+        except Exception as e:
+            logger.error(f"❌ Erro ao migrar tabela de notificações: {e}")
+            session.rollback()
+
+
 def init_db():
     """Initialize database tables"""
     SQLModel.metadata.create_all(engine)
@@ -1436,6 +1712,14 @@ def init_db():
     migrate_existing_leads_ownership()
     # Garantir que todas as tasks existentes tenham owner_id e created_by_id
     migrate_existing_tasks_ownership()
+    # Adicionar coluna default_start_date à tabela sequence
+    migrate_sequence_table()
+    # Adicionar novos valores ao enum GoalMetricType
+    migrate_goal_metric_type_enum()
+    # Adicionar coluna max_tokens e criar tabela LLMTokenUsage
+    migrate_llm_tokens_tracking()
+    # Criar tabela de notificações
+    migrate_notifications_table()
 
 
 

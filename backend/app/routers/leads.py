@@ -22,6 +22,7 @@ from app.services.kpi_service import track_kpi_activity
 from app.models import GoalMetricType
 from app.utils.pdf_parser import extract_text_from_pdf, parse_linkedin_data_with_llm
 from app.services.lead_scoring import calculate_lead_score, should_recalculate_score
+from app.services.insight_generator import generate_lead_insight
 import pandas as pd
 import logging
 
@@ -1076,6 +1077,7 @@ async def import_leads_csv(
 @router.post("/parse-linkedin-pdf")
 async def parse_linkedin_pdf(
     file: UploadFile = File(...),
+    session: Session = Depends(get_session),
     current_user: User = Depends(get_current_active_user)
 ):
     """
@@ -1128,7 +1130,12 @@ async def parse_linkedin_pdf(
         
         # Analisar texto com LLM
         try:
-            parsed_data = await parse_linkedin_data_with_llm(text)
+            parsed_data = await parse_linkedin_data_with_llm(
+                text, 
+                session=session, 
+                tenant_id=current_user.tenant_id, 
+                user_id=current_user.id
+            )
         except ValueError as llm_error:
             error_msg = str(llm_error)
             # Melhorar mensagem de erro para conexão recusada
@@ -1869,4 +1876,71 @@ async def convert_lead_to_opportunity(
         "opportunity_id": opportunity.id,
         "opportunity": opportunity
     }
+
+
+@router.post("/{lead_id}/generate-insight")
+async def generate_insight(
+    lead_id: int,
+    language: Optional[str] = Query("pt-BR", description="Idioma para gerar o insight (pt-BR ou en)"),
+    session: Session = Depends(get_session),
+    current_user: User = Depends(get_current_active_user)
+):
+    """
+    Gera um insight sobre o lead usando IA
+    
+    Args:
+        lead_id: ID do lead
+        
+    Returns:
+        JSON com o insight gerado
+    """
+    lead = session.get(Lead, lead_id)
+    if not lead:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Lead not found"
+        )
+    require_ownership(lead, current_user)
+    
+    try:
+        logger.info(f"🤖 [INSIGHT] Gerando insight para lead {lead_id} em idioma: {language}")
+        insight = generate_lead_insight(lead, session, language=language)
+        
+        # Atualizar o campo linkedin_summary com o insight gerado
+        lead.linkedin_summary = insight
+        session.add(lead)
+        session.commit()
+        session.refresh(lead)
+        
+        logger.info(f"✅ [INSIGHT] Insight gerado e salvo para lead {lead_id}")
+        
+        return {
+            "success": True,
+            "insight": insight,
+            "message": "Insight gerado com sucesso"
+        }
+        
+    except ValueError as e:
+        error_msg = str(e)
+        logger.error(f"❌ [INSIGHT] Erro ao gerar insight: {error_msg}")
+        
+        if "LLM não está disponível" in error_msg or "Connection refused" in error_msg:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="LLM não está disponível. Configure OpenAI ou Ollama no arquivo .env"
+            )
+        
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Erro ao gerar insight: {error_msg}"
+        )
+    except Exception as e:
+        error_msg = str(e)
+        logger.error(f"❌ [INSIGHT] Erro inesperado ao gerar insight: {error_msg}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Erro ao gerar insight: {error_msg}"
+        )
 

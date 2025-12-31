@@ -1,5 +1,5 @@
 import logging
-from typing import Optional
+from typing import Optional, Dict, Any
 from langchain_openai import ChatOpenAI
 from app.config import settings
 
@@ -70,4 +70,55 @@ def is_llm_available() -> bool:
     """Verifica se algum LLM está disponível"""
     llm = get_llm()
     return llm is not None
+
+
+def extract_token_usage(response: Any, provider: str) -> Dict[str, int]:
+    """
+    Extrai informações de uso de tokens da resposta do LLM
+    
+    Args:
+        response: Resposta do LLM
+        - Para OpenAI: response.response_metadata['token_usage']
+        - Para Ollama: estimativa baseada no texto
+    
+    Returns:
+        Dict com prompt_tokens, completion_tokens, total_tokens
+    """
+    if provider == "openai":
+        try:
+            # OpenAI retorna token_usage na response_metadata
+            if hasattr(response, 'response_metadata') and response.response_metadata:
+                token_usage = response.response_metadata.get('token_usage', {})
+                return {
+                    'prompt_tokens': token_usage.get('prompt_tokens', 0),
+                    'completion_tokens': token_usage.get('completion_tokens', 0),
+                    'total_tokens': token_usage.get('total_tokens', 0)
+                }
+        except Exception as e:
+            logger.warning(f"⚠️ Erro ao extrair token usage do OpenAI: {e}")
+    
+    # Para Ollama ou quando não conseguir extrair, fazer estimativa
+    # Estimativa aproximada: 1 token ≈ 4 caracteres
+    try:
+        if hasattr(response, 'content'):
+            text = response.content
+        else:
+            text = str(response)
+        
+        # Estimativa simples baseada em caracteres
+        total_chars = len(text)
+        estimated_tokens = total_chars // 4
+        
+        return {
+            'prompt_tokens': 0,  # Não temos como saber sem a resposta completa
+            'completion_tokens': estimated_tokens,
+            'total_tokens': estimated_tokens
+        }
+    except Exception as e:
+        logger.warning(f"⚠️ Erro ao estimar tokens: {e}")
+        return {
+            'prompt_tokens': 0,
+            'completion_tokens': 0,
+            'total_tokens': 0
+        }
 

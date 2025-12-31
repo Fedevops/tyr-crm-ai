@@ -21,6 +21,7 @@ interface UsageData {
     users: UsageMetric
     items: UsageMetric
     api_calls: UsageMetric
+    tokens: UsageMetric
   }
 }
 
@@ -119,6 +120,8 @@ export function UsageSection() {
         return 'Itens no Catálogo'
       case 'api_calls':
         return 'Chamadas de API (este mês)'
+      case 'tokens':
+        return 'Tokens LLM (este mês)'
       default:
         return metric
     }
@@ -169,6 +172,7 @@ export function UsageSection() {
     { key: 'users', data: usage.limits.users },
     { key: 'items', data: usage.limits.items },
     { key: 'api_calls', data: usage.limits.api_calls },
+    { key: 'tokens', data: usage.limits.tokens },
   ]
 
   return (

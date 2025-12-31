@@ -1,7 +1,7 @@
 from typing import List, Optional
 import json
 from datetime import datetime, timedelta
-from fastapi import APIRouter, Depends, HTTPException, status, Query, Response
+from fastapi import APIRouter, Depends, HTTPException, status, Query, Response, Body
 from sqlmodel import Session, select, and_, or_, func
 from typing import List
 from app.database import get_session
@@ -13,12 +13,53 @@ from app.models import (
 from app.dependencies import get_current_active_user, apply_ownership_filter, ensure_ownership, require_ownership
 from app.services.kpi_service import track_kpi_activity
 from app.services.lead_scoring import calculate_lead_score
+from app.services.linkedin_message_generator import generate_linkedin_connection_note, generate_linkedin_followup_message
 from app.models import GoalMetricType
 import logging
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
+
+def replace_placeholders(text: str, lead: Lead) -> str:
+    """
+    Substitui placeholders no texto pelos valores reais do lead
+    
+    Placeholders suportados:
+    - {Nome do lead} ou {name}
+    - {Empresa} ou {company}
+    - {Cargo} ou {position}
+    - {Email} ou {email}
+    - {Telefone} ou {phone}
+    - {Website} ou {website}
+    - {LinkedIn} ou {linkedin}
+    """
+    if not text:
+        return text
+    
+    replacements = {
+        "{Nome do lead}": lead.name or "",
+        "{name}": lead.name or "",
+        "{Empresa}": lead.company or "",
+        "{company}": lead.company or "",
+        "{Cargo}": lead.position or "",
+        "{position}": lead.position or "",
+        "{Email}": lead.email or "",
+        "{email}": lead.email or "",
+        "{Telefone}": lead.phone or "",
+        "{phone}": lead.phone or "",
+        "{Website}": lead.website or "",
+        "{website}": lead.website or "",
+        "{LinkedIn}": lead.linkedin_url or "",
+        "{linkedin}": lead.linkedin_url or "",
+    }
+    
+    result = text
+    for placeholder, value in replacements.items():
+        result = result.replace(placeholder, value)
+    
+    return result
 
 
 def task_to_response(task: Task) -> TaskResponse:
@@ -49,13 +90,18 @@ def generate_tasks_from_sequence(
     sequence_id: int,
     tenant_id: int,
     assigned_to: Optional[int] = None,
-    start_date: Optional[datetime] = None
+    start_date: Optional[datetime] = None,
+    created_by_id: Optional[int] = None
 ):
     """Generate tasks from a sequence for a lead"""
-    if start_date is None:
-        start_date = datetime.utcnow()
-    
     sequence = session.get(Sequence, sequence_id)
+    
+    # Se start_date não foi fornecido, usar default_start_date da sequência ou datetime.utcnow()
+    if start_date is None:
+        if sequence and sequence.default_start_date:
+            start_date = sequence.default_start_date
+        else:
+            start_date = datetime.utcnow()
     if not sequence or sequence.tenant_id != tenant_id:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -82,6 +128,14 @@ def generate_tasks_from_sequence(
             detail="Steps must be a list"
         )
     
+    # Buscar o lead para substituir placeholders
+    lead = session.get(Lead, lead_id)
+    if not lead:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Lead not found"
+        )
+    
     created_tasks = []
     current_date = start_date
     
@@ -93,6 +147,10 @@ def generate_tasks_from_sequence(
         delay_days = step.get("delay_days", 0)
         title = step.get("title", f"Task: {step_type}")
         description = step.get("description") or step.get("template")
+        
+        # Substituir placeholders na descrição se for tarefa do LinkedIn
+        if step_type == "linkedin" and description:
+            description = replace_placeholders(description, lead)
         
         # Calculate due date
         due_date = current_date + timedelta(days=delay_days)
@@ -113,6 +171,8 @@ def generate_tasks_from_sequence(
             lead_id=lead_id,
             sequence_id=sequence_id,
             assigned_to=assigned_to,
+            owner_id=assigned_to,  # Associar ao usuário logado
+            created_by_id=created_by_id,  # Associar ao usuário que criou
             type=task_type,
             title=title,
             description=description,
@@ -147,18 +207,22 @@ async def create_task(
     
     # If sequence_id is provided, generate tasks from sequence
     if task_data.sequence_id:
+        assigned_user = task_data.assigned_to or task_data.owner_id or current_user.id
         tasks = generate_tasks_from_sequence(
             session=session,
             lead_id=task_data.lead_id,
             sequence_id=task_data.sequence_id,
             tenant_id=current_user.tenant_id,
-            assigned_to=task_data.assigned_to or task_data.owner_id or current_user.id
+            assigned_to=assigned_user,
+            created_by_id=current_user.id  # Passar o ID do usuário logado
         )
         if tasks:
-            # Atualizar ownership das tasks geradas
+            # Garantir que todas as tasks tenham owner_id e created_by_id
             for task in tasks:
-                task.owner_id = task_data.owner_id or current_user.id
-                task.created_by_id = current_user.id
+                if not task.owner_id:
+                    task.owner_id = task_data.owner_id or current_user.id
+                if not task.created_by_id:
+                    task.created_by_id = current_user.id
             session.commit()
             session.refresh(tasks[0])
             return task_to_response(tasks[0])
@@ -170,6 +234,12 @@ async def create_task(
     # Se assigned_to foi fornecido mas owner_id não, usar assigned_to como owner_id
     if task_dict.get("assigned_to") and not task_dict.get("owner_id"):
         task_dict["owner_id"] = task_dict["assigned_to"]
+    
+    # Garantir que owner_id e created_by_id estejam definidos
+    if not task_dict.get("owner_id"):
+        task_dict["owner_id"] = current_user.id
+    if not task_dict.get("created_by_id"):
+        task_dict["created_by_id"] = current_user.id
     
     task = Task(
         **task_dict,
@@ -353,10 +423,13 @@ async def update_task(
     update_data = task_data.dict(exclude_unset=True)
     print(f"🔍 [BACKEND] Dados para atualização: {update_data}")
     
+    # Inicializar was_not_completed antes de qualquer verificação
+    was_not_completed = task.status != TaskStatus.COMPLETED
+    
     # If marking as completed, set completed_at
     if update_data.get("status") == TaskStatus.COMPLETED:
         print(f"✅ [BACKEND] Tarefa está sendo marcada como COMPLETED")
-        # Se ainda não estava concluída, marcar como concluída agora
+        # Atualizar was_not_completed se necessário
         was_not_completed = task.status != TaskStatus.COMPLETED
         if not task.completed_at:
             update_data["completed_at"] = datetime.utcnow()
@@ -713,6 +786,85 @@ async def delete_task(
     return {"message": "Task deleted successfully"}
 
 
+@router.post("/bulk-delete")
+async def bulk_delete_tasks(
+    request: dict = Body(...),
+    session: Session = Depends(get_session),
+    current_user: User = Depends(get_current_active_user)
+):
+    """
+    Apaga múltiplas tarefas em massa
+    
+    Args:
+        request: Body com task_ids (lista de IDs das tarefas a serem apagadas)
+        
+    Returns:
+        JSON com contagem de tarefas apagadas
+    """
+    task_ids = request.get("task_ids", [])
+    if not task_ids:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Nenhuma tarefa especificada"
+        )
+    
+    # Buscar todas as tarefas do tenant
+    all_tasks = session.exec(
+        select(Task).where(
+            and_(
+                Task.tenant_id == current_user.tenant_id,
+                Task.id.in_(task_ids)
+            )
+        )
+    ).all()
+    
+    if len(all_tasks) == 0:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Nenhuma tarefa encontrada"
+        )
+    
+    # Filtrar apenas as tarefas que o usuário tem permissão (owner ou admin)
+    is_admin = current_user.role == UserRole.ADMIN or current_user.role.value == "admin"
+    
+    if is_admin:
+        # Admin pode apagar todas as tarefas do tenant
+        tasks_to_delete = all_tasks
+    else:
+        # Usuário normal só pode apagar suas próprias tarefas (ou tarefas sem owner)
+        tasks_to_delete = [task for task in all_tasks if task.owner_id == current_user.id or task.owner_id is None]
+    
+    if len(tasks_to_delete) == 0:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Você não tem permissão para apagar nenhuma das tarefas selecionadas"
+        )
+    
+    # Apagar tarefas
+    deleted_count = 0
+    for task in tasks_to_delete:
+        try:
+            session.delete(task)
+            deleted_count += 1
+        except Exception as e:
+            logger.error(f"Erro ao apagar tarefa {task.id}: {e}")
+    
+    session.commit()
+    
+    skipped_count = len(all_tasks) - deleted_count
+    
+    message = f"{deleted_count} tarefa(s) apagada(s) com sucesso"
+    if skipped_count > 0:
+        message += f". {skipped_count} tarefa(s) não puderam ser apagadas (sem permissão)"
+    
+    return {
+        "success": True,
+        "message": message,
+        "deleted_count": deleted_count,
+        "skipped_count": skipped_count
+    }
+
+
 @router.post("/{task_id}/comments", response_model=TaskCommentResponse)
 async def create_task_comment(
     task_id: int,
@@ -834,4 +986,114 @@ async def delete_task_comment(
     session.delete(comment)
     session.commit()
     return {"message": "Comment deleted successfully"}
+
+
+@router.post("/generate-linkedin-message")
+async def generate_linkedin_message(
+    request: dict = Body(...),
+    session: Session = Depends(get_session),
+    current_user: User = Depends(get_current_active_user)
+):
+    """
+    Gera uma mensagem do LinkedIn (nota de conexão ou follow-up) usando IA
+    
+    Args:
+        request: Body com lead_id, message_type ("connection_note" ou "followup") e language (opcional)
+        
+    Returns:
+        JSON com a mensagem gerada
+    """
+    lead_id = request.get("lead_id", 0)
+    message_type = request.get("message_type")
+    language = request.get("language", "pt-BR")
+    is_template = request.get("is_template", False)
+    followup_context = request.get("followup_context", "generic")
+    
+    if not is_template and not lead_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="lead_id é obrigatório quando is_template é False"
+        )
+    
+    if message_type not in ["connection_note", "followup"]:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="message_type deve ser 'connection_note' ou 'followup'"
+        )
+    
+    # Validar contexto de follow-up
+    valid_contexts = ["after_connection", "after_meeting", "after_email", "after_call", "generic"]
+    if followup_context not in valid_contexts:
+        followup_context = "generic"
+    
+    # Se for template, criar um lead fictício
+    if is_template:
+        from app.models import LeadStatus
+        lead = Lead(
+            id=0,
+            tenant_id=current_user.tenant_id,
+            name="João Silva",
+            company="Empresa Exemplo Ltda",
+            position="Diretor de Tecnologia",
+            email="joao@exemplo.com",
+            phone="(11) 99999-9999",
+            website="https://exemplo.com",
+            linkedin_url="https://linkedin.com/in/joaosilva",
+            status=LeadStatus.NEW
+        )
+    else:
+        lead = session.get(Lead, lead_id)
+        if not lead:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Lead not found"
+            )
+        require_ownership(lead, current_user)
+    
+    try:
+        logger.info(f"🤖 [LINKEDIN] Gerando mensagem tipo '{message_type}' para lead {lead_id} em idioma: {language} (template: {is_template})")
+        
+        if message_type == "connection_note":
+            message = generate_linkedin_connection_note(lead, session, language=language, is_template=is_template)
+        else:  # followup
+            message = generate_linkedin_followup_message(
+                lead, 
+                session, 
+                language=language, 
+                is_template=is_template,
+                followup_context=followup_context
+            )
+        
+        logger.info(f"✅ [LINKEDIN] Mensagem gerada com sucesso ({len(message)} caracteres)")
+        
+        return {
+            "success": True,
+            "message": message,
+            "message_type": message_type,
+            "lead_id": lead_id
+        }
+        
+    except ValueError as e:
+        error_msg = str(e)
+        logger.error(f"❌ [LINKEDIN] Erro ao gerar mensagem: {error_msg}")
+        
+        if "LLM não está disponível" in error_msg or "Connection refused" in error_msg:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="LLM não está disponível. Configure OpenAI ou Ollama no arquivo .env"
+            )
+        
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Erro ao gerar mensagem: {error_msg}"
+        )
+    except Exception as e:
+        error_msg = str(e)
+        logger.error(f"❌ [LINKEDIN] Erro inesperado ao gerar mensagem: {error_msg}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Erro ao gerar mensagem: {error_msg}"
+        )
 

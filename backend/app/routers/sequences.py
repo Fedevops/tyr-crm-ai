@@ -3,6 +3,7 @@ import json
 from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlmodel import Session, select
+from sqlalchemy import and_
 from pydantic import BaseModel
 from app.database import get_session
 from app.models import Sequence, SequenceCreate, SequenceResponse, User, Lead, TaskResponse
@@ -176,7 +177,8 @@ async def assign_sequence_to_lead(
         sequence_id=sequence_id,
         tenant_id=current_user.tenant_id,
         assigned_to=current_user.id,
-        start_date=start_date
+        start_date=start_date,
+        created_by_id=current_user.id  # Associar ao usuário logado
     )
     
     # Refresh all tasks to get full data

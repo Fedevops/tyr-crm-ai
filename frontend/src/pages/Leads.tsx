@@ -28,7 +28,9 @@ import {
   Link as LinkIcon,
   Upload,
   FileText,
-  Workflow
+  Workflow,
+  Sparkles,
+  Loader2
 } from 'lucide-react'
 
 type LeadStatus = 
@@ -143,7 +145,7 @@ const statusColors: Record<LeadStatus, string> = {
 }
 
 export function Leads() {
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
   const { trackActivity } = useKPI()
   const [leads, setLeads] = useState<Lead[]>([])
   const [loading, setLoading] = useState(true)
@@ -155,6 +157,7 @@ export function Leads() {
   const [importing, setImporting] = useState(false)
   const [importResult, setImportResult] = useState<any>(null)
   const [parsingPdf, setParsingPdf] = useState(false)
+  const [generatingInsight, setGeneratingInsight] = useState(false)
   const [showSequenceModal, setShowSequenceModal] = useState(false)
   const [showBulkUpdateModal, setShowBulkUpdateModal] = useState(false)
   const [bulkUpdateField, setBulkUpdateField] = useState<string>('')
@@ -169,6 +172,8 @@ export function Leads() {
   const [loadingTasks, setLoadingTasks] = useState(false)
   const [leadComments, setLeadComments] = useState<any[]>([])
   const [loadingComments, setLoadingComments] = useState(false)
+  const [leadAppointments, setLeadAppointments] = useState<any[]>([])
+  const [loadingAppointments, setLoadingAppointments] = useState(false)
   const [newComment, setNewComment] = useState('')
   const [addingComment, setAddingComment] = useState(false)
   const [users, setUsers] = useState<Array<{id: number, full_name: string, email: string}>>([])
@@ -295,6 +300,7 @@ export function Leads() {
       const leadId = selectedLeadDetail.id
       fetchLeadTasks(leadId)
       fetchLeadComments(leadId)
+      fetchLeadAppointments(leadId)
     }
   }, [showLeadDetailModal, selectedLeadDetail?.id]) // Usar apenas o ID como dependência
 
@@ -330,6 +336,19 @@ export function Leads() {
       setLeadComments([])
     } finally {
       setLoadingComments(false)
+    }
+  }
+
+  const fetchLeadAppointments = async (leadId: number) => {
+    try {
+      setLoadingAppointments(true)
+      const response = await api.get(`/api/appointments?lead_id=${leadId}`)
+      setLeadAppointments(response.data || [])
+    } catch (error) {
+      console.error('Error fetching lead appointments:', error)
+      setLeadAppointments([])
+    } finally {
+      setLoadingAppointments(false)
     }
   }
 
@@ -1424,7 +1443,31 @@ export function Leads() {
             />
           </div>
           <div className="space-y-2 md:col-span-2">
-            <label className="text-sm font-medium">Resumo e Insights (IA)</label>
+            <div className="flex items-center justify-between">
+              <label className="text-sm font-medium">Resumo e Insights (IA)</label>
+              {editingId && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={handleGenerateInsight}
+                  disabled={generatingInsight}
+                  className="flex items-center gap-2"
+                >
+                  {generatingInsight ? (
+                    <>
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      Gerando...
+                    </>
+                  ) : (
+                    <>
+                      <Sparkles className="h-4 w-4" />
+                      Gerar Insight com IA
+                    </>
+                  )}
+                </Button>
+              )}
+            </div>
             <Textarea
               value={formData.linkedin_summary}
               onChange={(e) => setFormData({ ...formData, linkedin_summary: e.target.value })}
@@ -1432,7 +1475,7 @@ export function Leads() {
               placeholder="Resumo gerado pela IA com insights principais sobre o perfil"
             />
             <p className="text-xs text-muted-foreground">
-              Este campo pode ser preenchido automaticamente durante o enriquecimento do LinkedIn
+              Este campo pode ser preenchido automaticamente durante o enriquecimento do LinkedIn ou gerado manualmente usando o botão acima
             </p>
           </div>
         </div>
@@ -1440,7 +1483,7 @@ export function Leads() {
 
       {/* Seção Casa dos Dados */}
       <div className="border-t pt-6 mt-6">
-        <h3 className="text-lg font-semibold mb-4">Dados Fiscais (Casa dos Dados)</h3>
+        <h3 className="text-lg font-semibold mb-4">Dados Fiscais</h3>
         <div className="grid gap-4 md:grid-cols-2">
           <div className="space-y-2">
             <label className="text-sm font-medium">CNPJ</label>
@@ -1823,6 +1866,46 @@ export function Leads() {
       }
     } finally {
       setParsingPdf(false)
+    }
+  }
+
+  const handleGenerateInsight = async () => {
+    if (!editingId) {
+      alert('Por favor, salve o lead primeiro antes de gerar insights.')
+      return
+    }
+
+    setGeneratingInsight(true)
+    try {
+      // Obter idioma atual do i18n
+      const currentLanguage = i18n.language || 'pt-BR'
+      const response = await api.post(`/api/leads/${editingId}/generate-insight`, null, {
+        params: {
+          language: currentLanguage
+        }
+      })
+      
+      if (response.data.success && response.data.insight) {
+        setFormData(prev => ({
+          ...prev,
+          linkedin_summary: response.data.insight
+        }))
+        alert('Insight gerado com sucesso!')
+      } else {
+        alert('Erro ao gerar insight. Tente novamente.')
+      }
+    } catch (error: any) {
+      console.error('Error generating insight:', error)
+      if (error.response?.status === 401) {
+        alert('Sua sessão expirou. Por favor, faça login novamente.')
+        window.location.href = '/login'
+      } else if (error.response?.status === 503) {
+        alert('LLM não está disponível. Configure OpenAI ou Ollama no arquivo .env')
+      } else {
+        alert(error.response?.data?.detail || 'Erro ao gerar insight. Tente novamente.')
+      }
+    } finally {
+      setGeneratingInsight(false)
     }
   }
 
@@ -2870,6 +2953,7 @@ export function Leads() {
                     setSelectedLeadDetail(null)
                     setLeadTasks([])
                     setLeadComments([])
+                    setLeadAppointments([])
                     setNewComment('')
                     setActiveTab('basicas')
                   }}
@@ -2961,6 +3045,16 @@ export function Leads() {
                   }`}
                 >
                   LinkedIn
+                </button>
+                <button
+                  onClick={() => setActiveTab('agendamentos')}
+                  className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
+                    activeTab === 'agendamentos'
+                      ? 'border-primary text-primary'
+                      : 'border-transparent text-muted-foreground hover:text-foreground'
+                  }`}
+                >
+                  Agendamentos
                 </button>
               </div>
             </div>
@@ -3620,6 +3714,134 @@ export function Leads() {
                   )}
                 </div>
               )}
+
+              {/* Aba: Agendamentos */}
+              {activeTab === 'agendamentos' && (
+                <div className="space-y-4">
+                  {loadingAppointments ? (
+                    <p className="text-sm text-muted-foreground">Carregando agendamentos...</p>
+                  ) : leadAppointments.length === 0 ? (
+                    <div className="text-center py-12">
+                      <Calendar className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
+                      <p className="text-sm text-muted-foreground mb-2">Nenhum agendamento encontrado para este lead.</p>
+                    </div>
+                  ) : (
+                    <div className="space-y-4">
+                      {leadAppointments.map((appointment) => {
+                        const scheduledDate = new Date(appointment.scheduled_at)
+                        const isUpcoming = scheduledDate >= new Date() && appointment.status === 'scheduled'
+                        const statusLabels: Record<string, string> = {
+                          scheduled: 'Agendada',
+                          completed: 'Completada',
+                          cancelled: 'Cancelada',
+                          rescheduled: 'Reagendada',
+                          no_show: 'Não Compareceu'
+                        }
+                        const statusColors: Record<string, string> = {
+                          scheduled: 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200',
+                          completed: 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200',
+                          cancelled: 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200',
+                          rescheduled: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200',
+                          no_show: 'bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-200'
+                        }
+                        
+                        return (
+                          <Card key={appointment.id} className={isUpcoming ? 'border-l-4 border-l-blue-500' : ''}>
+                            <CardHeader>
+                              <div className="flex items-start justify-between">
+                                <div className="flex-1">
+                                  <CardTitle className="text-lg">{appointment.title}</CardTitle>
+                                  <div className="flex items-center gap-2 mt-2 flex-wrap">
+                                    <span className={`text-xs px-2 py-1 rounded-full font-medium ${statusColors[appointment.status] || statusColors.scheduled}`}>
+                                      {statusLabels[appointment.status] || appointment.status}
+                                    </span>
+                                    {isUpcoming && (
+                                      <span className="text-xs px-2 py-1 rounded-full bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200 font-medium">
+                                        Próxima
+                                      </span>
+                                    )}
+                                  </div>
+                                </div>
+                              </div>
+                            </CardHeader>
+                            <CardContent>
+                              <div className="space-y-3">
+                                <div className="flex items-center gap-2 text-sm">
+                                  <Calendar className="h-4 w-4 text-muted-foreground" />
+                                  <span className="font-medium">Data e Hora:</span>
+                                  <span>{scheduledDate.toLocaleString('pt-BR', { 
+                                    day: '2-digit', 
+                                    month: '2-digit', 
+                                    year: 'numeric',
+                                    hour: '2-digit',
+                                    minute: '2-digit'
+                                  })}</span>
+                                </div>
+                                <div className="flex items-center gap-2 text-sm">
+                                  <Clock className="h-4 w-4 text-muted-foreground" />
+                                  <span className="font-medium">Duração:</span>
+                                  <span>{appointment.duration_minutes} minutos</span>
+                                </div>
+                                {appointment.location && (
+                                  <div className="flex items-center gap-2 text-sm">
+                                    <Building className="h-4 w-4 text-muted-foreground" />
+                                    <span className="font-medium">Local:</span>
+                                    <span>{appointment.location}</span>
+                                  </div>
+                                )}
+                                {appointment.meeting_url && (
+                                  <div className="flex items-center gap-2 text-sm">
+                                    <LinkIcon className="h-4 w-4 text-muted-foreground" />
+                                    <span className="font-medium">Link:</span>
+                                    <a 
+                                      href={appointment.meeting_url} 
+                                      target="_blank" 
+                                      rel="noopener noreferrer"
+                                      className="text-blue-600 hover:underline"
+                                    >
+                                      Acessar reunião
+                                    </a>
+                                  </div>
+                                )}
+                                {appointment.description && (
+                                  <div className="text-sm">
+                                    <span className="font-medium">Descrição:</span>
+                                    <p className="text-muted-foreground mt-1">{appointment.description}</p>
+                                  </div>
+                                )}
+                                {appointment.outcome && (
+                                  <div className="text-sm">
+                                    <span className="font-medium">Resultado:</span>
+                                    <p className="text-muted-foreground mt-1">{appointment.outcome}</p>
+                                  </div>
+                                )}
+                                {appointment.notes && (
+                                  <div className="text-sm">
+                                    <span className="font-medium">Notas:</span>
+                                    <p className="text-muted-foreground mt-1">{appointment.notes}</p>
+                                  </div>
+                                )}
+                                {appointment.completed_at && (
+                                  <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                                    <CheckCircle2 className="h-3 w-3" />
+                                    <span>Completada em: {new Date(appointment.completed_at).toLocaleString('pt-BR')}</span>
+                                  </div>
+                                )}
+                                {appointment.cancelled_at && (
+                                  <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                                    <XCircle className="h-3 w-3" />
+                                    <span>Cancelada em: {new Date(appointment.cancelled_at).toLocaleString('pt-BR')}</span>
+                                  </div>
+                                )}
+                              </div>
+                            </CardContent>
+                          </Card>
+                        )
+                      })}
+                    </div>
+                  )}
+                </div>
+              )}
             </CardContent>
 
             {/* Ações */}
@@ -3632,6 +3854,7 @@ export function Leads() {
                       handleEdit(selectedLeadDetail)
                       setShowLeadDetailModal(false)
                       setLeadComments([])
+                      setLeadAppointments([])
                       setNewComment('')
                       setActiveTab('basicas')
                     }
@@ -3648,6 +3871,7 @@ export function Leads() {
                       setShowSequenceModal(true)
                       setShowLeadDetailModal(false)
                       setLeadComments([])
+                      setLeadAppointments([])
                       setNewComment('')
                       setActiveTab('basicas')
                     }
@@ -3664,6 +3888,7 @@ export function Leads() {
                     setSelectedLeadDetail(null)
                     setLeadTasks([])
                     setLeadComments([])
+                    setLeadAppointments([])
                     setNewComment('')
                     setActiveTab('basicas')
                   }}

@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import api from '@/lib/api'
-import { Plus, Edit, Trash2, Play, Pause, ArrowUp, ArrowDown, Mail, Phone, Link as LinkIcon, Calendar, Search, GripVertical } from 'lucide-react'
+import { Plus, Edit, Trash2, Play, Pause, ArrowUp, ArrowDown, Mail, Phone, Link as LinkIcon, Calendar, Search, GripVertical, Sparkles, Loader2 } from 'lucide-react'
 
 interface SequenceStep {
   type: string
@@ -20,6 +20,7 @@ interface Sequence {
   description?: string
   is_active: boolean
   steps: string
+  default_start_date?: string | null
   created_at: string
   updated_at: string
 }
@@ -35,7 +36,7 @@ const stepTypes = [
 ]
 
 export function Sequences() {
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
   const [sequences, setSequences] = useState<Sequence[]>([])
   const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
@@ -43,9 +44,31 @@ export function Sequences() {
   const [name, setName] = useState('')
   const [description, setDescription] = useState('')
   const [isActive, setIsActive] = useState(true)
+  const [defaultStartDate, setDefaultStartDate] = useState('')
+  const [defaultStartTime, setDefaultStartTime] = useState('09:00')
   const [steps, setSteps] = useState<SequenceStep[]>([
     { type: 'email', delay_days: 0, title: 'Enviar email inicial', description: 'Template de email de apresentação' }
   ])
+  const [generatingNote, setGeneratingNote] = useState<number | null>(null) // Índice da etapa que está gerando nota
+  
+  // Títulos pré-definidos para tarefas do LinkedIn
+  const linkedinTaskTitles = [
+    'Enviar solicitação de conexão',
+    'Enviar nota de conexão',
+    'Enviar mensagem de follow-up',
+    'Follow-up após conexão aceita',
+    'Follow-up após reunião',
+    'Follow-up após e-mail',
+    'Follow-up após ligação',
+    'Comentar em publicação',
+    'Compartilhar conteúdo relevante',
+    'Parabenizar por conquista',
+    'Enviar mensagem de aniversário',
+    'Enviar proposta de valor',
+    'Agendar reunião via LinkedIn',
+    'Enviar case de sucesso',
+    'Outro'
+  ]
 
   useEffect(() => {
     fetchSequences()
@@ -75,6 +98,82 @@ export function Sequences() {
     const newSteps = [...steps]
     newSteps[index] = { ...newSteps[index], [field]: value }
     setSteps(newSteps)
+    
+    // Se mudou o tipo para LinkedIn e o título não está na lista, resetar título
+    if (field === 'type' && value === 'linkedin') {
+      const currentTitle = newSteps[index].title
+      if (!linkedinTaskTitles.includes(currentTitle)) {
+        newSteps[index].title = 'Enviar solicitação de conexão'
+        setSteps(newSteps)
+      }
+    }
+  }
+  
+  const handleGenerateLinkedInMessage = async (stepIndex: number, messageType: 'connection_note' | 'followup') => {
+    setGeneratingNote(stepIndex)
+    try {
+      const currentLanguage = i18n.language || 'pt-BR'
+      const step = steps[stepIndex]
+      
+      // Detectar contexto baseado no título
+      let followupContext = 'generic'
+      if (messageType === 'followup') {
+        if (step.title === 'Follow-up após conexão aceita') {
+          followupContext = 'after_connection'
+        } else if (step.title === 'Follow-up após reunião') {
+          followupContext = 'after_meeting'
+        } else if (step.title === 'Follow-up após e-mail') {
+          followupContext = 'after_email'
+        } else if (step.title === 'Follow-up após ligação') {
+          followupContext = 'after_call'
+        }
+      }
+      
+      // Usar lead_id=0 e is_template=true para gerar template
+      const response = await api.post('/api/tasks/generate-linkedin-message', {
+        lead_id: 0,
+        message_type: messageType,
+        language: currentLanguage,
+        is_template: true,
+        followup_context: messageType === 'followup' ? followupContext : undefined
+      })
+      
+      if (response.data.success && response.data.message) {
+        const newSteps = [...steps]
+        newSteps[stepIndex].description = response.data.message
+        setSteps(newSteps)
+      } else {
+        const messageTypeLabel = messageType === 'connection_note' ? 'nota de conexão' : 'mensagem de follow-up'
+        alert(`Erro ao gerar template de ${messageTypeLabel}. Tente novamente.`)
+      }
+    } catch (error: any) {
+      console.error('Error generating LinkedIn message template:', error)
+      if (error.response?.status === 503) {
+        alert('LLM não está disponível. Configure OpenAI ou Ollama no arquivo .env')
+      } else {
+        // Se falhar, usar um template básico com placeholders
+        const template = messageType === 'connection_note' 
+          ? `Olá {Nome do lead},
+
+Vi seu perfil no LinkedIn e fiquei interessado em conectar. {Empresa} parece ser uma empresa interessante no setor.
+
+Gostaria de trocar uma ideia sobre como podemos colaborar.
+
+Atenciosamente`
+          : `Olá {Nome do lead},
+
+Espero que esteja tudo bem! Gostaria de seguir nossa conversa anterior sobre {Empresa}.
+
+Tenho algumas ideias que podem ser relevantes para vocês. Podemos agendar uma breve conversa?
+
+Atenciosamente`
+        const newSteps = [...steps]
+        newSteps[stepIndex].description = template
+        setSteps(newSteps)
+      }
+    } finally {
+      setGeneratingNote(null)
+    }
   }
 
   const moveStep = (index: number, direction: 'up' | 'down') => {
@@ -91,7 +190,10 @@ export function Sequences() {
     setName('')
     setDescription('')
     setIsActive(true)
+    setDefaultStartDate('')
+    setDefaultStartTime('09:00')
     setSteps([{ type: 'email', delay_days: 0, title: 'Enviar email inicial', description: 'Template de email de apresentação' }])
+    setGeneratingNote(null)
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -126,11 +228,20 @@ export function Sequences() {
     }
 
     try {
+      // Combinar data e hora para default_start_date
+      let defaultStartDateValue: string | null = null
+      if (defaultStartDate) {
+        const [hours, minutes] = defaultStartTime.split(':')
+        const dateTime = new Date(`${defaultStartDate}T${hours}:${minutes}:00`)
+        defaultStartDateValue = dateTime.toISOString()
+      }
+      
       const sequenceData = {
         name: name.trim(),
         description: description.trim() || null,
         is_active: isActive,
-        steps: JSON.stringify(steps)
+        steps: JSON.stringify(steps),
+        default_start_date: defaultStartDateValue
       }
       
       console.log('Salvando cadência:', { editingId, sequenceData })
@@ -195,6 +306,18 @@ export function Sequences() {
     setName(sequence.name)
     setDescription(sequence.description || '')
     setIsActive(sequence.is_active)
+    
+    // Carregar data de início se existir
+    if (sequence.default_start_date) {
+      const date = new Date(sequence.default_start_date)
+      setDefaultStartDate(date.toISOString().split('T')[0])
+      const hours = date.getHours().toString().padStart(2, '0')
+      const minutes = date.getMinutes().toString().padStart(2, '0')
+      setDefaultStartTime(`${hours}:${minutes}`)
+    } else {
+      setDefaultStartDate('')
+      setDefaultStartTime('09:00')
+    }
     
     try {
       const parsedSteps = JSON.parse(sequence.steps)
@@ -300,6 +423,28 @@ export function Sequences() {
                     Cadência ativa
                   </label>
                 </div>
+                <div className="grid gap-4 md:grid-cols-2">
+                  <div>
+                    <label className="block text-sm font-medium mb-1">Data de Início da Primeira Tarefa</label>
+                    <Input
+                      type="date"
+                      value={defaultStartDate}
+                      onChange={(e) => setDefaultStartDate(e.target.value)}
+                      placeholder="Data de início"
+                    />
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Data padrão para a primeira tarefa quando a sequência for associada a um lead
+                    </p>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium mb-1">Horário de Início</label>
+                    <Input
+                      type="time"
+                      value={defaultStartTime}
+                      onChange={(e) => setDefaultStartTime(e.target.value)}
+                    />
+                  </div>
+                </div>
               </div>
 
               {/* Etapas */}
@@ -403,22 +548,135 @@ export function Sequences() {
                             </div>
                             <div>
                               <label className="block text-sm font-medium mb-1">Título da Etapa *</label>
-                              <Input
-                                type="text"
-                                value={step.title}
-                                onChange={(e) => updateStep(index, 'title', e.target.value)}
-                                placeholder="Ex: Enviar email de apresentação"
-                                required
-                              />
+                              {step.type === 'linkedin' ? (
+                                <div className="space-y-2">
+                                  <select
+                                    value={step.title}
+                                    onChange={(e) => updateStep(index, 'title', e.target.value)}
+                                    className="w-full px-3 py-2 border rounded-md"
+                                    required
+                                  >
+                                    {linkedinTaskTitles.map((title) => (
+                                      <option key={title} value={title}>
+                                        {title}
+                                      </option>
+                                    ))}
+                                  </select>
+                                  {(step.title === 'Enviar nota de conexão' || step.title === 'Enviar solicitação de conexão') && (
+                                    <Button
+                                      type="button"
+                                      variant="outline"
+                                      size="sm"
+                                      onClick={() => handleGenerateLinkedInMessage(index, 'connection_note')}
+                                      disabled={generatingNote === index}
+                                      className="w-full flex items-center justify-center gap-2"
+                                    >
+                                      {generatingNote === index ? (
+                                        <>
+                                          <Loader2 className="h-4 w-4 animate-spin" />
+                                          Gerando template...
+                                        </>
+                                      ) : (
+                                        <>
+                                          <Sparkles className="h-4 w-4" />
+                                          Gerar Template de Nota com IA
+                                        </>
+                                      )}
+                                    </Button>
+                                  )}
+                                  {(step.title === 'Enviar mensagem de follow-up' ||
+                                    step.title === 'Follow-up após conexão aceita' ||
+                                    step.title === 'Follow-up após reunião' ||
+                                    step.title === 'Follow-up após e-mail' ||
+                                    step.title === 'Follow-up após ligação') && (
+                                    <Button
+                                      type="button"
+                                      variant="outline"
+                                      size="sm"
+                                      onClick={() => handleGenerateLinkedInMessage(index, 'followup')}
+                                      disabled={generatingNote === index}
+                                      className="w-full flex items-center justify-center gap-2"
+                                    >
+                                      {generatingNote === index ? (
+                                        <>
+                                          <Loader2 className="h-4 w-4 animate-spin" />
+                                          Gerando template...
+                                        </>
+                                      ) : (
+                                        <>
+                                          <Sparkles className="h-4 w-4" />
+                                          Gerar Template de Mensagem com IA
+                                        </>
+                                      )}
+                                    </Button>
+                                  )}
+                                </div>
+                              ) : (
+                                <Input
+                                  type="text"
+                                  value={step.title}
+                                  onChange={(e) => updateStep(index, 'title', e.target.value)}
+                                  placeholder="Ex: Enviar email de apresentação"
+                                  required
+                                />
+                              )}
                             </div>
                             <div>
-                              <label className="block text-sm font-medium mb-1">Descrição/Instruções</label>
+                              <label className="block text-sm font-medium mb-1">
+                                Descrição/Instruções
+                                {step.type === 'linkedin' && (
+                                  step.title === 'Enviar nota de conexão' || 
+                                  step.title === 'Enviar solicitação de conexão' || 
+                                  step.title === 'Enviar mensagem de follow-up' ||
+                                  step.title === 'Follow-up após conexão aceita' ||
+                                  step.title === 'Follow-up após reunião' ||
+                                  step.title === 'Follow-up após e-mail' ||
+                                  step.title === 'Follow-up após ligação'
+                                ) && (
+                                  <span className="text-xs text-muted-foreground ml-2">
+                                    (Use placeholders: {'{Nome do lead}'}, {'{Empresa}'}, {'{Cargo}'}, etc.)
+                                  </span>
+                                )}
+                              </label>
                               <Textarea
                                 value={step.description}
                                 onChange={(e) => updateStep(index, 'description', e.target.value)}
-                                placeholder="Descreva o que deve ser feito nesta etapa..."
-                                rows={2}
+                                placeholder={
+                                  step.type === 'linkedin' && (
+                                    step.title === 'Enviar nota de conexão' || 
+                                    step.title === 'Enviar solicitação de conexão' || 
+                                    step.title === 'Enviar mensagem de follow-up' ||
+                                    step.title === 'Follow-up após conexão aceita' ||
+                                    step.title === 'Follow-up após reunião' ||
+                                    step.title === 'Follow-up após e-mail' ||
+                                    step.title === 'Follow-up após ligação'
+                                  )
+                                    ? "Use placeholders como {Nome do lead}, {Empresa}, {Cargo}, etc. Eles serão substituídos automaticamente ao criar as tarefas."
+                                    : "Descreva o que deve ser feito nesta etapa..."
+                                }
+                                rows={step.type === 'linkedin' && (
+                                  step.title === 'Enviar nota de conexão' || 
+                                  step.title === 'Enviar solicitação de conexão' || 
+                                  step.title === 'Enviar mensagem de follow-up' ||
+                                  step.title === 'Follow-up após conexão aceita' ||
+                                  step.title === 'Follow-up após reunião' ||
+                                  step.title === 'Follow-up após e-mail' ||
+                                  step.title === 'Follow-up após ligação'
+                                ) ? 6 : 2}
                               />
+                              {step.type === 'linkedin' && (
+                                step.title === 'Enviar nota de conexão' || 
+                                step.title === 'Enviar solicitação de conexão' || 
+                                step.title === 'Enviar mensagem de follow-up' ||
+                                step.title === 'Follow-up após conexão aceita' ||
+                                step.title === 'Follow-up após reunião' ||
+                                step.title === 'Follow-up após e-mail' ||
+                                step.title === 'Follow-up após ligação'
+                              ) && (
+                                <p className="text-xs text-muted-foreground mt-1">
+                                  Placeholders disponíveis: {'{Nome do lead}'}, {'{Empresa}'}, {'{Cargo}'}, {'{Email}'}, {'{Telefone}'}, {'{Website}'}
+                                </p>
+                              )}
                             </div>
                           </CardContent>
                         </Card>

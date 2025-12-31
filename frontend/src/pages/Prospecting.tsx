@@ -219,7 +219,7 @@ export function Prospecting() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold">Prospecção</h1>
-          <p className="text-muted-foreground">Busque empresas na Casa dos Dados e gere leads automaticamente</p>
+          <p className="text-muted-foreground">Busque empresas e gere leads automaticamente</p>
         </div>
       </div>
 
@@ -231,7 +231,7 @@ export function Prospecting() {
             Parâmetros de Busca
           </CardTitle>
           <CardDescription className="text-amber-800/80 dark:text-amber-200/80">
-            Defina os critérios para buscar empresas na API da Casa dos Dados
+            Defina os critérios para buscar empresas
           </CardDescription>
         </CardHeader>
         <CardContent>

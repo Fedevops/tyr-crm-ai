@@ -11,6 +11,7 @@ import { Playbooks } from './pages/Playbooks'
 import { Leads } from './pages/Leads'
 import { Sequences } from './pages/Sequences'
 import { Tasks } from './pages/Tasks'
+import { Appointments } from './pages/Appointments'
 import { Prospecting } from './pages/Prospecting'
 import { SettingsHub } from './pages/Settings/SettingsHub'
 import { OnboardingWizard } from './pages/OnboardingWizard'
@@ -123,6 +124,16 @@ function AppRoutes() {
           <ProtectedRoute>
             <Layout>
               <Tasks />
+            </Layout>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/appointments"
+        element={
+          <ProtectedRoute>
+            <Layout>
+              <Appointments />
             </Layout>
           </ProtectedRoute>
         }

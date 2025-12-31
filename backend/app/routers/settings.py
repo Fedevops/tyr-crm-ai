@@ -555,7 +555,8 @@ async def get_usage(
             max_leads=default_limits.max_leads,
             max_users=default_limits.max_users,
             max_items=default_limits.max_items,
-            max_api_calls=default_limits.max_api_calls
+            max_api_calls=default_limits.max_api_calls,
+            max_tokens=getattr(default_limits, 'max_tokens', 100000)
         )
         session.add(tenant_limit)
         session.commit()
@@ -593,6 +594,11 @@ async def get_usage(
         )
     ).one() or 0
     
+    # Tokens LLM (último mês)
+    from app.services.token_tracker import get_tokens_usage
+    from app.models import LLMTokenUsage
+    tokens_used = get_tokens_usage(session, tenant_id, month_start)
+    
     # Calcular percentuais
     def calculate_usage(current: int, max_limit: int) -> UsageMetricResponse:
         if max_limit == -1:  # Ilimitado
@@ -614,7 +620,8 @@ async def get_usage(
             "leads": calculate_usage(leads_count, tenant_limit.max_leads),
             "users": calculate_usage(users_count, tenant_limit.max_users),
             "items": calculate_usage(items_count, tenant_limit.max_items),
-            "api_calls": calculate_usage(api_calls_count, tenant_limit.max_api_calls)
+            "api_calls": calculate_usage(api_calls_count, tenant_limit.max_api_calls),
+            "tokens": calculate_usage(tokens_used, getattr(tenant_limit, 'max_tokens', 100000))
         }
     )
 
@@ -627,6 +634,7 @@ class PlanLimitDefaultsResponse(BaseModel):
     max_users: int
     max_items: int
     max_api_calls: int
+    max_tokens: int
     created_at: str
     updated_at: str
 
@@ -636,6 +644,7 @@ class UpdatePlanLimitDefaultsRequest(BaseModel):
     max_users: Optional[int] = None
     max_items: Optional[int] = None
     max_api_calls: Optional[int] = None
+    max_tokens: Optional[int] = None
 
 
 class UpdateTenantLimitsRequest(BaseModel):
@@ -644,6 +653,7 @@ class UpdateTenantLimitsRequest(BaseModel):
     max_users: Optional[int] = None
     max_items: Optional[int] = None
     max_api_calls: Optional[int] = None
+    max_tokens: Optional[int] = None
 
 
 def get_default_limits_for_plan(session: Session, plan_type: PlanType) -> PlanLimitDefaults:
@@ -710,6 +720,7 @@ async def get_plan_limits(
             max_users=limit.max_users,
             max_items=limit.max_items,
             max_api_calls=limit.max_api_calls,
+            max_tokens=getattr(limit, 'max_tokens', 100000),
             created_at=limit.created_at.isoformat(),
             updated_at=limit.updated_at.isoformat()
         )
@@ -737,6 +748,7 @@ async def get_plan_limit(
         max_users=plan_limits.max_users,
         max_items=plan_limits.max_items,
         max_api_calls=plan_limits.max_api_calls,
+        max_tokens=getattr(plan_limits, 'max_tokens', 100000),
         created_at=plan_limits.created_at.isoformat(),
         updated_at=plan_limits.updated_at.isoformat()
     )
@@ -767,6 +779,8 @@ async def update_plan_limits(
         plan_limits.max_items = limits_data.max_items
     if limits_data.max_api_calls is not None:
         plan_limits.max_api_calls = limits_data.max_api_calls
+    if limits_data.max_tokens is not None:
+        plan_limits.max_tokens = limits_data.max_tokens
     
     plan_limits.updated_at = datetime.utcnow()
     session.add(plan_limits)
@@ -779,6 +793,7 @@ async def update_plan_limits(
         max_users=plan_limits.max_users,
         max_items=plan_limits.max_items,
         max_api_calls=plan_limits.max_api_calls,
+        max_tokens=getattr(plan_limits, 'max_tokens', 100000),
         created_at=plan_limits.created_at.isoformat(),
         updated_at=plan_limits.updated_at.isoformat()
     )
@@ -830,6 +845,8 @@ async def update_tenant_limits(
                 tenant_limit.max_items = default_limits.max_items
             if limits_data.max_api_calls is None:
                 tenant_limit.max_api_calls = default_limits.max_api_calls
+            if limits_data.max_tokens is None:
+                tenant_limit.max_tokens = getattr(default_limits, 'max_tokens', 100000)
     
     # Atualizar campos fornecidos explicitamente
     if limits_data.max_leads is not None:
@@ -840,6 +857,8 @@ async def update_tenant_limits(
         tenant_limit.max_items = limits_data.max_items
     if limits_data.max_api_calls is not None:
         tenant_limit.max_api_calls = limits_data.max_api_calls
+    if limits_data.max_tokens is not None:
+        tenant_limit.max_tokens = limits_data.max_tokens
     
     tenant_limit.updated_at = datetime.utcnow()
     session.add(tenant_limit)
@@ -853,7 +872,8 @@ async def update_tenant_limits(
             "max_leads": tenant_limit.max_leads,
             "max_users": tenant_limit.max_users,
             "max_items": tenant_limit.max_items,
-            "max_api_calls": tenant_limit.max_api_calls
+            "max_api_calls": tenant_limit.max_api_calls,
+            "max_tokens": tenant_limit.max_tokens
         }
     }
 

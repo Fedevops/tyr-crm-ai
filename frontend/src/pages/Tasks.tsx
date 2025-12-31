@@ -6,7 +6,7 @@ import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import api from '@/lib/api'
 import { useKPI } from '@/contexts/KPIContext'
-import { Plus, CheckCircle2, Clock, AlertCircle, Mail, Phone, Link as LinkIcon, Calendar, Search, X, User, XCircle, Trash2, Edit } from 'lucide-react'
+import { Plus, CheckCircle2, Clock, AlertCircle, Mail, Phone, Link as LinkIcon, Calendar, Search, X, User, XCircle, Trash2, Edit, Sparkles, Loader2 } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 
 interface Task {
@@ -64,7 +64,7 @@ interface Lead {
 }
 
 export function Tasks() {
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
   const navigate = useNavigate()
   const { trackActivity } = useKPI()
   const [tasks, setTasks] = useState<Task[]>([])
@@ -87,6 +87,35 @@ export function Tasks() {
     owner_id: null as number | null
   })
   const [users, setUsers] = useState<Array<{id: number, full_name: string, email: string}>>([])
+  const [generatingMessage, setGeneratingMessage] = useState(false)
+  
+  // Seleção múltipla
+  const [selectedTasks, setSelectedTasks] = useState<Set<number>>(new Set())
+  
+  // Modal de geração de nota de conexão
+  const [showConnectionNoteModal, setShowConnectionNoteModal] = useState(false)
+  const [taskForConnectionNote, setTaskForConnectionNote] = useState<Task | null>(null)
+  const [connectionNoteText, setConnectionNoteText] = useState('')
+  const [generatingConnectionNote, setGeneratingConnectionNote] = useState(false)
+  
+  // Títulos pré-definidos para tarefas do LinkedIn
+  const linkedinTaskTitles = [
+    'Enviar solicitação de conexão',
+    'Enviar nota de conexão',
+    'Enviar mensagem de follow-up',
+    'Follow-up após conexão aceita',
+    'Follow-up após reunião',
+    'Follow-up após e-mail',
+    'Follow-up após ligação',
+    'Comentar em publicação',
+    'Compartilhar conteúdo relevante',
+    'Parabenizar por conquista',
+    'Enviar mensagem de aniversário',
+    'Enviar proposta de valor',
+    'Agendar reunião via LinkedIn',
+    'Enviar case de sucesso',
+    'Outro'
+  ]
   
   // Detail modal
   const [showTaskDetailModal, setShowTaskDetailModal] = useState(false)
@@ -237,6 +266,101 @@ export function Tasks() {
     })
   }
 
+  // Funções de seleção múltipla
+  const handleSelectTask = (taskId: number, e?: React.MouseEvent) => {
+    e?.stopPropagation() // Prevenir que abra o modal ao clicar no checkbox
+    const newSelected = new Set(selectedTasks)
+    if (newSelected.has(taskId)) {
+      newSelected.delete(taskId)
+    } else {
+      newSelected.add(taskId)
+    }
+    setSelectedTasks(newSelected)
+  }
+
+  const handleSelectAll = () => {
+    if (selectedTasks.size === tasks.length) {
+      setSelectedTasks(new Set())
+    } else {
+      setSelectedTasks(new Set(tasks.map(t => t.id)))
+    }
+  }
+
+  const handleBulkDelete = async () => {
+    if (selectedTasks.size === 0) return
+    
+    const confirmMessage = `Tem certeza que deseja apagar ${selectedTasks.size} tarefa(s)? Esta ação não pode ser desfeita.`
+    if (!confirm(confirmMessage)) return
+
+    try {
+      const taskIds = Array.from(selectedTasks)
+      await api.post('/api/tasks/bulk-delete', { task_ids: taskIds })
+      
+      setSelectedTasks(new Set())
+      fetchTasks()
+      alert(`${taskIds.length} tarefa(s) apagada(s) com sucesso!`)
+    } catch (error: any) {
+      console.error('Error deleting tasks:', error)
+      alert(error.response?.data?.detail || 'Erro ao apagar tarefas. Tente novamente.')
+    }
+  }
+
+  // Função para gerar mensagem do LinkedIn com IA
+  const handleGenerateLinkedInMessage = async (messageType: 'connection_note' | 'followup') => {
+    if (!formData.lead_id) {
+      alert('Por favor, selecione um lead primeiro.')
+      return
+    }
+
+    setGeneratingMessage(true)
+    try {
+      const currentLanguage = i18n.language || 'pt-BR'
+      
+      // Detectar contexto baseado no título
+      let followupContext = 'generic'
+      if (messageType === 'followup') {
+        if (formData.title === 'Follow-up após conexão aceita') {
+          followupContext = 'after_connection'
+        } else if (formData.title === 'Follow-up após reunião') {
+          followupContext = 'after_meeting'
+        } else if (formData.title === 'Follow-up após e-mail') {
+          followupContext = 'after_email'
+        } else if (formData.title === 'Follow-up após ligação') {
+          followupContext = 'after_call'
+        }
+      }
+      
+      const response = await api.post('/api/tasks/generate-linkedin-message', {
+        lead_id: parseInt(formData.lead_id),
+        message_type: messageType,
+        language: currentLanguage,
+        followup_context: messageType === 'followup' ? followupContext : undefined
+      })
+      
+      if (response.data.success && response.data.message) {
+        setFormData(prev => ({
+          ...prev,
+          description: response.data.message
+        }))
+        alert(messageType === 'connection_note' ? 'Nota de conexão gerada com sucesso!' : 'Mensagem de follow-up gerada com sucesso!')
+      } else {
+        alert('Erro ao gerar mensagem. Tente novamente.')
+      }
+    } catch (error: any) {
+      console.error('Error generating LinkedIn message:', error)
+      if (error.response?.status === 401) {
+        alert('Sua sessão expirou. Por favor, faça login novamente.')
+        window.location.href = '/login'
+      } else if (error.response?.status === 503) {
+        alert('LLM não está disponível. Configure OpenAI ou Ollama no arquivo .env')
+      } else {
+        alert(error.response?.data?.detail || 'Erro ao gerar mensagem. Tente novamente.')
+      }
+    } finally {
+      setGeneratingMessage(false)
+    }
+  }
+
   const fetchTaskComments = async (taskId: number) => {
     try {
       setLoadingComments(true)
@@ -318,6 +442,25 @@ export function Tasks() {
     try {
       console.log(`🔄 [FRONTEND] Atualizando tarefa ${taskId} para status: ${newStatus}`)
       
+      const task = tasks.find(t => t.id === taskId)
+      
+      // Se está completando uma tarefa de LinkedIn de conexão, mostrar modal
+      if (newStatus === 'completed' && task && task.type === 'linkedin') {
+        const titleLower = task.title?.toLowerCase() || ''
+        const isConnectionNoteTask = titleLower.includes('nota de conexão') || 
+                                     titleLower.includes('solicitação de conexão') ||
+                                     titleLower.includes('enviar nota de conexão') ||
+                                     titleLower.includes('enviar solicitação de conexão')
+        
+        if (isConnectionNoteTask) {
+          // Armazenar a tarefa e mostrar modal
+          setTaskForConnectionNote(task)
+          setConnectionNoteText(task.description || '')
+          setShowConnectionNoteModal(true)
+          return // Não completar ainda, aguardar o usuário gerar a nota
+        }
+      }
+      
       // Atualizar otimisticamente a UI
       setTasks(prevTasks => 
         prevTasks.map(task => 
@@ -340,7 +483,6 @@ export function Tasks() {
       await fetchTasks()
       
       // Track KPI activity if task was completed
-      const task = tasks.find(t => t.id === taskId)
       if (newStatus === 'completed' && task && task.status !== 'completed') {
         trackActivity('tasks_completed', 1, 'Task', taskId).catch((err) => {
           console.error('Error tracking KPI activity:', err)
@@ -362,6 +504,69 @@ export function Tasks() {
       const errorMessage = error.response?.data?.detail || error.message || 'Erro desconhecido'
       alert(`Erro ao atualizar tarefa: ${errorMessage}`)
     }
+  }
+  
+  const handleGenerateConnectionNote = async () => {
+    if (!taskForConnectionNote) return
+    
+    setGeneratingConnectionNote(true)
+    try {
+      const currentLanguage = i18n.language || 'pt-BR'
+      const response = await api.post('/api/tasks/generate-linkedin-message', {
+        lead_id: taskForConnectionNote.lead_id,
+        message_type: 'connection_note',
+        language: currentLanguage
+      })
+      
+      if (response.data.success && response.data.message) {
+        setConnectionNoteText(response.data.message)
+      } else {
+        alert('Erro ao gerar nota de conexão. Tente novamente.')
+      }
+    } catch (error: any) {
+      console.error('Error generating connection note:', error)
+      if (error.response?.status === 503) {
+        alert('LLM não está disponível. Configure OpenAI ou Ollama no arquivo .env')
+      } else {
+        alert(error.response?.data?.detail || 'Erro ao gerar nota de conexão. Tente novamente.')
+      }
+    } finally {
+      setGeneratingConnectionNote(false)
+    }
+  }
+  
+  const handleSaveConnectionNote = async () => {
+    if (!taskForConnectionNote) return
+    
+    try {
+      // Atualizar a tarefa com a nota de conexão e completar
+      await api.patch(`/api/tasks/${taskForConnectionNote.id}`, {
+        description: connectionNoteText,
+        status: 'completed'
+      })
+      
+      // Track KPI activity
+      trackActivity('tasks_completed', 1, 'Task', taskForConnectionNote.id).catch((err) => {
+        console.error('Error tracking KPI activity:', err)
+      })
+      
+      // Recarregar tarefas
+      await fetchTasks()
+      
+      // Fechar modal
+      setShowConnectionNoteModal(false)
+      setTaskForConnectionNote(null)
+      setConnectionNoteText('')
+    } catch (error: any) {
+      console.error('Error saving connection note:', error)
+      alert(error.response?.data?.detail || 'Erro ao salvar nota de conexão. Tente novamente.')
+    }
+  }
+  
+  const handleCancelConnectionNote = () => {
+    setShowConnectionNoteModal(false)
+    setTaskForConnectionNote(null)
+    setConnectionNoteText('')
   }
 
   const handleSubmitTask = async (e: React.FormEvent) => {
@@ -449,6 +654,46 @@ export function Tasks() {
         </div>
       </div>
 
+      {/* Barra de ações em massa */}
+      {selectedTasks.size > 0 && (
+        <Card className="border-l-4 border-l-red-500 bg-gradient-to-r from-red-50/50 to-white dark:from-red-950/20 dark:to-background">
+          <CardContent className="py-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-4">
+                <span className="text-sm font-medium">
+                  {selectedTasks.size} tarefa(s) selecionada(s)
+                </span>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleSelectAll}
+                >
+                  {selectedTasks.size === tasks.length ? 'Desselecionar todas' : 'Selecionar todas'}
+                </Button>
+              </div>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="destructive"
+                  size="sm"
+                  onClick={handleBulkDelete}
+                  className="flex items-center gap-2"
+                >
+                  <Trash2 className="h-4 w-4" />
+                  Apagar Selecionadas
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setSelectedTasks(new Set())}
+                >
+                  Cancelar
+                </Button>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Formulário de Nova Tarefa */}
       {showForm && (
         <Card className="border-t-4 border-t-emerald-500 bg-gradient-to-br from-emerald-50/30 to-white dark:from-emerald-950/10 dark:to-background">
@@ -513,22 +758,98 @@ export function Tasks() {
               </div>
               <div>
                 <label className="block text-sm font-medium mb-1">Título *</label>
-                <Input
-                  type="text"
-                  value={formData.title}
-                  onChange={(e) => setFormData({ ...formData, title: e.target.value })}
-                  placeholder="Ex: Enviar email de apresentação"
-                  required
-                />
+                {formData.type === 'linkedin' ? (
+                  <select
+                    value={formData.title}
+                    onChange={(e) => setFormData({ ...formData, title: e.target.value })}
+                    className="w-full px-3 py-2 border rounded-md"
+                    required
+                  >
+                    <option value="">Selecione um título</option>
+                    {linkedinTaskTitles.map((title) => (
+                      <option key={title} value={title}>
+                        {title}
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  <Input
+                    type="text"
+                    value={formData.title}
+                    onChange={(e) => setFormData({ ...formData, title: e.target.value })}
+                    placeholder="Ex: Enviar email de apresentação"
+                    required
+                  />
+                )}
               </div>
               <div>
-                <label className="block text-sm font-medium mb-1">Descrição</label>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="block text-sm font-medium">Descrição</label>
+                  {formData.type === 'linkedin' && formData.lead_id && (
+                    <div className="flex gap-2">
+                      {(formData.title === 'Enviar nota de conexão' || formData.title === 'Enviar solicitação de conexão') && (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() => handleGenerateLinkedInMessage('connection_note')}
+                          disabled={generatingMessage}
+                          className="flex items-center gap-2"
+                        >
+                          {generatingMessage ? (
+                            <>
+                              <Loader2 className="h-3 w-3 animate-spin" />
+                              Gerando...
+                            </>
+                          ) : (
+                            <>
+                              <Sparkles className="h-3 w-3" />
+                              Gerar Nota de Conexão com IA
+                            </>
+                          )}
+                        </Button>
+                      )}
+                      {(formData.title === 'Enviar mensagem de follow-up' ||
+                        formData.title === 'Follow-up após conexão aceita' ||
+                        formData.title === 'Follow-up após reunião' ||
+                        formData.title === 'Follow-up após e-mail' ||
+                        formData.title === 'Follow-up após ligação') && (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() => handleGenerateLinkedInMessage('followup')}
+                          disabled={generatingMessage}
+                          className="flex items-center gap-2"
+                        >
+                          {generatingMessage ? (
+                            <>
+                              <Loader2 className="h-3 w-3 animate-spin" />
+                              Gerando...
+                            </>
+                          ) : (
+                            <>
+                              <Sparkles className="h-3 w-3" />
+                              Gerar Mensagem com IA
+                            </>
+                          )}
+                        </Button>
+                      )}
+                    </div>
+                  )}
+                </div>
                 <Textarea
                   value={formData.description}
                   onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                  placeholder="Descreva a tarefa..."
-                  rows={3}
+                  placeholder={formData.type === 'linkedin' ? "Mensagem do LinkedIn ou descrição da tarefa..." : "Descreva a tarefa..."}
+                  rows={formData.type === 'linkedin' ? 5 : 3}
                 />
+                {formData.type === 'linkedin' && (
+                  <p className="text-xs text-muted-foreground mt-1">
+                    {formData.description.length > 0 && `${formData.description.length} caracteres`}
+                    {formData.description.length === 0 && 'Use os botões acima para gerar mensagens personalizadas com IA'}
+                  </p>
+                )}
               </div>
               <div className="grid gap-4 md:grid-cols-2">
                 <div>
@@ -690,9 +1011,16 @@ export function Tasks() {
                 return (
                   <div
                     key={task.id}
-                    className="flex items-center justify-between p-3 rounded-lg bg-red-50 border border-red-200 dark:bg-red-950 dark:border-red-800 cursor-pointer hover:bg-red-100 dark:hover:bg-red-900 transition-colors"
+                    className="flex items-center gap-3 p-3 rounded-lg bg-red-50 border border-red-200 dark:bg-red-950 dark:border-red-800 cursor-pointer hover:bg-red-100 dark:hover:bg-red-900 transition-colors"
                     onClick={() => handleOpenTaskDetail(task)}
                   >
+                    <input
+                      type="checkbox"
+                      checked={selectedTasks.has(task.id)}
+                      onChange={() => handleSelectTask(task.id)}
+                      onClick={(e) => e.stopPropagation()}
+                      className="h-4 w-4 cursor-pointer"
+                    />
                     <div className="flex-1">
                       <div className="flex items-center gap-2">
                         {getTypeIcon(task.type)}
@@ -765,13 +1093,20 @@ export function Tasks() {
                 return (
                   <div
                     key={task.id}
-                    className={`flex items-center justify-between p-3 rounded-lg border cursor-pointer hover:opacity-90 transition-colors ${
+                    className={`flex items-center gap-3 p-3 rounded-lg border cursor-pointer hover:opacity-90 transition-colors ${
                       isToday
                         ? 'bg-yellow-50 border-yellow-200 dark:bg-yellow-950 dark:border-yellow-800 hover:bg-yellow-100 dark:hover:bg-yellow-900'
                         : 'bg-gray-50 border-gray-200 dark:bg-gray-900 dark:border-gray-800 hover:bg-gray-100 dark:hover:bg-gray-800'
                     }`}
                     onClick={() => handleOpenTaskDetail(task)}
                   >
+                    <input
+                      type="checkbox"
+                      checked={selectedTasks.has(task.id)}
+                      onChange={() => handleSelectTask(task.id)}
+                      onClick={(e) => e.stopPropagation()}
+                      className="h-4 w-4 cursor-pointer"
+                    />
                     <div className="flex-1">
                       <div className="flex items-center gap-2">
                         {getTypeIcon(task.type)}
@@ -844,9 +1179,16 @@ export function Tasks() {
               {completedTasks.map((task) => (
                 <div
                   key={task.id}
-                  className="flex items-center justify-between p-2 rounded-lg bg-gray-50 border border-gray-200 dark:bg-gray-900 dark:border-gray-800 cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+                  className="flex items-center gap-3 p-2 rounded-lg bg-gray-50 border border-gray-200 dark:bg-gray-900 dark:border-gray-800 cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
                   onClick={() => handleOpenTaskDetail(task)}
                 >
+                  <input
+                    type="checkbox"
+                    checked={selectedTasks.has(task.id)}
+                    onChange={() => handleSelectTask(task.id)}
+                    onClick={(e) => e.stopPropagation()}
+                    className="h-4 w-4 cursor-pointer"
+                  />
                   <div className="flex items-center gap-2">
                     <CheckCircle2 className="h-4 w-4 text-green-500" />
                     <span className="text-sm line-through text-muted-foreground">{task.title}</span>
@@ -1274,6 +1616,96 @@ export function Tasks() {
                 </div>
               )}
             </CardContent>
+          </Card>
+        </div>
+      )}
+
+      {/* Modal de Geração de Nota de Conexão */}
+      {showConnectionNoteModal && taskForConnectionNote && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <Card className="w-full max-w-2xl max-h-[90vh] overflow-hidden flex flex-col">
+            <CardHeader className="border-b flex-shrink-0">
+              <div className="flex items-center justify-between">
+                <CardTitle className="flex items-center gap-2">
+                  <LinkIcon className="h-5 w-5" />
+                  Gerar Nota de Conexão
+                </CardTitle>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={handleCancelConnectionNote}
+                >
+                  <X className="h-4 w-4" />
+                </Button>
+              </div>
+              <p className="text-sm text-muted-foreground mt-2">
+                Tarefa: {taskForConnectionNote.title}
+                {taskForConnectionNote.lead && (
+                  <span className="ml-2">• Lead: {taskForConnectionNote.lead.name}</span>
+                )}
+              </p>
+            </CardHeader>
+            <CardContent className="flex-1 overflow-y-auto p-6">
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium mb-2">
+                    Nota de Conexão
+                  </label>
+                  <div className="flex gap-2 mb-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={handleGenerateConnectionNote}
+                      disabled={generatingConnectionNote}
+                      className="flex items-center gap-2"
+                    >
+                      {generatingConnectionNote ? (
+                        <>
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                          Gerando...
+                        </>
+                      ) : (
+                        <>
+                          <Sparkles className="h-4 w-4" />
+                          Gerar Nota de Conexão com IA
+                        </>
+                      )}
+                    </Button>
+                  </div>
+                  <Textarea
+                    value={connectionNoteText}
+                    onChange={(e) => setConnectionNoteText(e.target.value)}
+                    placeholder="A nota de conexão será gerada aqui. Você pode editar antes de salvar."
+                    rows={8}
+                    className="font-mono text-sm"
+                  />
+                  <p className="text-xs text-muted-foreground mt-1">
+                    {connectionNoteText.length} caracteres
+                  </p>
+                </div>
+                <div className="bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-900 rounded-lg p-4">
+                  <p className="text-sm text-blue-900 dark:text-blue-100">
+                    <strong>Dica:</strong> A IA irá gerar uma nota de conexão personalizada baseada no insight do lead e nos produtos/serviços do catálogo. Você pode editar o texto gerado antes de salvar.
+                  </p>
+                </div>
+              </div>
+            </CardContent>
+            <div className="border-t p-4 flex gap-2 justify-end flex-shrink-0">
+              <Button
+                variant="outline"
+                onClick={handleCancelConnectionNote}
+              >
+                Cancelar
+              </Button>
+              <Button
+                onClick={handleSaveConnectionNote}
+                disabled={!connectionNoteText.trim()}
+                className="bg-blue-600 hover:bg-blue-700"
+              >
+                Salvar e Completar Tarefa
+              </Button>
+            </div>
           </Card>
         </div>
       )}

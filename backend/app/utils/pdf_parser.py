@@ -6,8 +6,11 @@ import json
 import io
 from typing import Dict, Any, Optional
 from fastapi import UploadFile
+from sqlmodel import Session
 import pdfplumber
-from app.agents.llm_helper import get_llm, is_llm_available
+from app.agents.llm_helper import get_llm, is_llm_available, extract_token_usage
+from app.services.token_tracker import track_llm_tokens
+from app.config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -54,7 +57,7 @@ async def extract_text_from_pdf(pdf_file: UploadFile) -> str:
         raise ValueError(f"Erro ao processar PDF: {str(e)}")
 
 
-async def parse_linkedin_data_with_llm(text: str) -> Dict[str, Any]:
+async def parse_linkedin_data_with_llm(text: str, session: Session, tenant_id: int, user_id: Optional[int] = None) -> Dict[str, Any]:
     """
     Usa LLM para analisar texto extraído de PDF do LinkedIn e extrair dados estruturados
     
@@ -141,6 +144,31 @@ IMPORTANTE:
     try:
         logger.info("🤖 [PDF PARSER] Enviando texto para LLM para análise...")
         response = llm.invoke(prompt)
+        
+        # Rastrear uso de tokens
+        try:
+            provider = settings.llm_provider.lower()
+            model = settings.openai_model if provider == "openai" else settings.ollama_model
+            token_info = extract_token_usage(response, provider)
+            # Estimar prompt_tokens se não disponível (para Ollama)
+            if token_info['prompt_tokens'] == 0 and token_info['total_tokens'] > 0:
+                estimated_prompt = int(token_info['total_tokens'] * 0.7)
+                token_info['prompt_tokens'] = estimated_prompt
+                token_info['completion_tokens'] = token_info['total_tokens'] - estimated_prompt
+            track_llm_tokens(
+                session=session,
+                tenant_id=tenant_id,
+                user_id=user_id,
+                provider=provider,
+                model=model,
+                prompt_tokens=token_info['prompt_tokens'],
+                completion_tokens=token_info['completion_tokens'],
+                total_tokens=token_info['total_tokens'],
+                endpoint="/api/leads/parse-linkedin-pdf",
+                feature="pdf_parsing"
+            )
+        except Exception as e:
+            logger.warning(f"⚠️ Erro ao rastrear tokens: {e}")
         
         # Extrair conteúdo da resposta
         response_text = response.content if hasattr(response, 'content') else str(response)

@@ -211,6 +211,17 @@ export const customModulesApi = {
     api.delete(`/api/custom-modules/${moduleId}/data/${recordId}`),
 }
 
+// Notifications API functions
+export const notificationsApi = {
+  getNotifications: (params?: { unread_only?: boolean; limit?: number }) => 
+    api.get('/api/notifications', { params }),
+  getUnreadCount: () => api.get('/api/notifications/unread-count'),
+  markAsRead: (notificationId: number) => api.patch(`/api/notifications/${notificationId}/read`),
+  markAllAsRead: () => api.patch('/api/notifications/read-all'),
+  deleteNotification: (notificationId: number) => api.delete(`/api/notifications/${notificationId}`),
+  generateNotifications: () => api.post('/api/notifications/generate'),
+}
+
 export default api
 
 
