@@ -4,6 +4,7 @@ import { ThemeProvider } from './contexts/ThemeContext'
 import { KPIProvider } from './contexts/KPIContext'
 import { Sidebar } from './components/Sidebar'
 import { Header } from './components/Header'
+import { ChatBot } from './components/ChatBot'
 import { Login } from './pages/Login'
 import { Register } from './pages/Register'
 import { Dashboard } from './pages/Dashboard'
@@ -291,6 +292,7 @@ function App() {
           <BrowserRouter>
             <AppRoutes />
             <Toaster />
+            <ChatBot />
           </BrowserRouter>
         </KPIProvider>
       </AuthProvider>

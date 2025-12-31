@@ -222,6 +222,12 @@ export const notificationsApi = {
   generateNotifications: () => api.post('/api/notifications/generate'),
 }
 
+// Chat API functions
+export const chatApi = {
+  sendMessage: (message: string) => api.post('/api/chat', { message }),
+  getHistory: (limit?: number) => api.get('/api/chat/history', { params: { limit } }),
+}
+
 export default api
 
 

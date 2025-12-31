@@ -1693,6 +1693,85 @@ def migrate_notifications_table():
             session.rollback()
 
 
+def migrate_chat_tables():
+    """Cria tabelas de chat e base de conhecimento"""
+    with Session(engine) as session:
+        try:
+            # Verificar se a tabela knowledgebaseentry existe
+            check_kb = text("""
+                SELECT EXISTS (
+                    SELECT FROM information_schema.tables 
+                    WHERE table_name = 'knowledgebaseentry'
+                )
+            """)
+            kb_result = session.exec(check_kb).first()
+            kb_exists = kb_result[0] if kb_result else False
+            
+            if not kb_exists:
+                create_kb_table = text("""
+                    CREATE TABLE IF NOT EXISTS knowledgebaseentry (
+                        id SERIAL PRIMARY KEY,
+                        tenant_id INTEGER NOT NULL,
+                        title VARCHAR(500) NOT NULL,
+                        content TEXT NOT NULL,
+                        category VARCHAR(100) NOT NULL,
+                        keywords VARCHAR(1000),
+                        created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+                        updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+                        FOREIGN KEY (tenant_id) REFERENCES tenant(id)
+                    )
+                """)
+                session.exec(create_kb_table)
+                idx_kb_tenant = text("CREATE INDEX IF NOT EXISTS idx_kb_tenant_id ON knowledgebaseentry(tenant_id)")
+                idx_kb_category = text("CREATE INDEX IF NOT EXISTS idx_kb_category ON knowledgebaseentry(category)")
+                session.exec(idx_kb_tenant)
+                session.exec(idx_kb_category)
+                session.commit()
+                logger.info("✅ Tabela knowledgebaseentry criada")
+            else:
+                print("✓ Tabela knowledgebaseentry já existe")
+            
+            # Verificar se a tabela assistantchatmessage existe
+            check_chat = text("""
+                SELECT EXISTS (
+                    SELECT FROM information_schema.tables 
+                    WHERE table_name = 'assistantchatmessage'
+                )
+            """)
+            chat_result = session.exec(check_chat).first()
+            chat_exists = chat_result[0] if chat_result else False
+            
+            if not chat_exists:
+                create_chat_table = text("""
+                    CREATE TABLE IF NOT EXISTS assistantchatmessage (
+                        id SERIAL PRIMARY KEY,
+                        tenant_id INTEGER NOT NULL,
+                        user_id INTEGER NOT NULL,
+                        message TEXT NOT NULL,
+                        response TEXT NOT NULL,
+                        context_used_json JSONB,
+                        created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+                        FOREIGN KEY (tenant_id) REFERENCES tenant(id),
+                        FOREIGN KEY (user_id) REFERENCES "user"(id)
+                    )
+                """)
+                session.exec(create_chat_table)
+                idx_chat_tenant = text("CREATE INDEX IF NOT EXISTS idx_assistantchat_tenant_id ON assistantchatmessage(tenant_id)")
+                idx_chat_user = text("CREATE INDEX IF NOT EXISTS idx_assistantchat_user_id ON assistantchatmessage(user_id)")
+                idx_chat_created = text("CREATE INDEX IF NOT EXISTS idx_assistantchat_created_at ON assistantchatmessage(created_at)")
+                session.exec(idx_chat_tenant)
+                session.exec(idx_chat_user)
+                session.exec(idx_chat_created)
+                session.commit()
+                logger.info("✅ Tabela assistantchatmessage criada")
+            else:
+                print("✓ Tabela assistantchatmessage já existe")
+                
+        except Exception as e:
+            logger.error(f"❌ Erro ao migrar tabelas de chat: {e}")
+            session.rollback()
+
+
 def init_db():
     """Initialize database tables"""
     SQLModel.metadata.create_all(engine)
@@ -1720,6 +1799,20 @@ def init_db():
     migrate_llm_tokens_tracking()
     # Criar tabela de notificações
     migrate_notifications_table()
+    # Criar tabelas de chat e base de conhecimento
+    migrate_chat_tables()
+    # Popular base de conhecimento inicial
+    try:
+        from app.scripts.populate_knowledge_base import populate_knowledge_base
+        from app.models import Tenant
+        from sqlmodel import select
+        # Popular para todos os tenants existentes
+        with Session(engine) as session:
+            tenants = session.exec(select(Tenant)).all()
+            for tenant in tenants:
+                populate_knowledge_base(tenant_id=tenant.id)
+    except Exception as e:
+        logger.warning(f"⚠️ Não foi possível popular base de conhecimento: {e}")
 
 
 

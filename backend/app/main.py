@@ -8,7 +8,7 @@ from fastapi.staticfiles import StaticFiles
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from pathlib import Path
 from app.database import engine, init_db
-from app.routers import auth, users, playbooks, agents, company_profile, debug, leads, sequences, tasks, prospecting, audit, sales_funnel, opportunities, proposals, proposal_templates, accounts, contacts, dashboard, settings, kpi, live_pulse, widgets, items, orders, integrations, forms, custom_fields, custom_modules, appointments, notifications
+from app.routers import auth, users, playbooks, agents, company_profile, debug, leads, sequences, tasks, prospecting, audit, sales_funnel, opportunities, proposals, proposal_templates, accounts, contacts, dashboard, settings, kpi, live_pulse, widgets, items, orders, integrations, forms, custom_fields, custom_modules, appointments, notifications, chat
 from app.middleware import ApiCallTrackingMiddleware
 
 # Configurar logging para garantir que todos os logs apareçam
@@ -113,6 +113,7 @@ app.include_router(custom_fields.router, prefix="/api/custom-fields", tags=["cus
 app.include_router(custom_modules.router, prefix="/api/custom-modules", tags=["custom-modules"])
 app.include_router(appointments.router, prefix="/api/appointments", tags=["appointments"])
 app.include_router(notifications.router, prefix="/api/notifications", tags=["notifications"])
+app.include_router(chat.router, prefix="/api/chat", tags=["chat"])
 
 # Servir arquivos estáticos (imagens)
 from pathlib import Path

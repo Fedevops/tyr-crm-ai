@@ -1576,6 +1576,43 @@ class NotificationResponse(SQLModel):
     read_at: Optional[datetime] = None
 
 
+# ==================== CHAT & KNOWLEDGE BASE MODELS ====================
+
+class KnowledgeBaseEntry(SQLModel, table=True):
+    """Entradas da base de conhecimento sobre funcionalidades"""
+    id: Optional[int] = Field(default=None, primary_key=True)
+    tenant_id: int = Field(foreign_key="tenant.id", index=True)
+    title: str  # Título da funcionalidade
+    content: str  # Descrição detalhada
+    category: str  # Categoria (ex: "leads", "tasks", "appointments")
+    keywords: Optional[str] = None  # Palavras-chave para busca
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class AssistantChatMessage(SQLModel, table=True):
+    """Mensagens do chat com o assistente virtual"""
+    id: Optional[int] = Field(default=None, primary_key=True)
+    tenant_id: int = Field(foreign_key="tenant.id", index=True)
+    user_id: int = Field(foreign_key="user.id", index=True)
+    message: str  # Mensagem do usuário
+    response: str  # Resposta do assistente
+    context_used_json: Optional[Dict] = Field(default=None, sa_column=Column(JSON))  # Contexto RAG usado
+    created_at: datetime = Field(default_factory=datetime.utcnow, index=True)
+
+
+class AssistantChatMessageCreate(SQLModel):
+    message: str
+
+
+class AssistantChatMessageResponse(SQLModel):
+    id: int
+    message: str
+    response: str
+    context_used_json: Optional[Dict] = None
+    created_at: datetime
+
+
 # ==================== ORDERS MODELS ====================
 
 class OrderStatus(str, Enum):
