@@ -228,6 +228,44 @@ export const chatApi = {
   getHistory: (limit?: number) => api.get('/api/chat/history', { params: { limit } }),
 }
 
+// Finance API functions
+export const financeApi = {
+  // Financial Accounts
+  getAccounts: (isActive?: boolean) => api.get('/api/finance/accounts', { params: { is_active: isActive } }),
+  getAccount: (accountId: number) => api.get(`/api/finance/accounts/${accountId}`),
+  createAccount: (data: any) => api.post('/api/finance/accounts', data),
+  updateAccount: (accountId: number, data: any) => api.put(`/api/finance/accounts/${accountId}`, data),
+  deleteAccount: (accountId: number) => api.delete(`/api/finance/accounts/${accountId}`),
+  
+  // Transactions
+  getTransactions: (params?: {
+    account_id?: number,
+    type?: 'income' | 'expense',
+    status?: 'pending' | 'paid' | 'overdue',
+    category?: string,
+    start_date?: string,
+    end_date?: string
+  }) => api.get('/api/finance/transactions', { params }),
+  getTransaction: (transactionId: number) => api.get(`/api/finance/transactions/${transactionId}`),
+  createTransaction: (data: any) => api.post('/api/finance/transactions', data),
+  updateTransaction: (transactionId: number, data: any) => api.put(`/api/finance/transactions/${transactionId}`, data),
+  updateTransactionStatus: (transactionId: number, status: string) => 
+    api.put(`/api/finance/transactions/${transactionId}`, { status }),
+  markTransactionPaid: (transactionId: number, paymentDate?: string) => 
+    api.patch(`/api/finance/transactions/${transactionId}/mark-paid`, null, { params: { payment_date: paymentDate } }),
+  deleteTransaction: (transactionId: number) => api.delete(`/api/finance/transactions/${transactionId}`),
+  
+  // Stats
+  getStats: (params?: { month?: number, year?: number, start_date?: string, end_date?: string }) => 
+    api.get('/api/finance/stats', { params }),
+  // Export
+  exportMonthlyReport: (month?: number, year?: number) => 
+    api.get('/api/finance/export-monthly-report', { 
+      params: { month, year },
+      responseType: 'blob'
+    }),
+}
+
 export default api
 
 

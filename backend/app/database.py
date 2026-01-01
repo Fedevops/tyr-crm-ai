@@ -1772,6 +1772,88 @@ def migrate_chat_tables():
             session.rollback()
 
 
+def migrate_finance_tables():
+    """Create financialaccount and transaction tables"""
+    from app.models import FinancialAccount, Transaction
+    
+    with Session(engine) as session:
+        try:
+            # Check if financialaccount table exists
+            table_check = text("""
+                SELECT EXISTS (
+                    SELECT FROM information_schema.tables 
+                    WHERE table_name = 'financialaccount'
+                )
+            """)
+            result = session.exec(table_check).first()
+            account_table_exists = result[0] if result else False
+            
+            if not account_table_exists:
+                # Table will be created by SQLModel.metadata.create_all
+                print("✓ FinancialAccount table will be created by SQLModel")
+            else:
+                print("✓ FinancialAccount table already exists")
+            
+            # Check if transaction table exists
+            transaction_check = text("""
+                SELECT EXISTS (
+                    SELECT FROM information_schema.tables 
+                    WHERE table_name = 'transaction'
+                )
+            """)
+            result = session.exec(transaction_check).first()
+            transaction_table_exists = result[0] if result else False
+            
+            if not transaction_table_exists:
+                print("✓ Transaction table will be created by SQLModel")
+            else:
+                print("✓ Transaction table already exists")
+                # Adicionar colunas de recorrência se não existirem
+                try:
+                    check_recurring = text("""
+                        SELECT column_name 
+                        FROM information_schema.columns 
+                        WHERE table_name='transaction' AND column_name='is_recurring'
+                    """)
+                    result = session.exec(check_recurring).first()
+                    
+                    if not result:
+                        # Adicionar colunas de recorrência
+                        try:
+                            alter_query = text("""
+                                ALTER TABLE transaction 
+                                ADD COLUMN is_recurring BOOLEAN NOT NULL DEFAULT FALSE,
+                                ADD COLUMN recurrence_interval VARCHAR(20),
+                                ADD COLUMN recurrence_start TIMESTAMP WITH TIME ZONE,
+                                ADD COLUMN recurrence_end TIMESTAMP WITH TIME ZONE,
+                                ADD COLUMN parent_transaction_id INTEGER
+                            """)
+                            session.exec(alter_query)
+                            session.commit()
+                            
+                            # Adicionar foreign key separadamente
+                            fk_query = text("""
+                                ALTER TABLE transaction 
+                                ADD CONSTRAINT transaction_parent_transaction_id_fkey 
+                                FOREIGN KEY (parent_transaction_id) REFERENCES transaction(id)
+                            """)
+                            session.exec(fk_query)
+                            session.commit()
+                            print("✓ Added recurrence columns to transaction table")
+                        except Exception as fk_error:
+                            # Se a foreign key já existe ou falhar, continuar
+                            print(f"⚠️ Could not add foreign key constraint: {fk_error}")
+                            session.rollback()
+                except Exception as e:
+                    print(f"⚠️ Error adding recurrence columns: {e}")
+                    session.rollback()
+            
+            session.commit()
+        except Exception as e:
+            session.rollback()
+            print(f"⚠️ Error in migrate_finance_tables: {e}")
+
+
 def init_db():
     """Initialize database tables"""
     SQLModel.metadata.create_all(engine)
@@ -1782,6 +1864,7 @@ def init_db():
     migrate_items_tables()
     migrate_tenant_limits()
     migrate_orders_tables()
+    migrate_finance_tables()
     migrate_integrations_tables()
     migrate_forms_tables()
     migrate_custom_fields_tables()

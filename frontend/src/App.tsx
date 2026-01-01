@@ -27,6 +27,7 @@ import { LivePulseDashboard } from './pages/LivePulse/LivePulseDashboard'
 import { VisitReports } from './pages/VisitReports'
 import { CatalogManager } from './pages/CatalogManager'
 import { Orders } from './pages/Orders'
+import { Finance } from './pages/Finance'
 import { CustomModulePage } from './pages/CustomModulePage'
 import { Toaster } from './components/ui/toaster'
 
@@ -205,6 +206,16 @@ function AppRoutes() {
           <ProtectedRoute>
             <Layout>
               <Orders />
+            </Layout>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/finance"
+        element={
+          <ProtectedRoute>
+            <Layout>
+              <Finance />
             </Layout>
           </ProtectedRoute>
         }

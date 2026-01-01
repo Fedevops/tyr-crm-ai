@@ -1,7 +1,7 @@
 import { Link, useLocation } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { useState, useEffect } from 'react'
-import { LayoutDashboard, BookOpen, Users, Settings, LogOut, ListChecks, Workflow, Search, Building2, UserCircle, TrendingUp, FileText, Filter, History, Target, Radio, BarChart3, Package, ShoppingCart, Database, Calendar as CalendarIcon } from 'lucide-react'
+import { LayoutDashboard, BookOpen, Users, Settings, LogOut, ListChecks, Workflow, Search, Building2, UserCircle, TrendingUp, FileText, Filter, History, Target, Radio, BarChart3, Package, ShoppingCart, Database, Calendar as CalendarIcon, Wallet } from 'lucide-react'
 import { useAuth } from '@/contexts/AuthContext'
 import { Button } from './ui/button'
 import { cn } from '@/lib/utils'
@@ -16,6 +16,7 @@ const navigation = [
   { name: 'opportunities', href: '/opportunities', icon: TrendingUp },
   { name: 'proposals', href: '/proposals', icon: FileText },
   { name: 'orders', href: '/orders', icon: ShoppingCart },
+  { name: 'finance', href: '/finance', icon: Wallet },
   { name: 'catalog', href: '/catalog', icon: Package },
   { name: 'sales-funnels', href: '/sales-funnels', icon: Filter },
   { name: 'tasks', href: '/tasks', icon: ListChecks },

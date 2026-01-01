@@ -1760,6 +1760,178 @@ class OrderResponse(SQLModel):
     account_name: Optional[str] = None
 
 
+# ==================== FINANCE MODELS ====================
+
+class TransactionCategory(str, Enum):
+    """Categorias de transações"""
+    SALES = "sales"                    # Vendas
+    SERVICES = "services"              # Serviços
+    SUPPLIERS = "suppliers"           # Fornecedores
+    SALARY = "salary"                  # Salários
+    RENT = "rent"                      # Aluguel
+    UTILITIES = "utilities"            # Utilidades
+    MARKETING = "marketing"            # Marketing
+    TAXES = "taxes"                    # Impostos
+    OTHER = "other"                    # Outros
+
+
+class TransactionType(str, Enum):
+    """Tipo de transação"""
+    INCOME = "income"      # Contas a Receber
+    EXPENSE = "expense"    # Contas a Pagar
+
+
+class TransactionStatus(str, Enum):
+    """Status da transação"""
+    PENDING = "pending"    # Pendente
+    PAID = "paid"          # Paga/Recebida
+    OVERDUE = "overdue"    # Vencida
+
+
+class RecurrenceInterval(str, Enum):
+    """Intervalo de recorrência"""
+    WEEKLY = "weekly"      # Semanal
+    MONTHLY = "monthly"    # Mensal
+    QUARTERLY = "quarterly"  # Trimestral
+    YEARLY = "yearly"      # Anual
+
+
+class FinancialAccount(SQLModel, table=True):
+    """Contas/Caixas Financeiras"""
+    id: Optional[int] = Field(default=None, primary_key=True)
+    tenant_id: int = Field(foreign_key="tenant.id", index=True)
+    name: str  # Nome da conta (ex: "Conta Principal", "Caixa Pequeno")
+    description: Optional[str] = None
+    is_active: bool = Field(default=True)
+    # Ownership
+    owner_id: int = Field(foreign_key="user.id", index=True)
+    created_by_id: int = Field(foreign_key="user.id", index=True)
+    # Timestamps
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    
+    # Relationships
+    transactions: List["Transaction"] = Relationship(back_populates="account")
+
+
+class Transaction(SQLModel, table=True):
+    """Transações Financeiras (Contas a Pagar e Receber)"""
+    id: Optional[int] = Field(default=None, primary_key=True)
+    tenant_id: int = Field(foreign_key="tenant.id", index=True)
+    account_id: int = Field(foreign_key="financialaccount.id", index=True)
+    description: str
+    amount: float
+    type: TransactionType
+    status: TransactionStatus = Field(default=TransactionStatus.PENDING)
+    category: TransactionCategory
+    due_date: datetime
+    payment_date: Optional[datetime] = None
+    order_id: Optional[int] = Field(foreign_key="order.id", default=None, index=True)  # Opcional: vinculado a um pedido
+    # Recorrência
+    is_recurring: bool = Field(default=False, index=True)
+    recurrence_interval: Optional[RecurrenceInterval] = None  # Intervalo de recorrência
+    recurrence_start: Optional[datetime] = None  # Data de início da recorrência
+    recurrence_end: Optional[datetime] = None  # Data de término da recorrência
+    parent_transaction_id: Optional[int] = Field(foreign_key="transaction.id", default=None, index=True)  # ID da transação pai (se for gerada automaticamente)
+    # Ownership
+    owner_id: int = Field(foreign_key="user.id", index=True)
+    created_by_id: int = Field(foreign_key="user.id", index=True)
+    # Timestamps
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    
+    # Relationships
+    account: Optional[FinancialAccount] = Relationship(back_populates="transactions")
+    order: Optional[Order] = Relationship()
+    parent_transaction: Optional["Transaction"] = Relationship(
+        sa_relationship_kwargs={"remote_side": "Transaction.id"}
+    )
+
+
+# Pydantic Schemas
+class FinancialAccountCreate(SQLModel):
+    name: str
+    description: Optional[str] = None
+    is_active: Optional[bool] = True
+    owner_id: Optional[int] = None
+
+
+class FinancialAccountUpdate(SQLModel):
+    name: Optional[str] = None
+    description: Optional[str] = None
+    is_active: Optional[bool] = None
+
+
+class FinancialAccountResponse(SQLModel):
+    id: int
+    tenant_id: int
+    name: str
+    description: Optional[str]
+    is_active: bool
+    owner_id: int
+    created_by_id: int
+    created_at: datetime
+    updated_at: datetime
+    # Saldo calculado (não armazenado)
+    balance: float = 0.0
+
+
+class TransactionCreate(SQLModel):
+    account_id: int
+    description: str
+    amount: float
+    type: TransactionType
+    category: TransactionCategory
+    due_date: datetime
+    payment_date: Optional[datetime] = None
+    order_id: Optional[int] = None
+    is_recurring: Optional[bool] = False
+    recurrence_interval: Optional[RecurrenceInterval] = None
+    recurrence_start: Optional[datetime] = None
+    recurrence_end: Optional[datetime] = None
+
+
+class TransactionUpdate(SQLModel):
+    account_id: Optional[int] = None
+    description: Optional[str] = None
+    amount: Optional[float] = None
+    type: Optional[TransactionType] = None
+    status: Optional[TransactionStatus] = None
+    category: Optional[TransactionCategory] = None
+    due_date: Optional[datetime] = None
+    payment_date: Optional[datetime] = None
+    is_recurring: Optional[bool] = None
+    recurrence_interval: Optional[RecurrenceInterval] = None
+    recurrence_start: Optional[datetime] = None
+    recurrence_end: Optional[datetime] = None
+
+
+class TransactionResponse(SQLModel):
+    id: int
+    tenant_id: int
+    account_id: int
+    description: str
+    amount: float
+    type: str
+    status: str
+    category: str
+    due_date: datetime
+    payment_date: Optional[datetime]
+    order_id: Optional[int]
+    is_recurring: bool
+    recurrence_interval: Optional[str] = None
+    recurrence_start: Optional[datetime] = None
+    recurrence_end: Optional[datetime] = None
+    parent_transaction_id: Optional[int] = None
+    owner_id: int
+    created_by_id: int
+    created_at: datetime
+    updated_at: datetime
+    # Dados relacionados
+    account_name: Optional[str] = None
+    order_number: Optional[str] = None
+
+
 # ==================== APPOINTMENTS ====================
 
 class AppointmentStatus(str, Enum):

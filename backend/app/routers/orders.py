@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlmodel import Session, select, func, and_, or_
 from typing import Optional, List
-from datetime import datetime
+from datetime import datetime, timedelta
 import json
 import logging
 
@@ -569,6 +569,50 @@ async def update_order(
         # Processar estoque se status mudou para COMPLETED
         if order_data.status == OrderStatus.COMPLETED:
             process_order_stock(session, order, current_user.id)
+            
+            # Gerar Transaction INCOME quando Order é completado
+            try:
+                from app.models import Transaction, TransactionType, TransactionStatus, TransactionCategory, FinancialAccount
+                
+                # Buscar a primeira conta financeira ativa do tenant
+                default_account = session.exec(
+                    select(FinancialAccount).where(
+                        FinancialAccount.tenant_id == current_user.tenant_id,
+                        FinancialAccount.is_active == True
+                    ).limit(1)
+                ).first()
+                
+                if default_account:
+                    # Verificar se já existe uma transaction para este order
+                    existing_transaction = session.exec(
+                        select(Transaction).where(
+                            Transaction.order_id == order.id,
+                            Transaction.tenant_id == current_user.tenant_id
+                        )
+                    ).first()
+                    
+                    if not existing_transaction:
+                        # Criar transaction INCOME
+                        transaction = Transaction(
+                            tenant_id=current_user.tenant_id,
+                            account_id=default_account.id,
+                            description=f"Venda - Pedido #{order.id} - {order.customer_name}",
+                            amount=order.total_amount,
+                            type=TransactionType.INCOME,
+                            status=TransactionStatus.PENDING,
+                            category=TransactionCategory.SALES,
+                            due_date=datetime.utcnow() + timedelta(days=30),  # Vencimento em 30 dias
+                            order_id=order.id,
+                            owner_id=current_user.id,
+                            created_by_id=current_user.id
+                        )
+                        session.add(transaction)
+                        logger.info(f"💰 [FINANCE] Transaction INCOME criada para Order #{order.id}: R$ {order.total_amount}")
+                else:
+                    logger.warning(f"⚠️ [FINANCE] Nenhuma conta financeira ativa encontrada para criar transaction do Order #{order.id}")
+            except Exception as e:
+                logger.error(f"❌ [FINANCE] Erro ao criar transaction para Order #{order.id}: {e}")
+                # Não falhar a operação principal se a criação da transaction falhar
     
     session.commit()
     session.refresh(order)
