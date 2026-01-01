@@ -1,7 +1,7 @@
 """
 Script para popular a base de conhecimento com informações sobre funcionalidades do sistema
 """
-from sqlmodel import Session
+from sqlmodel import Session, select
 from app.database import engine
 from app.models import KnowledgeBaseEntry
 

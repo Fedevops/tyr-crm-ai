@@ -284,8 +284,14 @@ async def create_transaction(
     if transaction_data.payment_date:
         transaction_dict['status'] = TransactionStatus.PAID
     else:
+        # Verificar se está vencida (normalizar datas para comparação)
+        now = datetime.utcnow()
+        due_date = transaction_data.due_date
+        # Remover timezone se existir
+        if due_date.tzinfo is not None:
+            due_date = due_date.replace(tzinfo=None)
         # Verificar se está vencida
-        if transaction_data.due_date < datetime.utcnow():
+        if due_date < now:
             transaction_dict['status'] = TransactionStatus.OVERDUE
         else:
             transaction_dict['status'] = TransactionStatus.PENDING
@@ -418,11 +424,17 @@ async def update_transaction(
         transaction.status = TransactionStatus.PAID
     else:
         # Recalcular status automaticamente apenas se não foi explicitamente definido
-        if transaction.due_date < datetime.utcnow() and transaction.status != TransactionStatus.PAID:
+        now = datetime.utcnow()
+        due_date = transaction.due_date
+        # Remover timezone se existir
+        if due_date.tzinfo is not None:
+            due_date = due_date.replace(tzinfo=None)
+        
+        if due_date < now and transaction.status != TransactionStatus.PAID:
             if transaction.status != TransactionStatus.OVERDUE:
                 log_update(session, current_user, "Transaction", transaction_id, "status", transaction.status.value, TransactionStatus.OVERDUE.value)
             transaction.status = TransactionStatus.OVERDUE
-        elif transaction.status == TransactionStatus.OVERDUE and transaction.due_date >= datetime.utcnow():
+        elif transaction.status == TransactionStatus.OVERDUE and due_date >= now:
             log_update(session, current_user, "Transaction", transaction_id, "status", transaction.status.value, TransactionStatus.PENDING.value)
             transaction.status = TransactionStatus.PENDING
     
