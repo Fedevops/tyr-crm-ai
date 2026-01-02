@@ -90,3 +90,5 @@ def get_tokens_usage(
         logger.error(f"❌ Erro ao buscar uso de tokens: {e}")
         return 0
 
+
+

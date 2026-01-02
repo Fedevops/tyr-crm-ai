@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 import api from '@/lib/api'
+import { leadsApi } from '@/lib/api'
 import { useKPI } from '@/contexts/KPIContext'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -30,7 +31,9 @@ import {
   FileText,
   Workflow,
   Sparkles,
-  Loader2
+  Loader2,
+  Copy,
+  Merge
 } from 'lucide-react'
 
 type LeadStatus = 
@@ -88,6 +91,11 @@ interface Lead {
   industry: string | null
   company_size: string | null
   context: string | null
+  // Campos de Qualificação ICP
+  tech_stack: string | null
+  is_hiring: boolean | null
+  is_advertising: boolean | null
+  icp_score: number | null
   // Campos Casa dos Dados
   razao_social: string | null
   nome_fantasia: string | null
@@ -190,6 +198,13 @@ export function Leads() {
   const [searchTerm, setSearchTerm] = useState('')
   const [statusFilter, setStatusFilter] = useState<LeadStatus | 'all'>('all')
   const [sourceFilter, setSourceFilter] = useState<string>('all')
+  const [topIcpFilter, setTopIcpFilter] = useState<boolean>(false)
+  
+  // Duplicates analysis
+  const [showDuplicatesModal, setShowDuplicatesModal] = useState(false)
+  const [analyzingDuplicates, setAnalyzingDuplicates] = useState(false)
+  const [duplicatesData, setDuplicatesData] = useState<any>(null)
+  const [mergingDuplicates, setMergingDuplicates] = useState(false)
   const [advancedFilters, setAdvancedFilters] = useState<Array<{
     id: string
     field: string
@@ -233,6 +248,10 @@ export function Leads() {
     industry: '',
     company_size: '',
     context: '',
+    // Campos ICP
+    tech_stack: '',
+    is_hiring: false,
+    is_advertising: false,
     // Campos Casa dos Dados
     razao_social: '',
     nome_fantasia: '',
@@ -269,7 +288,7 @@ export function Leads() {
     fetchLeads()
     fetchStats()
     fetchCustomFields()
-  }, [statusFilter, sourceFilter, searchTerm, currentPage, pageSize, advancedFilters, filterLogic])
+  }, [statusFilter, sourceFilter, searchTerm, currentPage, pageSize, advancedFilters, filterLogic, topIcpFilter])
 
   const fetchCustomFields = async () => {
     try {
@@ -399,6 +418,51 @@ export function Leads() {
     setShowLeadDetailModal(true)
     setNewComment('')
     setActiveTab('basicas')
+  }
+
+  const handleAnalyzeDuplicates = async () => {
+    try {
+      setAnalyzingDuplicates(true)
+      const response = await leadsApi.analyzeDuplicates(0.85)
+      setDuplicatesData(response.data)
+    } catch (error: any) {
+      console.error('Erro ao analisar duplicados:', error)
+      alert(error.response?.data?.detail || 'Erro ao analisar duplicados')
+    } finally {
+      setAnalyzingDuplicates(false)
+    }
+  }
+
+  const handleMergeDuplicates = async (leadIds: number[], keepLeadId: number, groupId: number) => {
+    try {
+      setMergingDuplicates(true)
+      await leadsApi.mergeDuplicates(leadIds, keepLeadId)
+      
+      // Remover o grupo mesclado da lista e atualizar contadores
+      if (duplicatesData && duplicatesData.groups) {
+        const updatedGroups = duplicatesData.groups.filter((g: any) => g.group_id !== groupId)
+        const updatedTotalGroups = updatedGroups.length
+        const updatedTotalLeads = updatedGroups.reduce((sum: number, g: any) => sum + g.count, 0)
+        
+        setDuplicatesData({
+          ...duplicatesData,
+          total_duplicate_groups: updatedTotalGroups,
+          total_duplicate_leads: updatedTotalLeads,
+          groups: updatedGroups
+        })
+      }
+      
+      // Atualizar a lista de leads
+      fetchLeads()
+      
+      // Mostrar mensagem de sucesso
+      alert('Leads mesclados com sucesso!')
+    } catch (error: any) {
+      console.error('Erro ao mesclar duplicados:', error)
+      alert(error.response?.data?.detail || 'Erro ao mesclar duplicados')
+    } finally {
+      setMergingDuplicates(false)
+    }
   }
 
   const handleAssociateSequence = async (sequenceId: number) => {
@@ -753,8 +817,19 @@ export function Leads() {
           return
         }
         
+        // Adicionar filtro Top ICP se ativado
+        const filtersToUse = [...validFilters]
+        if (topIcpFilter) {
+          filtersToUse.push({
+            id: 'top-icp-filter',
+            field: 'icp_score',
+            operator: 'greater_than_or_equal',
+            value: 4
+          })
+        }
+        
         const filtersRequest = {
-          filters: validFilters.map(f => ({
+          filters: filtersToUse.map(f => ({
             field: f.field,
             operator: f.operator,
             value: f.value,
@@ -786,37 +861,64 @@ export function Leads() {
         }
       } else {
         // Usar endpoint legado se não houver filtros avançados
-        const params: any = {
-          skip: (currentPage - 1) * pageSize,
-          limit: pageSize
-        }
-        
-        if (statusFilter !== 'all') {
-          params.status = statusFilter
-        }
-        
-        if (sourceFilter !== 'all') {
-          params.source = sourceFilter
-        }
-        
-        if (searchTerm) {
-          params.search = searchTerm
-        }
-        
-        const queryString = new URLSearchParams(params).toString()
-        const response = await api.get(`/api/leads${queryString ? `?${queryString}` : ''}`)
-        setLeads(response.data)
-        
-        // Get total count from response header
-        const totalCount = response.headers['x-total-count']
-        if (totalCount) {
-          setTotalLeads(parseInt(totalCount, 10))
-        } else {
-          // Fallback estimation
-          if (response.data.length < pageSize) {
-            setTotalLeads((currentPage - 1) * pageSize + response.data.length)
+        // Mas se houver filtro Top ICP, usar endpoint de filtros
+        if (topIcpFilter) {
+          const filtersRequest = {
+            filters: [{
+              field: 'icp_score',
+              operator: 'greater_than_or_equal',
+              value: 4
+            }],
+            logic: 'AND',
+            search: searchTerm || undefined,
+            status: statusFilter !== 'all' ? statusFilter : undefined,
+            source: sourceFilter !== 'all' ? sourceFilter : undefined,
+            skip: (currentPage - 1) * pageSize,
+            limit: pageSize
+          }
+          
+          const response = await api.post('/api/leads/filter', filtersRequest)
+          setLeads(response.data)
+          
+          const totalCount = response.headers['x-total-count']
+          if (totalCount) {
+            setTotalLeads(parseInt(totalCount, 10))
           } else {
-            setTotalLeads(currentPage * pageSize + 1)
+            setTotalLeads(response.data.length)
+          }
+        } else {
+          const params: any = {
+            skip: (currentPage - 1) * pageSize,
+            limit: pageSize
+          }
+          
+          if (statusFilter !== 'all') {
+            params.status = statusFilter
+          }
+          
+          if (sourceFilter !== 'all') {
+            params.source = sourceFilter
+          }
+          
+          if (searchTerm) {
+            params.search = searchTerm
+          }
+          
+          const queryString = new URLSearchParams(params).toString()
+          const response = await api.get(`/api/leads${queryString ? `?${queryString}` : ''}`)
+          setLeads(response.data)
+          
+          // Get total count from response header
+          const totalCount = response.headers['x-total-count']
+          if (totalCount) {
+            setTotalLeads(parseInt(totalCount, 10))
+          } else {
+            // Fallback estimation
+            if (response.data.length < pageSize) {
+              setTotalLeads((currentPage - 1) * pageSize + response.data.length)
+            } else {
+              setTotalLeads(currentPage * pageSize + 1)
+            }
           }
         }
       }
@@ -880,6 +982,10 @@ export function Leads() {
         industry: formData.industry || null,
         company_size: formData.company_size || null,
         context: formData.context || null,
+        // Campos ICP
+        tech_stack: formData.tech_stack || null,
+        is_hiring: formData.is_hiring || false,
+        is_advertising: formData.is_advertising || false,
         // Campos Casa dos Dados
         razao_social: formData.razao_social || null,
         nome_fantasia: formData.nome_fantasia || null,
@@ -962,6 +1068,9 @@ export function Leads() {
         industry: '',
         company_size: '',
         context: '',
+        tech_stack: '',
+        is_hiring: false,
+        is_advertising: false,
         owner_id: null
       })
       fetchLeads()
@@ -1020,10 +1129,14 @@ export function Leads() {
       state: lead.state || '',
       zip_code: lead.zip_code || '',
       country: lead.country || '',
-      industry: lead.industry || '',
-      company_size: lead.company_size || '',
-      context: lead.context || '',
-      // Campos Casa dos Dados
+        industry: lead.industry || '',
+        company_size: lead.company_size || '',
+        context: lead.context || '',
+        // Campos ICP
+        tech_stack: lead.tech_stack || '',
+        is_hiring: lead.is_hiring || false,
+        is_advertising: lead.is_advertising || false,
+        // Campos Casa dos Dados
       razao_social: lead.razao_social || '',
       nome_fantasia: lead.nome_fantasia || '',
       cnpj: lead.cnpj || '',
@@ -1290,6 +1403,49 @@ export function Leads() {
         />
         <p className="text-xs text-muted-foreground">
           Este campo pode ser preenchido automaticamente quando uma tarefa de pesquisa for concluída.
+        </p>
+      </div>
+
+      {/* Seção Qualificação ICP */}
+      <div className="space-y-4 border-t pt-4">
+        <h3 className="text-lg font-semibold">Qualificação ICP (Ideal Customer Profile)</h3>
+        <div className="grid gap-4 md:grid-cols-2">
+          <div className="space-y-2 md:col-span-2">
+            <label className="text-sm font-medium">Stack Tecnológico</label>
+            <Input
+              value={formData.tech_stack}
+              onChange={(e) => setFormData({ ...formData, tech_stack: e.target.value })}
+              placeholder="Ex: Python, Django, React, PostgreSQL..."
+            />
+            <p className="text-xs text-muted-foreground">
+              Tecnologias utilizadas pela empresa
+            </p>
+          </div>
+          <div className="space-y-2">
+            <label className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                checked={formData.is_hiring}
+                onChange={(e) => setFormData({ ...formData, is_hiring: e.target.checked })}
+                className="h-4 w-4"
+              />
+              <span className="text-sm font-medium">Está Contratando</span>
+            </label>
+          </div>
+          <div className="space-y-2">
+            <label className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                checked={formData.is_advertising}
+                onChange={(e) => setFormData({ ...formData, is_advertising: e.target.checked })}
+                className="h-4 w-4"
+              />
+              <span className="text-sm font-medium">Está Fazendo Publicidade</span>
+            </label>
+          </div>
+        </div>
+        <p className="text-xs text-muted-foreground">
+          Preencha esses campos para melhorar a qualificação ICP do lead. O score será calculado automaticamente.
         </p>
       </div>
 
@@ -1770,6 +1926,9 @@ export function Leads() {
               industry: '',
               company_size: '',
               context: '',
+              tech_stack: '',
+              is_hiring: false,
+              is_advertising: false,
               razao_social: '',
               nome_fantasia: '',
               cnpj: '',
@@ -1991,6 +2150,14 @@ export function Leads() {
           >
             <Upload className="mr-2 h-4 w-4" />
             Importar CSV
+          </Button>
+          <Button
+            variant="outline"
+            onClick={() => setShowDuplicatesModal(true)}
+            className="border-orange-300 hover:bg-orange-50 dark:hover:bg-orange-950/20"
+          >
+            <Copy className="mr-2 h-4 w-4" />
+            Analisar Duplicados
           </Button>
           <Button 
             onClick={() => setShowCreateModal(true)}
@@ -2283,6 +2450,25 @@ export function Leads() {
             </div>
           </div>
           
+          {/* Filtros Rápidos */}
+          <div className="flex items-center gap-2 mb-4">
+            <Button
+              type="button"
+              variant={topIcpFilter ? "default" : "outline"}
+              size="sm"
+              onClick={() => {
+                setTopIcpFilter(!topIcpFilter)
+                setCurrentPage(1) // Resetar para primeira página ao aplicar filtro
+              }}
+              className={topIcpFilter ? "bg-purple-600 hover:bg-purple-700 text-white" : ""}
+            >
+              <span className="flex items-center gap-1">
+                <span className="text-sm">★★★★</span>
+                Top ICP (Score 4+)
+              </span>
+            </Button>
+          </div>
+          
           {/* Filtros Avançados */}
           <AdvancedFilters
             filters={advancedFilters}
@@ -2331,6 +2517,9 @@ export function Leads() {
             industry: '',
             company_size: '',
             context: '',
+            tech_stack: '',
+            is_hiring: false,
+            is_advertising: false,
             razao_social: '',
             nome_fantasia: '',
             cnpj: '',
@@ -2499,6 +2688,20 @@ export function Leads() {
                           }`}>
                             <TrendingUp className="h-3 w-3" />
                             Score: {lead.score}
+                          </span>
+                        )}
+                        {lead.icp_score !== null && lead.icp_score > 0 && (
+                          <span className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-semibold ${
+                            lead.icp_score >= 4
+                              ? 'bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-400'
+                              : lead.icp_score >= 3
+                              ? 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400'
+                              : 'bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-400'
+                          }`}>
+                            <span className="flex items-center gap-0.5">
+                              {'★'.repeat(lead.icp_score)}{'☆'.repeat(5 - lead.icp_score)}
+                            </span>
+                            ICP: {lead.icp_score}/5
                           </span>
                         )}
                       </CardTitle>
@@ -3207,6 +3410,44 @@ export function Leads() {
                         <p className="text-base mt-1">{selectedLeadDetail.company_size}</p>
                       </div>
                     )}
+                    {selectedLeadDetail.tech_stack && (
+                      <div className="md:col-span-2">
+                        <label className="text-sm font-medium text-muted-foreground">Stack Tecnológico</label>
+                        <p className="text-base mt-1">{selectedLeadDetail.tech_stack}</p>
+                      </div>
+                    )}
+                    {(selectedLeadDetail.is_hiring !== null || selectedLeadDetail.is_advertising !== null) && (
+                      <div className="md:col-span-2 flex gap-4">
+                        {selectedLeadDetail.is_hiring !== null && (
+                          <div>
+                            <label className="text-sm font-medium text-muted-foreground">Está Contratando</label>
+                            <p className="text-base mt-1">
+                              <span className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold ${
+                                selectedLeadDetail.is_hiring
+                                  ? 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400'
+                                  : 'bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-400'
+                              }`}>
+                                {selectedLeadDetail.is_hiring ? 'Sim' : 'Não'}
+                              </span>
+                            </p>
+                          </div>
+                        )}
+                        {selectedLeadDetail.is_advertising !== null && (
+                          <div>
+                            <label className="text-sm font-medium text-muted-foreground">Está Fazendo Publicidade</label>
+                            <p className="text-base mt-1">
+                              <span className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold ${
+                                selectedLeadDetail.is_advertising
+                                  ? 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400'
+                                  : 'bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-400'
+                              }`}>
+                                {selectedLeadDetail.is_advertising ? 'Sim' : 'Não'}
+                              </span>
+                            </p>
+                          </div>
+                        )}
+                      </div>
+                    )}
                     {selectedLeadDetail.website && (
                       <div className="md:col-span-2">
                         <label className="text-sm font-medium text-muted-foreground">Site da Empresa</label>
@@ -3899,6 +4140,209 @@ export function Leads() {
             </div>
           </Card>
         </div>
+      )}
+
+      {/* Duplicates Analysis Modal */}
+      {showDuplicatesModal && (
+        <Dialog open={showDuplicatesModal} onOpenChange={setShowDuplicatesModal}>
+          <DialogContent className="max-w-6xl max-h-[90vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <Copy className="h-5 w-5" />
+                Análise de Leads Duplicados
+              </DialogTitle>
+            </DialogHeader>
+            
+            <div className="space-y-4">
+              {!duplicatesData && (
+                <div className="text-center py-8">
+                  <p className="text-muted-foreground mb-4">
+                    Clique no botão abaixo para analisar leads duplicados usando critérios inteligentes:
+                  </p>
+                  <ul className="text-sm text-left text-muted-foreground mb-6 space-y-2 max-w-md mx-auto">
+                    <li>• Email igual</li>
+                    <li>• CNPJ igual</li>
+                    <li>• Telefone igual</li>
+                    <li>• Nome similar (fuzzy matching)</li>
+                    <li>• Nome + Empresa similar</li>
+                  </ul>
+                  <Button
+                    onClick={handleAnalyzeDuplicates}
+                    disabled={analyzingDuplicates}
+                    className="bg-gradient-to-r from-orange-600 to-orange-700 hover:from-orange-700 hover:to-orange-800"
+                  >
+                    {analyzingDuplicates ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Analisando...
+                      </>
+                    ) : (
+                      <>
+                        <Search className="mr-2 h-4 w-4" />
+                        Iniciar Análise
+                      </>
+                    )}
+                  </Button>
+                </div>
+              )}
+
+              {duplicatesData && (
+                <div className="space-y-6">
+                  <div className="flex items-center justify-between p-4 bg-orange-50 dark:bg-orange-950/20 rounded-lg">
+                    <div>
+                      <p className="font-semibold text-orange-900 dark:text-orange-100">
+                        {duplicatesData.total_duplicate_groups} grupo(s) de duplicados encontrado(s)
+                      </p>
+                      <p className="text-sm text-orange-700 dark:text-orange-300">
+                        Total de {duplicatesData.total_duplicate_leads} leads duplicados
+                      </p>
+                    </div>
+                    <Button
+                      variant="outline"
+                      onClick={() => {
+                        setDuplicatesData(null)
+                        handleAnalyzeDuplicates()
+                      }}
+                      disabled={analyzingDuplicates}
+                    >
+                      <Search className="mr-2 h-4 w-4" />
+                      Reanalisar
+                    </Button>
+                  </div>
+
+                  {duplicatesData.groups && duplicatesData.groups.length > 0 ? (
+                    <div className="space-y-4">
+                      {duplicatesData.groups.map((group: any) => (
+                        <Card key={group.group_id} className="border-l-4 border-l-orange-500">
+                          <CardHeader>
+                            <div className="flex items-center justify-between">
+                              <CardTitle className="text-lg">
+                                Grupo {group.group_id} - {group.count} lead(s) duplicado(s)
+                              </CardTitle>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => {
+                                  const leadIds = group.leads.map((l: any) => l.id)
+                                  const keepId = group.leads[0].id // Manter o primeiro (mais antigo)
+                                  if (confirm(`Deseja mesclar ${group.count - 1} lead(s) no lead ID ${keepId}?`)) {
+                                    handleMergeDuplicates(leadIds, keepId, group.group_id)
+                                  }
+                                }}
+                                disabled={mergingDuplicates}
+                              >
+                                {mergingDuplicates ? (
+                                  <>
+                                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                    Mesclando...
+                                  </>
+                                ) : (
+                                  <>
+                                    <Merge className="mr-2 h-4 w-4" />
+                                    Mesclar Todos
+                                  </>
+                                )}
+                              </Button>
+                            </div>
+                            <CardDescription>
+                              <div className="flex flex-wrap gap-2 mt-2">
+                                {group.reasons.map((reason: string, idx: number) => (
+                                  <span
+                                    key={idx}
+                                    className="px-2 py-1 text-xs bg-orange-100 dark:bg-orange-900/30 text-orange-800 dark:text-orange-200 rounded"
+                                  >
+                                    {reason}
+                                  </span>
+                                ))}
+                              </div>
+                            </CardDescription>
+                          </CardHeader>
+                          <CardContent>
+                            <div className="space-y-3">
+                              {group.leads.map((lead: any, idx: number) => (
+                                <div
+                                  key={lead.id}
+                                  className={`p-4 border rounded-lg ${
+                                    idx === 0 ? 'bg-blue-50 dark:bg-blue-950/20 border-blue-300' : 'bg-gray-50 dark:bg-gray-900/20'
+                                  }`}
+                                >
+                                  <div className="flex items-start justify-between">
+                                    <div className="flex-1">
+                                      <div className="flex items-center gap-2 mb-2">
+                                        <span className="font-semibold">{lead.name}</span>
+                                        {idx === 0 && (
+                                          <span className="px-2 py-1 text-xs bg-blue-200 dark:bg-blue-800 text-blue-800 dark:text-blue-200 rounded">
+                                            Principal (será mantido)
+                                          </span>
+                                        )}
+                                        {lead.status && (
+                                          <span className={`px-2 py-1 text-xs rounded ${
+                                            lead.status === 'won' ? 'bg-green-100 text-green-800' :
+                                            lead.status === 'lost' ? 'bg-red-100 text-red-800' :
+                                            'bg-gray-100 text-gray-800'
+                                          }`}>
+                                            {lead.status}
+                                          </span>
+                                        )}
+                                      </div>
+                                      <div className="grid grid-cols-2 gap-2 text-sm text-muted-foreground">
+                                        {lead.email && (
+                                          <div className="flex items-center gap-1">
+                                            <Mail className="h-3 w-3" />
+                                            {lead.email}
+                                          </div>
+                                        )}
+                                        {lead.phone && (
+                                          <div className="flex items-center gap-1">
+                                            <Phone className="h-3 w-3" />
+                                            {lead.phone}
+                                          </div>
+                                        )}
+                                        {lead.company && (
+                                          <div className="flex items-center gap-1">
+                                            <Building className="h-3 w-3" />
+                                            {lead.company}
+                                          </div>
+                                        )}
+                                        {lead.cnpj && (
+                                          <div className="flex items-center gap-1">
+                                            <FileText className="h-3 w-3" />
+                                            {lead.cnpj}
+                                          </div>
+                                        )}
+                                      </div>
+                                      {lead.score !== null && (
+                                        <div className="mt-2 text-xs">
+                                          Score: {lead.score} | ICP: {lead.icp_score || 0}/5
+                                        </div>
+                                      )}
+                                    </div>
+                                    <div className="text-xs text-muted-foreground ml-4">
+                                      ID: {lead.id}
+                                      {lead.created_at && (
+                                        <div className="mt-1">
+                                          {new Date(lead.created_at).toLocaleDateString('pt-BR')}
+                                        </div>
+                                      )}
+                                    </div>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          </CardContent>
+                        </Card>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="text-center py-8 text-muted-foreground">
+                      Nenhum duplicado encontrado! 🎉
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          </DialogContent>
+        </Dialog>
       )}
     </div>
   )

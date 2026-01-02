@@ -16,3 +16,5 @@ echo "🚀 Iniciando servidor de desenvolvimento..."
 exec "$@"
 
 
+
+

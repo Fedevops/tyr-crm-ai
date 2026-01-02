@@ -61,6 +61,11 @@ def migrate_lead_table():
                 ("industry", "VARCHAR(255)"),
                 ("company_size", "VARCHAR(100)"),
                 ("context", "TEXT"),
+                # Campos de Qualificação ICP
+                ("tech_stack", "TEXT"),
+                ("is_hiring", "BOOLEAN DEFAULT FALSE"),
+                ("is_advertising", "BOOLEAN DEFAULT FALSE"),
+                ("icp_score", "INTEGER DEFAULT 0"),
                 # Campos Casa dos Dados
                 ("razao_social", "VARCHAR(500)"),
                 ("nome_fantasia", "VARCHAR(500)"),

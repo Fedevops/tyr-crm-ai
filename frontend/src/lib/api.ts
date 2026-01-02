@@ -266,6 +266,14 @@ export const financeApi = {
     }),
 }
 
+// Leads API functions
+export const leadsApi = {
+  analyzeDuplicates: (minSimilarity?: number) => 
+    api.get('/api/leads/analyze-duplicates', { params: { min_similarity: minSimilarity } }),
+  mergeDuplicates: (leadIds: number[], keepLeadId: number) => 
+    api.post('/api/leads/merge-duplicates', { lead_ids: leadIds, keep_lead_id: keepLeadId }),
+}
+
 export default api
 
 

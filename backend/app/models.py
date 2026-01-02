@@ -191,6 +191,11 @@ class Lead(SQLModel, table=True):
     industry: Optional[str] = None  # Setor/Indústria
     company_size: Optional[str] = None  # Tamanho da empresa (ex: "50-200 funcionários")
     context: Optional[str] = None  # Contexto/resumo da empresa, dores, oportunidades
+    # Campos de Qualificação ICP (Ideal Customer Profile)
+    tech_stack: Optional[str] = None  # Stack tecnológico usado pela empresa
+    is_hiring: Optional[bool] = Field(default=False)  # Se a empresa está contratando
+    is_advertising: Optional[bool] = Field(default=False)  # Se a empresa está fazendo publicidade
+    icp_score: Optional[int] = Field(default=0)  # Score de qualificação ICP (0-5)
     # Campos Casa dos Dados
     razao_social: Optional[str] = None
     nome_fantasia: Optional[str] = None
@@ -266,6 +271,11 @@ class LeadCreate(SQLModel):
     industry: Optional[str] = None
     company_size: Optional[str] = None
     context: Optional[str] = None
+    # Campos de Qualificação ICP
+    tech_stack: Optional[str] = None
+    is_hiring: Optional[bool] = False
+    is_advertising: Optional[bool] = False
+    icp_score: Optional[int] = 0
     # Campos Casa dos Dados
     razao_social: Optional[str] = None
     nome_fantasia: Optional[str] = None
@@ -339,6 +349,11 @@ class LeadResponse(SQLModel):
     industry: Optional[str]
     company_size: Optional[str]
     context: Optional[str]
+    # Campos de Qualificação ICP
+    tech_stack: Optional[str]
+    is_hiring: Optional[bool]
+    is_advertising: Optional[bool]
+    icp_score: Optional[int]
     # Campos Casa dos Dados
     razao_social: Optional[str]
     nome_fantasia: Optional[str]

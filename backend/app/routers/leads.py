@@ -5,6 +5,7 @@ import io
 import json
 import asyncio
 from datetime import datetime
+from difflib import SequenceMatcher
 from fastapi import APIRouter, Depends, HTTPException, status, Query, UploadFile, File, BackgroundTasks, Body
 from fastapi.responses import Response, JSONResponse
 from sqlmodel import Session, select, or_, and_, func
@@ -21,7 +22,7 @@ from app.services.enrichment_service import enrich_lead
 from app.services.kpi_service import track_kpi_activity
 from app.models import GoalMetricType
 from app.utils.pdf_parser import extract_text_from_pdf, parse_linkedin_data_with_llm
-from app.services.lead_scoring import calculate_lead_score, should_recalculate_score
+from app.services.lead_scoring import calculate_lead_score, should_recalculate_score, calculate_icp_score, should_recalculate_icp_score
 from app.services.insight_generator import generate_lead_insight
 import pandas as pd
 import logging
@@ -85,6 +86,7 @@ FIELD_TYPES: Dict[str, str] = {
     "score": "number",
     "capital_social": "number",
     "assigned_to": "number",
+    "icp_score": "number",
     
     # Campos de data
     "data_abertura": "date",
@@ -98,6 +100,8 @@ FIELD_TYPES: Dict[str, str] = {
     
     # Campos booleanos
     "simples_nacional": "boolean",
+    "is_hiring": "boolean",
+    "is_advertising": "boolean",
     
     # Campos de enum/dropdown
     "status": "enum",
@@ -159,7 +163,15 @@ async def get_filter_fields():
         ("company_size", "string", "Tamanho da Empresa"),
     ]
     
-    all_fields = basic_fields + fiscal_fields + enrichment_fields
+    # Campos de Qualificação ICP
+    icp_fields = [
+        ("tech_stack", "string", "Stack Tecnológico"),
+        ("is_hiring", "boolean", "Está Contratando"),
+        ("is_advertising", "boolean", "Está Fazendo Publicidade"),
+        ("icp_score", "number", "Score ICP"),
+    ]
+    
+    all_fields = basic_fields + fiscal_fields + enrichment_fields + icp_fields
     
     for field_name, field_type, label in all_fields:
         operators = []
@@ -224,6 +236,272 @@ async def get_filter_fields():
     return {"fields": fields_info}
 
 
+def calculate_similarity(str1: str, str2: str) -> float:
+    """Calcula similaridade entre duas strings (0.0 a 1.0)"""
+    if not str1 or not str2:
+        return 0.0
+    str1_clean = str1.strip().lower()
+    str2_clean = str2.strip().lower()
+    if str1_clean == str2_clean:
+        return 1.0
+    return SequenceMatcher(None, str1_clean, str2_clean).ratio()
+
+
+def normalize_phone(phone: Optional[str]) -> Optional[str]:
+    """Normaliza telefone removendo caracteres especiais"""
+    if not phone:
+        return None
+    return ''.join(filter(str.isdigit, phone))
+
+
+def normalize_email(email: Optional[str]) -> Optional[str]:
+    """Normaliza email para comparação"""
+    if not email:
+        return None
+    return email.strip().lower()
+
+
+@router.get("/analyze-duplicates")
+async def analyze_duplicates(
+    min_similarity: float = Query(0.85, ge=0.0, le=1.0, description="Similaridade mínima para considerar duplicado (0.0 a 1.0)"),
+    session: Session = Depends(get_session),
+    current_user: User = Depends(get_current_active_user)
+):
+    """
+    Analisa leads duplicados usando critérios inteligentes:
+    - Nome similar (fuzzy matching)
+    - Email igual
+    - CNPJ igual
+    - Telefone igual
+    - Nome + empresa similar
+    """
+    try:
+        # Buscar todos os leads do tenant
+        all_leads = session.exec(
+            select(Lead).where(Lead.tenant_id == current_user.tenant_id)
+        ).all()
+        
+        duplicates_groups: List[Dict[str, Any]] = []
+        processed_ids = set()
+        
+        for i, lead1 in enumerate(all_leads):
+            if lead1.id in processed_ids:
+                continue
+            
+            duplicate_group = [lead1]
+            reasons = []
+            
+            for j, lead2 in enumerate(all_leads[i+1:], start=i+1):
+                if lead2.id in processed_ids:
+                    continue
+                
+                is_duplicate = False
+                duplicate_reasons = []
+                
+                # Critério 1: Email igual (normalizado)
+                email1 = normalize_email(lead1.email)
+                email2 = normalize_email(lead2.email)
+                if email1 and email2 and email1 == email2:
+                    is_duplicate = True
+                    duplicate_reasons.append(f"Email igual: {email1}")
+                
+                # Critério 2: CNPJ igual
+                cnpj1 = lead1.cnpj.replace('.', '').replace('/', '').replace('-', '') if lead1.cnpj else ''
+                cnpj2 = lead2.cnpj.replace('.', '').replace('/', '').replace('-', '') if lead2.cnpj else ''
+                if cnpj1 and cnpj2 and cnpj1 == cnpj2 and len(cnpj1) == 14:
+                    is_duplicate = True
+                    duplicate_reasons.append(f"CNPJ igual: {cnpj1}")
+                
+                # Critério 3: Telefone igual (normalizado)
+                phone1 = normalize_phone(lead1.phone)
+                phone2 = normalize_phone(lead2.phone)
+                if phone1 and phone2 and phone1 == phone2 and len(phone1) >= 10:
+                    is_duplicate = True
+                    duplicate_reasons.append(f"Telefone igual: {phone1}")
+                
+                # Critério 4: Nome similar (fuzzy matching)
+                name_similarity = calculate_similarity(lead1.name or '', lead2.name or '')
+                if name_similarity >= min_similarity:
+                    is_duplicate = True
+                    duplicate_reasons.append(f"Nome similar ({name_similarity:.0%}): '{lead1.name}' ≈ '{lead2.name}'")
+                
+                # Critério 5: Nome + Empresa similar
+                if lead1.company and lead2.company:
+                    company_similarity = calculate_similarity(lead1.company, lead2.company)
+                    combined_similarity = (name_similarity + company_similarity) / 2
+                    if combined_similarity >= min_similarity and name_similarity >= 0.7:
+                        is_duplicate = True
+                        duplicate_reasons.append(f"Nome + Empresa similar ({combined_similarity:.0%}): '{lead1.name} @ {lead1.company}' ≈ '{lead2.name} @ {lead2.company}'")
+                
+                if is_duplicate:
+                    duplicate_group.append(lead2)
+                    if not reasons:
+                        reasons = duplicate_reasons
+                    else:
+                        # Adicionar razões únicas
+                        for reason in duplicate_reasons:
+                            if reason not in reasons:
+                                reasons.append(reason)
+            
+            # Se encontrou duplicados, adicionar ao grupo
+            if len(duplicate_group) > 1:
+                # Marcar todos os IDs como processados
+                for lead in duplicate_group:
+                    processed_ids.add(lead.id)
+                
+                # Ordenar por ID (mais antigo primeiro)
+                duplicate_group.sort(key=lambda x: x.id)
+                
+                duplicates_groups.append({
+                    "group_id": len(duplicates_groups) + 1,
+                    "leads": [
+                        {
+                            "id": lead.id,
+                            "name": lead.name,
+                            "email": lead.email,
+                            "phone": lead.phone,
+                            "company": lead.company,
+                            "cnpj": lead.cnpj,
+                            "status": lead.status.value if lead.status else None,
+                            "source": lead.source,
+                            "created_at": lead.created_at.isoformat() if lead.created_at else None,
+                            "score": lead.score,
+                            "icp_score": lead.icp_score
+                        }
+                        for lead in duplicate_group
+                    ],
+                    "reasons": reasons,
+                    "count": len(duplicate_group)
+                })
+        
+        return {
+            "success": True,
+            "total_duplicate_groups": len(duplicates_groups),
+            "total_duplicate_leads": sum(group["count"] for group in duplicates_groups),
+            "groups": duplicates_groups
+        }
+        
+    except Exception as e:
+        logger.error(f"❌ [DUPLICATES] Erro ao analisar duplicados: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Erro ao analisar duplicados: {str(e)}"
+        )
+
+
+@router.post("/merge-duplicates")
+async def merge_duplicates(
+    lead_ids: List[int] = Body(..., description="IDs dos leads a serem mesclados"),
+    keep_lead_id: int = Body(..., description="ID do lead a ser mantido (os outros serão mesclados nele)"),
+    session: Session = Depends(get_session),
+    current_user: User = Depends(get_current_active_user)
+):
+    """
+    Mescla leads duplicados em um único lead, mantendo o lead especificado e mesclando dados dos outros
+    """
+    try:
+        if keep_lead_id not in lead_ids:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="O lead a ser mantido deve estar na lista de IDs"
+            )
+        
+        # Buscar o lead principal
+        main_lead = session.get(Lead, keep_lead_id)
+        if not main_lead:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Lead principal não encontrado")
+        
+        require_ownership(main_lead, current_user)
+        
+        # Buscar leads a serem mesclados
+        leads_to_merge = []
+        for lead_id in lead_ids:
+            if lead_id == keep_lead_id:
+                continue
+            lead = session.get(Lead, lead_id)
+            if lead:
+                require_ownership(lead, current_user)
+                leads_to_merge.append(lead)
+        
+        # Mesclar dados dos outros leads no principal
+        for lead in leads_to_merge:
+            # Mesclar campos vazios do principal com dados dos outros
+            if not main_lead.email and lead.email:
+                main_lead.email = lead.email
+            if not main_lead.phone and lead.phone:
+                main_lead.phone = lead.phone
+            if not main_lead.company and lead.company:
+                main_lead.company = lead.company
+            if not main_lead.cnpj and lead.cnpj:
+                main_lead.cnpj = lead.cnpj
+            if not main_lead.address and lead.address:
+                main_lead.address = lead.address
+            if not main_lead.city and lead.city:
+                main_lead.city = lead.city
+            if not main_lead.state and lead.state:
+                main_lead.state = lead.state
+            if not main_lead.website and lead.website:
+                main_lead.website = lead.website
+            if not main_lead.linkedin_url and lead.linkedin_url:
+                main_lead.linkedin_url = lead.linkedin_url
+            if not main_lead.notes and lead.notes:
+                main_lead.notes = lead.notes
+            elif lead.notes and main_lead.notes:
+                # Combinar notas
+                main_lead.notes += f"\n--- Notas do lead duplicado (ID: {lead.id}) ---\n{lead.notes}"
+            
+            # Manter o maior score
+            if lead.score and (not main_lead.score or lead.score > main_lead.score):
+                main_lead.score = lead.score
+            
+            # Manter o maior ICP score
+            if lead.icp_score and (not main_lead.icp_score or lead.icp_score > main_lead.icp_score):
+                main_lead.icp_score = lead.icp_score
+            
+            # Manter o status mais avançado (se aplicável)
+            status_order = {
+                'won': 8, 'lost': 7, 'negotiation': 6, 'proposal_sent': 5,
+                'meeting_scheduled': 4, 'qualified': 3, 'contacted': 2, 'new': 1, 'nurturing': 0
+            }
+            if lead.status and main_lead.status:
+                if status_order.get(lead.status.value, 0) > status_order.get(main_lead.status.value, 0):
+                    main_lead.status = lead.status
+            
+            # Deletar o lead duplicado
+            session.delete(lead)
+        
+        session.add(main_lead)
+        session.commit()
+        session.refresh(main_lead)
+        
+        logger.info(f"✅ [DUPLICATES] {len(leads_to_merge)} leads mesclados no lead {keep_lead_id}")
+        
+        return {
+            "success": True,
+            "message": f"{len(leads_to_merge)} leads mesclados com sucesso",
+            "merged_lead": {
+                "id": main_lead.id,
+                "name": main_lead.name,
+                "email": main_lead.email,
+                "phone": main_lead.phone,
+                "company": main_lead.company
+            }
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ [DUPLICATES] Erro ao mesclar leads: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Erro ao mesclar leads: {str(e)}"
+        )
+
+
 @router.post("", response_model=LeadResponse)
 async def create_lead(
     lead_data: LeadCreate,
@@ -258,6 +536,16 @@ async def create_lead(
     except Exception as score_error:
         logger.warning(f"⚠️ [SCORING] Erro ao calcular score na criação do lead {lead.id}: {score_error}")
         # Não falhar a operação principal se o scoring falhar
+    
+    # Calcular ICP score automaticamente
+    try:
+        lead.icp_score = calculate_icp_score(lead)
+        session.add(lead)
+        session.commit()
+        session.refresh(lead)
+    except Exception as icp_error:
+        logger.warning(f"⚠️ [ICP SCORING] Erro ao calcular ICP score na criação do lead {lead.id}: {icp_error}")
+        # Não falhar a operação principal se o ICP scoring falhar
     
     # Track KPI activity for lead creation
     try:
@@ -1244,6 +1532,10 @@ async def update_lead(
         'capital_social': lead.capital_social,
         'porte': lead.porte,
         'industry': lead.industry,
+        'company_size': lead.company_size,
+        'tech_stack': lead.tech_stack,
+        'is_hiring': lead.is_hiring,
+        'is_advertising': lead.is_advertising,
         'status': lead.status,
         'last_contact': lead.last_contact,
         'next_followup': lead.next_followup,
@@ -1306,6 +1598,17 @@ async def update_lead(
         except Exception as score_error:
             logger.warning(f"⚠️ [SCORING] Erro ao recalcular score do lead {lead.id}: {score_error}")
             # Não falhar a operação principal se o scoring falhar
+    
+    # Recalcular ICP score se houver mudanças nos campos ICP
+    if should_recalculate_icp_score(old_lead_obj, lead):
+        try:
+            lead.icp_score = calculate_icp_score(lead)
+            session.add(lead)
+            session.commit()
+            session.refresh(lead)
+        except Exception as icp_error:
+            logger.warning(f"⚠️ [ICP SCORING] Erro ao recalcular ICP score do lead {lead.id}: {icp_error}")
+            # Não falhar a operação principal se o ICP scoring falhar
     
     return lead
 

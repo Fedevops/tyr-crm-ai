@@ -573,19 +573,21 @@ export function Prospecting() {
                                   telefone = empresa.contato_telefonico.completo || 
                                             (empresa.contato_telefonico.ddd && empresa.contato_telefonico.numero 
                                               ? `(${empresa.contato_telefonico.ddd}) ${empresa.contato_telefonico.numero}`
-                                              : empresa.contato_telefonico.numero);
+                                              : empresa.contato_telefonico.numero || null);
                                 } else if (Array.isArray(empresa.contato_telefonico)) {
                                   // É um array - pegar o primeiro e verificar se é objeto
                                   const primeiro = empresa.contato_telefonico[0];
-                                  if (typeof primeiro === 'object' && primeiro.completo) {
+                                  if (typeof primeiro === 'object' && primeiro !== null) {
+                                    // É um objeto - extrair string
                                     telefone = primeiro.completo || 
                                               (primeiro.ddd && primeiro.numero 
                                                 ? `(${primeiro.ddd}) ${primeiro.numero}`
-                                                : primeiro.numero);
-                                  } else {
+                                                : primeiro.numero || null);
+                                  } else if (typeof primeiro === 'string') {
+                                    // É string
                                     telefone = primeiro;
                                   }
-                                } else {
+                                } else if (typeof empresa.contato_telefonico === 'string') {
                                   // É string
                                   telefone = empresa.contato_telefonico;
                                 }
@@ -594,7 +596,7 @@ export function Prospecting() {
                                 telefone = Array.isArray(empresa.telefone) ? empresa.telefone[0] : empresa.telefone;
                               }
                               
-                              return telefone && (
+                              return telefone && typeof telefone === 'string' && (
                                 <div className="text-blue-600 font-medium">📞 {telefone}</div>
                               );
                             })()}
@@ -605,16 +607,18 @@ export function Prospecting() {
                               if (empresa.contato_email) {
                                 if (typeof empresa.contato_email === 'object' && !Array.isArray(empresa.contato_email)) {
                                   // É um objeto com {email, valido, dominio}
-                                  email = empresa.contato_email.email;
+                                  email = empresa.contato_email.email || null;
                                 } else if (Array.isArray(empresa.contato_email)) {
                                   // É um array - pegar o primeiro e verificar se é objeto
                                   const primeiro = empresa.contato_email[0];
-                                  if (typeof primeiro === 'object' && primeiro.email) {
-                                    email = primeiro.email;
-                                  } else {
+                                  if (typeof primeiro === 'object' && primeiro !== null) {
+                                    // É um objeto - extrair string
+                                    email = primeiro.email || null;
+                                  } else if (typeof primeiro === 'string') {
+                                    // É string
                                     email = primeiro;
                                   }
-                                } else {
+                                } else if (typeof empresa.contato_email === 'string') {
                                   // É string
                                   email = empresa.contato_email;
                                 }
@@ -623,7 +627,7 @@ export function Prospecting() {
                                 email = Array.isArray(empresa.email) ? empresa.email[0] : empresa.email;
                               }
                               
-                              return email && (
+                              return email && typeof email === 'string' && (
                                 <div className="text-blue-600 font-medium">✉️ {email}</div>
                               );
                             })()}

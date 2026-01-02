@@ -240,3 +240,81 @@ def should_recalculate_score(old_lead: Optional[Lead], new_lead: Lead) -> bool:
     
     return False
 
+
+def calculate_icp_score(lead: Lead) -> int:
+    """
+    Calcula o score de qualificação ICP (Ideal Customer Profile) do lead
+    baseado nos campos de qualificação preenchidos.
+    
+    Args:
+        lead: Lead para calcular ICP score
+        
+    Returns:
+        Score entre 0-5
+    """
+    try:
+        score = 0
+        
+        # Industry preenchido (1 ponto)
+        if lead.industry and lead.industry.strip():
+            score += 1
+        
+        # Company size preenchido (1 ponto)
+        if lead.company_size and lead.company_size.strip():
+            score += 1
+        
+        # Tech stack preenchido (1 ponto)
+        if lead.tech_stack and lead.tech_stack.strip():
+            score += 1
+        
+        # Está contratando (1 ponto)
+        if lead.is_hiring:
+            score += 1
+        
+        # Está fazendo publicidade (1 ponto)
+        if lead.is_advertising:
+            score += 1
+        
+        # Garantir que está entre 0-5
+        final_score = max(0, min(5, score))
+        
+        logger.debug(
+            f"🎯 [ICP SCORING] Lead {lead.id} ({lead.name}): "
+            f"Industry={bool(lead.industry)}, CompanySize={bool(lead.company_size)}, "
+            f"TechStack={bool(lead.tech_stack)}, IsHiring={lead.is_hiring}, "
+            f"IsAdvertising={lead.is_advertising}, ICP Score={final_score}"
+        )
+        
+        return final_score
+        
+    except Exception as e:
+        logger.error(f"❌ [ICP SCORING] Erro ao calcular ICP score do lead {lead.id}: {e}")
+        # Em caso de erro, retornar score mínimo
+        return 0
+
+
+def should_recalculate_icp_score(old_lead: Optional[Lead], new_lead: Lead) -> bool:
+    """
+    Verifica se o ICP score deve ser recalculado baseado em mudanças nos campos ICP
+    
+    Args:
+        old_lead: Lead antes da atualização (None se for criação)
+        new_lead: Lead após atualização
+        
+    Returns:
+        True se deve recalcular, False caso contrário
+    """
+    # Se for criação, sempre recalcular
+    if old_lead is None:
+        return True
+    
+    # Verificar mudanças nos campos ICP
+    if (old_lead.industry != new_lead.industry or
+        old_lead.company_size != new_lead.company_size or
+        old_lead.tech_stack != new_lead.tech_stack or
+        old_lead.is_hiring != new_lead.is_hiring or
+        old_lead.is_advertising != new_lead.is_advertising):
+        return True
+    
+    return False
+

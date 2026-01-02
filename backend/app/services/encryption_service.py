@@ -105,3 +105,5 @@ def decrypt_credentials(encrypted_credentials: str) -> Dict[str, Any]:
         raise ValueError(f"Falha ao descriptografar credenciais: {str(e)}")
 
 
+
+

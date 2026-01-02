@@ -10,6 +10,7 @@ from fastapi import APIRouter, Depends, HTTPException, status, Query, Background
 from fastapi.responses import JSONResponse
 from sqlmodel import Session, select, and_
 from pydantic import BaseModel, Field
+from difflib import SequenceMatcher
 import httpx
 import pandas as pd
 import io
@@ -22,6 +23,104 @@ from app.services.enrichment_service import enrich_lead
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
+
+
+def calculate_similarity(str1: str, str2: str) -> float:
+    """Calcula similaridade entre duas strings (0.0 a 1.0)"""
+    if not str1 or not str2:
+        return 0.0
+    str1_clean = str1.strip().lower()
+    str2_clean = str2.strip().lower()
+    if str1_clean == str2_clean:
+        return 1.0
+    return SequenceMatcher(None, str1_clean, str2_clean).ratio()
+
+
+def normalize_phone(phone: Optional[str]) -> Optional[str]:
+    """Normaliza telefone removendo caracteres especiais"""
+    if not phone:
+        return None
+    return ''.join(filter(str.isdigit, phone))
+
+
+def normalize_email(email: Optional[str]) -> Optional[str]:
+    """Normaliza email para comparação"""
+    if not email:
+        return None
+    return email.strip().lower()
+
+
+def find_duplicate_lead(
+    session: Session,
+    tenant_id: int,
+    name: str,
+    email: Optional[str] = None,
+    phone: Optional[str] = None,
+    cnpj: Optional[str] = None,
+    company: Optional[str] = None,
+    min_similarity: float = 0.85
+) -> Optional[Lead]:
+    """
+    Encontra lead duplicado usando critérios inteligentes:
+    - Email igual (normalizado)
+    - CNPJ igual
+    - Telefone igual (normalizado)
+    - Nome similar (fuzzy matching)
+    - Nome + Empresa similar
+    """
+    # Buscar todos os leads do tenant para comparação
+    all_leads = session.exec(
+        select(Lead).where(Lead.tenant_id == tenant_id)
+    ).all()
+    
+    email_normalized = normalize_email(email) if email else None
+    phone_normalized = normalize_phone(phone) if phone else None
+    cnpj_clean = cnpj.replace('.', '').replace('/', '').replace('-', '') if cnpj else ''
+    
+    for existing_lead in all_leads:
+        is_duplicate = False
+        
+        # Critério 1: Email igual (normalizado)
+        if email_normalized:
+            existing_email = normalize_email(existing_lead.email)
+            if existing_email and existing_email == email_normalized:
+                is_duplicate = True
+                logger.info(f"📋 [PROSPECTING] Duplicado encontrado por EMAIL: {email_normalized} (Lead ID: {existing_lead.id})")
+        
+        # Critério 2: CNPJ igual
+        if not is_duplicate and cnpj_clean and len(cnpj_clean) == 14:
+            existing_cnpj = existing_lead.cnpj.replace('.', '').replace('/', '').replace('-', '') if existing_lead.cnpj else ''
+            if existing_cnpj and existing_cnpj == cnpj_clean:
+                is_duplicate = True
+                logger.info(f"📋 [PROSPECTING] Duplicado encontrado por CNPJ: {cnpj_clean} (Lead ID: {existing_lead.id})")
+        
+        # Critério 3: Telefone igual (normalizado)
+        if not is_duplicate and phone_normalized and len(phone_normalized) >= 10:
+            existing_phone = normalize_phone(existing_lead.phone)
+            if existing_phone and existing_phone == phone_normalized:
+                is_duplicate = True
+                logger.info(f"📋 [PROSPECTING] Duplicado encontrado por TELEFONE: {phone_normalized} (Lead ID: {existing_lead.id})")
+        
+        # Critério 4: Nome similar (fuzzy matching)
+        if not is_duplicate and name:
+            name_similarity = calculate_similarity(name, existing_lead.name or '')
+            if name_similarity >= min_similarity:
+                is_duplicate = True
+                logger.info(f"📋 [PROSPECTING] Duplicado encontrado por NOME SIMILAR ({name_similarity:.0%}): '{name}' ≈ '{existing_lead.name}' (Lead ID: {existing_lead.id})")
+        
+        # Critério 5: Nome + Empresa similar
+        if not is_duplicate and name and company and existing_lead.company:
+            name_similarity = calculate_similarity(name, existing_lead.name or '')
+            company_similarity = calculate_similarity(company, existing_lead.company)
+            combined_similarity = (name_similarity + company_similarity) / 2
+            if combined_similarity >= min_similarity and name_similarity >= 0.7:
+                is_duplicate = True
+                logger.info(f"📋 [PROSPECTING] Duplicado encontrado por NOME + EMPRESA SIMILAR ({combined_similarity:.0%}): '{name} @ {company}' ≈ '{existing_lead.name} @ {existing_lead.company}' (Lead ID: {existing_lead.id})")
+        
+        if is_duplicate:
+            return existing_lead
+    
+    return None
 
 
 class ProspectingParams(BaseModel):
@@ -297,22 +396,56 @@ async def process_socios_to_leads(
             logger.warning(f"⚠️ [PROSPECTING] Primeiro sócio sem nome para CNPJ {cnpj}")
             return leads_created
         
-        # Verificar se já existe lead com esse nome e CNPJ
-        existing_lead = session.exec(
-            select(Lead).where(
-                and_(
-                    Lead.tenant_id == tenant_id,
-                    Lead.cnpj == cnpj,
-                    Lead.name == socio_nome
-                )
-            )
-        ).first()
+        # Extrair email e telefone dos dados da empresa ANTES de criar o lead
+        email_from_empresa = None
+        phone_from_empresa = None
         
+        if 'contato_email' in empresa_data:
+            email_data = empresa_data.get('contato_email')
+            if email_data:
+                if isinstance(email_data, dict):
+                    email_from_empresa = email_data.get('email')
+                elif isinstance(email_data, list) and len(email_data) > 0:
+                    primeiro = email_data[0]
+                    if isinstance(primeiro, dict):
+                        email_from_empresa = primeiro.get('email')
+                    else:
+                        email_from_empresa = primeiro
+                elif isinstance(email_data, str):
+                    email_from_empresa = email_data
+        
+        if 'contato_telefonico' in empresa_data:
+            telefone_data = empresa_data.get('contato_telefonico')
+            if telefone_data:
+                if isinstance(telefone_data, dict):
+                    phone_from_empresa = telefone_data.get('completo') or telefone_data.get('numero')
+                elif isinstance(telefone_data, list) and len(telefone_data) > 0:
+                    primeiro = telefone_data[0]
+                    if isinstance(primeiro, dict):
+                        phone_from_empresa = primeiro.get('completo') or primeiro.get('numero')
+                    else:
+                        phone_from_empresa = primeiro
+                elif isinstance(telefone_data, str):
+                    phone_from_empresa = telefone_data
+        
+        # Usar função inteligente para encontrar duplicados
+        existing_lead = find_duplicate_lead(
+            session=session,
+            tenant_id=tenant_id,
+            name=socio_nome,
+            email=email_from_empresa,
+            phone=phone_from_empresa,
+            cnpj=cnpj,
+            company=company_name,
+            min_similarity=0.85
+        )
+        
+        # Se encontrou lead existente, usar ele para atualização
         if existing_lead:
-            logger.info(f"📋 [PROSPECTING] Lead {socio_nome} com CNPJ {cnpj} já existe. Atualizando...")
             lead = existing_lead
+            logger.info(f"📋 [PROSPECTING] Atualizando lead existente (ID: {lead.id})")
         else:
-            # Criar novo lead APENAS com nome do sócio (não da empresa)
+            # Criar novo lead APENAS se não encontrou nenhum duplicado
             lead = Lead(
                 tenant_id=tenant_id,
                 name=socio_nome,
@@ -322,9 +455,11 @@ async def process_socios_to_leads(
             )
             session.add(lead)
             session.flush()
+            logger.info(f"✅ [PROSPECTING] Criando novo lead para {socio_nome} (CNPJ: {cnpj})")
         
         # Preencher todos os dados da empresa no lead
         await _fill_lead_with_empresa_data(lead, empresa_data)
+        
         leads_created.append(lead)
         
         return leads_created
@@ -492,9 +627,25 @@ async def _fill_lead_with_empresa_data(lead: Lead, empresa_data: Dict[str, Any])
                 email = email_data
             
             if email:
-                lead.email_empresa = str(email)
-                if not lead.email:
-                    lead.email = str(email)
+                email_str = str(email).strip().lower()
+                # Verificar se email já existe em outro lead do mesmo tenant
+                existing_email_lead = session.exec(
+                    select(Lead).where(
+                        and_(
+                            Lead.tenant_id == lead.tenant_id,
+                            Lead.email == email_str,
+                            Lead.id != lead.id if lead.id else True
+                        )
+                    )
+                ).first()
+                
+                if existing_email_lead:
+                    logger.warning(f"⚠️ [PROSPECTING] Email {email_str} já existe no lead ID {existing_email_lead.id}. Não atribuindo email para evitar duplicação.")
+                    # Não atribuir o email se já existir em outro lead, mas continuar preenchendo outros campos
+                else:
+                    lead.email_empresa = email_str
+                    if not lead.email:
+                        lead.email = email_str
 
 
 async def process_empresa_to_lead(
@@ -512,25 +663,60 @@ async def process_empresa_to_lead(
             logger.warning(f"⚠️ [PROSPECTING] CNPJ inválido: {empresa_data.get('cnpj')}")
             return None
         
-        # Verificar se lead já existe
-        existing_lead = session.exec(
-            select(Lead).where(
-                and_(
-                    Lead.tenant_id == tenant_id,
-                    Lead.cnpj == cnpj
-                )
-            )
-        ).first()
+        # Extrair email e telefone dos dados da empresa ANTES de criar o lead
+        email_from_empresa = None
+        phone_from_empresa = None
         
+        if 'contato_email' in empresa_data:
+            email_data = empresa_data.get('contato_email')
+            if email_data:
+                if isinstance(email_data, dict):
+                    email_from_empresa = email_data.get('email')
+                elif isinstance(email_data, list) and len(email_data) > 0:
+                    primeiro = email_data[0]
+                    if isinstance(primeiro, dict):
+                        email_from_empresa = primeiro.get('email')
+                    else:
+                        email_from_empresa = primeiro
+                elif isinstance(email_data, str):
+                    email_from_empresa = email_data
+        
+        if 'contato_telefonico' in empresa_data:
+            telefone_data = empresa_data.get('contato_telefonico')
+            if telefone_data:
+                if isinstance(telefone_data, dict):
+                    phone_from_empresa = telefone_data.get('completo') or telefone_data.get('numero')
+                elif isinstance(telefone_data, list) and len(telefone_data) > 0:
+                    primeiro = telefone_data[0]
+                    if isinstance(primeiro, dict):
+                        phone_from_empresa = primeiro.get('completo') or primeiro.get('numero')
+                    else:
+                        phone_from_empresa = primeiro
+                elif isinstance(telefone_data, str):
+                    phone_from_empresa = telefone_data
+        
+        razao_social = empresa_data.get('razao_social', '')
+        nome_fantasia = empresa_data.get('nome_fantasia', '')
+        name = nome_fantasia or razao_social or f"Empresa {cnpj}"
+        
+        # Usar função inteligente para encontrar duplicados
+        existing_lead = find_duplicate_lead(
+            session=session,
+            tenant_id=tenant_id,
+            name=name,
+            email=email_from_empresa,
+            phone=phone_from_empresa,
+            cnpj=cnpj,
+            company=name,
+            min_similarity=0.85
+        )
+        
+        # Se encontrou lead existente, usar ele para atualização
         if existing_lead:
-            logger.info(f"📋 [PROSPECTING] Lead com CNPJ {cnpj} já existe. Atualizando...")
             lead = existing_lead
+            logger.info(f"📋 [PROSPECTING] Atualizando lead existente (ID: {lead.id})")
         else:
-            # Criar novo lead
-            razao_social = empresa_data.get('razao_social', '')
-            nome_fantasia = empresa_data.get('nome_fantasia', '')
-            name = nome_fantasia or razao_social or f"Empresa {cnpj}"
-            
+            # Criar novo lead APENAS se não encontrou nenhum duplicado
             lead = Lead(
                 tenant_id=tenant_id,
                 name=name,
@@ -539,6 +725,7 @@ async def process_empresa_to_lead(
             )
             session.add(lead)
             session.flush()
+            logger.info(f"✅ [PROSPECTING] Criando novo lead para {name} (CNPJ: {cnpj})")
         
         # Preencher todos os dados da empresa
         await _fill_lead_with_empresa_data(lead, empresa_data)
@@ -740,7 +927,7 @@ async def search_companies(
             "leads_created": len(leads_created) if params.auto_import else 0,
             "leads_updated": len(leads_updated) if params.auto_import else 0,
             "errors": errors if errors else None,
-            "empresas": empresas[:100],  # Retornar apenas primeiras 100 para preview
+            "empresas": empresas,  # Retornar todas as empresas buscadas (até o limite configurado)
             "params_used": result.get('params_used', {})
         }
         
