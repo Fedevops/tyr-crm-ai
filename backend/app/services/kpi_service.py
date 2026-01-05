@@ -10,8 +10,8 @@ from app.models import (
 
 def calculate_period_dates(period: GoalPeriod):
     """Calcula início e fim do período baseado no tipo"""
-    from datetime import timedelta
-    now = datetime.utcnow()
+    from datetime import timedelta, timezone
+    now = datetime.now(timezone.utc)
     
     if period == GoalPeriod.MONTHLY:
         period_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
@@ -28,15 +28,63 @@ def calculate_period_dates(period: GoalPeriod):
     return period_start, period_end
 
 
+def calculate_daily_target(goal: Goal) -> float:
+    """Calcula a meta diária baseada no período e valor alvo"""
+    from datetime import timedelta, timezone
+    
+    # Garantir que now seja timezone-aware (UTC)
+    now = datetime.now(timezone.utc)
+    
+    # Se houver data de vencimento, usar ela como referência
+    if goal.due_date:
+        end_date = goal.due_date
+        start_date = goal.period_start
+    else:
+        end_date = goal.period_end
+        start_date = goal.period_start
+    
+    # Garantir que todas as datas sejam timezone-aware
+    # Se forem naive, assumir UTC
+    if end_date.tzinfo is None:
+        end_date = end_date.replace(tzinfo=timezone.utc)
+    if start_date.tzinfo is None:
+        start_date = start_date.replace(tzinfo=timezone.utc)
+    
+    total_days = (end_date - start_date).days + 1
+    if total_days <= 0:
+        return 0.0
+    
+    # Calcular dias restantes
+    days_remaining = (end_date - now).days + 1
+    if days_remaining <= 0:
+        days_remaining = 1
+    
+    # Meta diária = (meta total - valor atual) / dias restantes
+    remaining_target = goal.target_value - goal.current_value
+    if remaining_target <= 0:
+        return 0.0
+    
+    daily_target = remaining_target / days_remaining
+    return max(0.0, daily_target)
+
+
 def calculate_goal_status(goal: Goal) -> GoalStatus:
     """Calcula o status da meta baseado no progresso"""
     if goal.current_value >= goal.target_value:
         return GoalStatus.COMPLETED
     
-    from datetime import timedelta
-    now = datetime.utcnow()
-    total_days = (goal.period_end - goal.period_start).days + 1
-    days_elapsed = (now - goal.period_start).days + 1
+    from datetime import timedelta, timezone
+    now = datetime.now(timezone.utc)
+    
+    # Garantir que period_start e period_end sejam timezone-aware
+    period_start = goal.period_start
+    period_end = goal.period_end
+    if period_start.tzinfo is None:
+        period_start = period_start.replace(tzinfo=timezone.utc)
+    if period_end.tzinfo is None:
+        period_end = period_end.replace(tzinfo=timezone.utc)
+    total_days = (period_end - period_start).days + 1
+    days_elapsed = (now - period_start).days + 1
     
     if days_elapsed <= 0:
         days_elapsed = 1
@@ -56,8 +104,15 @@ def calculate_goal_status(goal: Goal) -> GoalStatus:
 
 def reset_goal_period_if_needed(goal: Goal) -> Goal:
     """Reseta o período da meta se necessário"""
-    now = datetime.utcnow()
-    if now > goal.period_end:
+    from datetime import timezone
+    now = datetime.now(timezone.utc)
+    
+    # Garantir que period_end seja timezone-aware
+    period_end = goal.period_end
+    if period_end.tzinfo is None:
+        period_end = period_end.replace(tzinfo=timezone.utc)
+    
+    if now > period_end:
         period_start, period_end = calculate_period_dates(goal.period)
         goal.period_start = period_start
         goal.period_end = period_end
@@ -91,6 +146,40 @@ def calculate_initial_goal_value(
                     ),
                     Lead.created_at >= period_start,
                     Lead.created_at <= period_end
+                )
+            )
+        ).one()
+        return float(count or 0)
+    
+    elif metric_type == GoalMetricType.LEADS_ENRICHED:
+        # Contar leads que mudaram para status NURTURING no período
+        # Buscar através de ActivityLog para rastrear quando o status mudou
+        from app.models import ActivityLog
+        count = session.exec(
+            select(func.count(ActivityLog.id)).where(
+                and_(
+                    ActivityLog.tenant_id == tenant_id,
+                    ActivityLog.user_id == user_id,
+                    ActivityLog.metric_type == GoalMetricType.LEADS_ENRICHED,
+                    ActivityLog.created_at >= period_start,
+                    ActivityLog.created_at <= period_end
+                )
+            )
+        ).one()
+        return float(count or 0)
+    
+    elif metric_type == GoalMetricType.LEADS_IMPORTED_FROM_LINKEDIN:
+        # Contar leads importados do LinkedIn no período
+        # Buscar através de ActivityLog para rastrear quando foram importados
+        from app.models import ActivityLog
+        count = session.exec(
+            select(func.count(ActivityLog.id)).where(
+                and_(
+                    ActivityLog.tenant_id == tenant_id,
+                    ActivityLog.user_id == user_id,
+                    ActivityLog.metric_type == GoalMetricType.LEADS_IMPORTED_FROM_LINKEDIN,
+                    ActivityLog.created_at >= period_start,
+                    ActivityLog.created_at <= period_end
                 )
             )
         ).one()

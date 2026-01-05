@@ -243,6 +243,10 @@ async def check_limit(
     current_user: User = Depends(get_current_active_user)
 ) -> None:
     """Check if tenant has reached the limit for a specific metric"""
+    # TEMPORARIAMENTE DESABILITADO: Limites de leads removidos
+    if metric == "leads":
+        return  # Sempre permitir criação de leads
+    
     tenant_id = current_user.tenant_id
     
     # Buscar limites do tenant
@@ -306,13 +310,37 @@ async def check_limit(
     max_limit = None
     current_count = 0
     
+    # Se o plan_type for ENTERPRISE, considerar ilimitado automaticamente
+    from app.models import PlanType
+    is_unlimited = tenant_limit.plan_type == PlanType.ENTERPRISE
+    
     if metric == "leads":
         max_limit = tenant_limit.max_leads
+        # Se for ENTERPRISE e max_leads não for -1, tratar como ilimitado
+        if is_unlimited and max_limit != -1:
+            max_limit = -1
+        # Se max_leads já for -1, é ilimitado (independente do plan_type)
+        if max_limit == -1:
+            return  # Ilimitado, não precisa verificar
+        
+        # Log para debug
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.info(f"Checking lead limit for tenant {tenant_id}: max_limit={max_limit}, plan_type={tenant_limit.plan_type}")
+        
         current_count = session.exec(
             select(func.count(Lead.id)).where(Lead.tenant_id == tenant_id)
         ).one() or 0
+        
+        logger.info(f"Current lead count: {current_count}, max_limit: {max_limit}")
     elif metric == "users":
         max_limit = tenant_limit.max_users
+        # Se for ENTERPRISE e max_users não for -1, tratar como ilimitado
+        if is_unlimited and max_limit != -1:
+            max_limit = -1
+        # Se max_users já for -1, é ilimitado (independente do plan_type)
+        if max_limit == -1:
+            return  # Ilimitado, não precisa verificar
         current_count = session.exec(
             select(func.count(User.id)).where(
                 and_(
@@ -323,6 +351,12 @@ async def check_limit(
         ).one() or 0
     elif metric == "items":
         max_limit = tenant_limit.max_items
+        # Se for ENTERPRISE e max_items não for -1, tratar como ilimitado
+        if is_unlimited and max_limit != -1:
+            max_limit = -1
+        # Se max_items já for -1, é ilimitado (independente do plan_type)
+        if max_limit == -1:
+            return  # Ilimitado, não precisa verificar
         current_count = session.exec(
             select(func.count(Item.id)).where(Item.tenant_id == tenant_id)
         ).one() or 0

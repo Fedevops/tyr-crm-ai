@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react'
+import React, { useState, useEffect, useMemo } from 'react'
 import { useKPI, Goal } from '@/contexts/KPIContext'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -15,7 +15,10 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-import { Plus, Target, TrendingUp, Edit, Trash2 } from 'lucide-react'
+import { Plus, Target, TrendingUp, Edit, Trash2, Calendar } from 'lucide-react'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts'
 import { cn } from '@/lib/utils'
 
@@ -23,6 +26,8 @@ const getMetricLabel = (type: string) => {
   const labels: Record<string, string> = {
     tasks_completed: 'Tarefas Completadas',
     leads_created: 'Leads Criados',
+    leads_enriched: 'Leads Enriquecidos',
+    leads_imported_from_linkedin: 'Leads Importados do LinkedIn',
     revenue_generated: 'Receita Gerada',
     calls_made: 'Chamadas Realizadas',
   }
@@ -59,11 +64,19 @@ const formatCurrency = (value: number) => {
   }).format(value)
 }
 
+type PeriodType = 'past' | 'future' | 'custom'
+
 export function KPIOverview() {
   const { goals, loading, deleteGoal, refreshGoals } = useKPI()
   const [isGoalCreatorOpen, setIsGoalCreatorOpen] = useState(false)
   const [editingGoal, setEditingGoal] = useState<Goal | null>(null)
   const [completedGoal, setCompletedGoal] = useState<{ id: number; title: string } | null>(null)
+  
+  // Estados para filtro de período do gráfico
+  const [periodType, setPeriodType] = useState<PeriodType>('past')
+  const [periodDays, setPeriodDays] = useState<number>(30)
+  const [customStartDate, setCustomStartDate] = useState<string>('')
+  const [customEndDate, setCustomEndDate] = useState<string>('')
 
   // Recarregar KPIs quando a página é montada
   useEffect(() => {
@@ -95,11 +108,39 @@ export function KPIOverview() {
       .slice(0, 3)
   }, [goals])
 
-  // Dados para gráfico de tendência (últimos 30 dias)
+  // Dados para gráfico de tendência
   const chartData = useMemo(() => {
-    const days = 30
     const data = []
     const now = new Date()
+    
+    // Determinar período baseado no tipo selecionado
+    let startDate: Date
+    let endDate: Date
+    let totalDays: number
+    
+    if (periodType === 'custom' && customStartDate && customEndDate) {
+      startDate = new Date(customStartDate)
+      endDate = new Date(customEndDate)
+      totalDays = Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)) + 1
+    } else {
+      const days = periodDays
+      if (periodType === 'future') {
+        startDate = new Date(now)
+        endDate = new Date(now)
+        endDate.setDate(endDate.getDate() + days - 1)
+        totalDays = days
+      } else {
+        // past (padrão)
+        startDate = new Date(now)
+        startDate.setDate(startDate.getDate() - days + 1)
+        endDate = new Date(now)
+        totalDays = days
+      }
+    }
+    
+    if (totalDays <= 0 || totalDays > 365) {
+      return []
+    }
 
     // Agrupar metas por tipo de métrica
     const goalsByMetric = goals.reduce((acc, goal) => {
@@ -110,37 +151,87 @@ export function KPIOverview() {
       return acc
     }, {} as Record<string, Goal[]>)
 
-    for (let i = days - 1; i >= 0; i--) {
-      const date = new Date(now)
-      date.setDate(date.getDate() - i)
+    // Gerar dados para cada dia no período
+    for (let i = 0; i < totalDays; i++) {
+      const date = new Date(startDate)
+      date.setDate(date.getDate() + i)
       const dayLabel = date.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })
-
-      // Calcular meta ideal (progresso linear)
-      const idealProgress = ((days - i) / days) * 100
 
       // Criar objeto de dados para este dia
       const dayData: Record<string, any> = {
         date: dayLabel,
-        ideal: idealProgress,
       }
 
-      // Calcular progresso para cada tipo de métrica
-      Object.entries(goalsByMetric).forEach(([metricType, metricGoals]) => {
-        if (metricGoals.length > 0) {
-          const totalProgress = metricGoals.reduce((sum, goal) => {
-            const goalProgress = (goal.current_value / goal.target_value) * 100
-            return sum + goalProgress
-          }, 0)
-          const avgProgress = totalProgress / metricGoals.length
-          dayData[getMetricLabel(metricType)] = Math.round(avgProgress)
+      // Calcular meta ideal para cada meta individual baseada na due_date
+      goals.forEach((goal) => {
+        const goalKey = `ideal_${goal.id}`
+        const goalProgressKey = `progress_${goal.id}`
+        
+        // Determinar data de vencimento da meta
+        const goalDueDate = goal.due_date 
+          ? new Date(goal.due_date) 
+          : new Date(goal.period_end)
+        
+        // Determinar data de início da meta
+        const goalStartDate = new Date(goal.period_start)
+        
+        // Verificar se a data atual está dentro do período da meta
+        const isDateInGoalPeriod = date >= goalStartDate && date <= goalDueDate
+        
+        if (isDateInGoalPeriod) {
+          // Calcular dias totais da meta
+          const goalTotalDays = Math.ceil((goalDueDate.getTime() - goalStartDate.getTime()) / (1000 * 60 * 60 * 24)) + 1
+          
+          // Calcular dias decorridos desde o início da meta até a data atual
+          const daysElapsed = Math.ceil((date.getTime() - goalStartDate.getTime()) / (1000 * 60 * 60 * 24)) + 1
+          
+          // Calcular progresso ideal (linear baseado na data de vencimento)
+          const idealProgress = Math.min(100, Math.max(0, (daysElapsed / goalTotalDays) * 100))
+          dayData[goalKey] = Math.round(idealProgress)
+        } else {
+          // Se a data está fora do período da meta, não mostrar
+          dayData[goalKey] = null
+        }
+        
+        // Calcular progresso real da meta (sempre o mesmo, mas só mostrar se estiver no período)
+        if (isDateInGoalPeriod) {
+          const actualProgress = (goal.current_value / goal.target_value) * 100
+          dayData[goalProgressKey] = Math.round(actualProgress)
+        } else {
+          dayData[goalProgressKey] = null
         }
       })
+
+      // Calcular progresso agregado para cada tipo de métrica (para compatibilidade)
+      if (periodType === 'future') {
+        Object.entries(goalsByMetric).forEach(([metricType, metricGoals]) => {
+          if (metricGoals.length > 0) {
+            const totalProgress = metricGoals.reduce((sum, goal) => {
+              const goalProgress = (goal.current_value / goal.target_value) * 100
+              return sum + goalProgress
+            }, 0)
+            const avgProgress = totalProgress / metricGoals.length
+            dayData[getMetricLabel(metricType)] = Math.round(avgProgress)
+          }
+        })
+      } else {
+        Object.entries(goalsByMetric).forEach(([metricType, metricGoals]) => {
+          if (metricGoals.length > 0) {
+            const totalProgress = metricGoals.reduce((sum, goal) => {
+              const goalProgress = (goal.current_value / goal.target_value) * 100
+              return sum + goalProgress
+            }, 0)
+            const avgProgress = totalProgress / metricGoals.length
+            dayData[getMetricLabel(metricType)] = Math.round(avgProgress)
+          }
+        })
+      }
 
       data.push(dayData)
     }
 
     return data
-  }, [goals])
+  }, [goals, periodType, periodDays, customStartDate, customEndDate])
 
   // Cores para cada tipo de métrica
   const metricColors: Record<string, string> = {
@@ -149,6 +240,25 @@ export function KPIOverview() {
     'Receita Gerada': '#ffc658',
     'Chamadas Realizadas': '#ff7300',
   }
+
+  // Paleta de cores distintas para as metas
+  const goalColors = [
+    '#3b82f6', // Azul
+    '#10b981', // Verde
+    '#f59e0b', // Amarelo/Laranja
+    '#ef4444', // Vermelho
+    '#8b5cf6', // Roxo
+    '#06b6d4', // Ciano
+    '#ec4899', // Rosa
+    '#14b8a6', // Turquesa
+    '#f97316', // Laranja
+    '#84cc16', // Verde limão
+    '#6366f1', // Índigo
+    '#a855f7', // Roxo claro
+    '#22c55e', // Verde esmeralda
+    '#eab308', // Amarelo
+    '#06b6d4', // Azul claro
+  ]
 
   // Obter tipos de métricas únicos para criar as linhas do gráfico
   const uniqueMetricTypes = useMemo(() => {
@@ -227,6 +337,13 @@ export function KPIOverview() {
                         ? formatCurrency(goal.target_value)
                         : Math.round(goal.target_value)}
                     </div>
+                    {goal.daily_target !== null && goal.daily_target !== undefined && goal.daily_target > 0 && (
+                      <div className="text-sm text-muted-foreground">
+                        Meta diária: {goal.metric_type === 'revenue_generated'
+                          ? formatCurrency(goal.daily_target)
+                          : Math.round(goal.daily_target)}
+                      </div>
+                    )}
                     <div>{getStatusBadge(goal.status)}</div>
                   </div>
                 </CardContent>
@@ -240,41 +357,158 @@ export function KPIOverview() {
       {goals.length > 0 && (
         <Card>
           <CardHeader>
-            <CardTitle>Tendência de Progresso</CardTitle>
-            <CardDescription>
-              Progresso por tipo de métrica (últimos 30 dias)
-            </CardDescription>
+            <div className="flex items-center justify-between">
+              <div>
+                <CardTitle>Tendência de Progresso</CardTitle>
+                <CardDescription>
+                  {periodType === 'future' 
+                    ? `Projeção para próximos ${periodDays} dias`
+                    : periodType === 'custom' && customStartDate && customEndDate
+                    ? `Período customizado: ${new Date(customStartDate).toLocaleDateString('pt-BR')} a ${new Date(customEndDate).toLocaleDateString('pt-BR')}`
+                    : `Últimos ${periodDays} dias`}
+                </CardDescription>
+              </div>
+            </div>
           </CardHeader>
           <CardContent>
-            <ResponsiveContainer width="100%" height={400}>
+            {/* Filtros de Período */}
+            <div className="mb-6 space-y-4 p-4 border rounded-lg bg-muted/50">
+              <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+                <div className="space-y-2">
+                  <Label htmlFor="period-type">Tipo de Período</Label>
+                  <Select
+                    value={periodType}
+                    onValueChange={(value) => {
+                      setPeriodType(value as PeriodType)
+                      if (value === 'custom') {
+                        // Definir datas padrão se não estiverem definidas
+                        if (!customStartDate) {
+                          const start = new Date()
+                          start.setDate(start.getDate() - 30)
+                          setCustomStartDate(start.toISOString().split('T')[0])
+                        }
+                        if (!customEndDate) {
+                          setCustomEndDate(new Date().toISOString().split('T')[0])
+                        }
+                      }
+                    }}
+                  >
+                    <SelectTrigger id="period-type">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="past">Últimos X dias</SelectItem>
+                      <SelectItem value="future">Próximos X dias</SelectItem>
+                      <SelectItem value="custom">Período Customizado</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                
+                {periodType !== 'custom' && (
+                  <div className="space-y-2">
+                    <Label htmlFor="period-days">Número de Dias</Label>
+                    <Input
+                      id="period-days"
+                      type="number"
+                      min="1"
+                      max="365"
+                      value={periodDays}
+                      onChange={(e) => setPeriodDays(parseInt(e.target.value) || 30)}
+                    />
+                  </div>
+                )}
+                
+                {periodType === 'custom' && (
+                  <>
+                    <div className="space-y-2">
+                      <Label htmlFor="start-date">Data Inicial</Label>
+                      <Input
+                        id="start-date"
+                        type="date"
+                        value={customStartDate}
+                        onChange={(e) => setCustomStartDate(e.target.value)}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="end-date">Data Final</Label>
+                      <Input
+                        id="end-date"
+                        type="date"
+                        value={customEndDate}
+                        onChange={(e) => setCustomEndDate(e.target.value)}
+                      />
+                    </div>
+                  </>
+                )}
+              </div>
+            </div>
+            {chartData.length === 0 ? (
+              <div className="flex items-center justify-center h-96 text-muted-foreground">
+                <div className="text-center">
+                  <p>Nenhum dado disponível para o período selecionado.</p>
+                  <p className="text-sm mt-2">Ajuste os filtros acima para visualizar os dados.</p>
+                </div>
+              </div>
+            ) : (
+              <ResponsiveContainer width="100%" height={400}>
               <LineChart data={chartData}>
                 <CartesianGrid strokeDasharray="3 3" />
                 <XAxis dataKey="date" />
                 <YAxis domain={[0, 100]} />
                 <Tooltip />
                 <Legend />
-                <Line
-                  type="monotone"
-                  dataKey="ideal"
-                  stroke="#94a3b8"
-                  name="Meta Ideal"
-                  strokeWidth={2}
-                  strokeDasharray="5 5"
-                  dot={false}
-                />
+                {/* Linhas de meta ideal para cada meta individual */}
+                {goals.map((goal, index) => {
+                  const goalKey = `ideal_${goal.id}`
+                  const goalProgressKey = `progress_${goal.id}`
+                  // Usar cores distintas da paleta, com variação para ideal vs progresso
+                  const baseColor = goalColors[index % goalColors.length]
+                  // Meta ideal: cor mais clara e com opacidade
+                  const idealColor = baseColor + '80' // Adiciona transparência
+                  // Progresso: cor sólida
+                  const progressColor = baseColor
+                  
+                  return (
+                    <React.Fragment key={`goal-${goal.id}`}>
+                      <Line
+                        type="monotone"
+                        dataKey={goalKey}
+                        stroke={idealColor}
+                        name={`${goal.title} - Meta Ideal`}
+                        strokeWidth={2}
+                        strokeDasharray="5 5"
+                        dot={false}
+                        connectNulls={false}
+                      />
+                      <Line
+                        type="monotone"
+                        dataKey={goalProgressKey}
+                        stroke={progressColor}
+                        name={`${goal.title} - Progresso`}
+                        strokeWidth={2.5}
+                        dot={{ r: 4 }}
+                        connectNulls={false}
+                      />
+                    </React.Fragment>
+                  )
+                })}
+                {/* Linhas agregadas por tipo de métrica (opcional, pode ser removido se não for necessário) */}
                 {uniqueMetricTypes.map((metricLabel, index) => (
                   <Line
                     key={metricLabel}
                     type="monotone"
                     dataKey={metricLabel}
                     stroke={metricColors[metricLabel] || `hsl(${index * 60}, 70%, 50%)`}
-                    name={metricLabel}
-                    strokeWidth={2}
-                    dot={{ r: 4 }}
+                    name={`${metricLabel} (Média)`}
+                    strokeWidth={1}
+                    strokeDasharray="2 2"
+                    dot={false}
+                    opacity={0.5}
                   />
                 ))}
               </LineChart>
             </ResponsiveContainer>
+            )}
           </CardContent>
         </Card>
       )}
@@ -333,6 +567,13 @@ export function KPIOverview() {
                                 : `${Math.round(goal.current_value)} / ${Math.round(goal.target_value)}`}
                               {' '}
                               ({Math.round(progress)}%)
+                              {goal.daily_target !== null && goal.daily_target !== undefined && goal.daily_target > 0 && (
+                                <div className="mt-1 text-xs font-medium">
+                                  Meta diária: {goal.metric_type === 'revenue_generated'
+                                    ? formatCurrency(goal.daily_target)
+                                    : Math.round(goal.daily_target)}
+                                </div>
+                              )}
                             </div>
                           </div>
                         </TableCell>

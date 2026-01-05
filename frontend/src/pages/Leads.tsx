@@ -162,8 +162,10 @@ export function Leads() {
   const [editingId, setEditingId] = useState<number | null>(null)
   const [stats, setStats] = useState<any>(null)
   const [showImportModal, setShowImportModal] = useState(false)
+  const [showLinkedInPdfModal, setShowLinkedInPdfModal] = useState(false)
   const [importing, setImporting] = useState(false)
   const [importResult, setImportResult] = useState<any>(null)
+  const [importingPdf, setImportingPdf] = useState(false)
   const [parsingPdf, setParsingPdf] = useState(false)
   const [generatingInsight, setGeneratingInsight] = useState(false)
   const [showSequenceModal, setShowSequenceModal] = useState(false)
@@ -952,12 +954,12 @@ export function Leads() {
       const data = {
         ...formData,
         score: formData.score || 0,
-        email: formData.email || null,
-        phone: formData.phone || null,
-        company: formData.company || null,
-        position: formData.position || null,
-        website: formData.website || null,
-        linkedin_url: formData.linkedin_url || null,
+        email: formData.email?.trim() || null,
+        phone: formData.phone?.trim() || null,
+        company: formData.company?.trim() || null,
+        position: formData.position?.trim() || null,
+        website: formData.website?.trim() || null,
+        linkedin_url: formData.linkedin_url?.trim() || null,
         // Campos do LinkedIn
         linkedin_headline: formData.linkedin_headline || null,
         linkedin_about: formData.linkedin_about || null,
@@ -2028,6 +2030,62 @@ export function Leads() {
     }
   }
 
+  const handleImportLinkedInPdf = async (file: File) => {
+    if (!file.name.toLowerCase().endsWith('.pdf')) {
+      alert('Por favor, selecione um arquivo PDF')
+      return
+    }
+
+    const storedToken = localStorage.getItem('token')
+    if (!storedToken) {
+      alert('Sua sessão expirou. Por favor, faça login novamente.')
+      window.location.href = '/login'
+      return
+    }
+
+    setImportingPdf(true)
+
+    try {
+      const formData = new FormData()
+      formData.append('file', file)
+
+      const response = await api.post('/api/leads/import-from-linkedin-pdf', formData, {
+        headers: {
+          'Content-Type': 'multipart/form-data',
+        },
+      })
+
+      if (response.data) {
+        // Lead criado com sucesso
+        alert(`Lead "${response.data.name}" importado com sucesso!`)
+        setShowLinkedInPdfModal(false)
+        fetchLeads()
+        fetchStats()
+        
+        // Track KPI activity
+        try {
+          await trackActivity('leads_created', 1, 'Lead', response.data.id)
+        } catch (kpiError) {
+          console.warn('Erro ao rastrear KPI:', kpiError)
+        }
+      }
+    } catch (error: any) {
+      console.error('Error importing LinkedIn PDF:', error)
+      if (error.response?.status === 401) {
+        alert('Sua sessão expirou. Por favor, faça login novamente.')
+        window.location.href = '/login'
+      } else if (error.response?.status === 403) {
+        alert(error.response?.data?.detail || 'Limite de leads atingido ou permissão negada.')
+      } else if (error.response?.status === 503) {
+        alert('LLM não está disponível. Configure OpenAI ou Ollama no arquivo .env')
+      } else {
+        alert(error.response?.data?.detail || 'Erro ao importar PDF. Verifique se o arquivo é válido e se o LLM está configurado.')
+      }
+    } finally {
+      setImportingPdf(false)
+    }
+  }
+
   const handleGenerateInsight = async () => {
     if (!editingId) {
       alert('Por favor, salve o lead primeiro antes de gerar insights.')
@@ -2150,6 +2208,14 @@ export function Leads() {
           >
             <Upload className="mr-2 h-4 w-4" />
             Importar CSV
+          </Button>
+          <Button
+            variant="outline"
+            onClick={() => setShowLinkedInPdfModal(true)}
+            className="border-blue-300 hover:bg-blue-50 dark:hover:bg-blue-950/20"
+          >
+            <FileText className="mr-2 h-4 w-4" />
+            Importar PDF LinkedIn
           </Button>
           <Button
             variant="outline"
@@ -2335,6 +2401,104 @@ export function Leads() {
         </CardContent>
       </Card>
     </div>
+      )}
+
+      {/* LinkedIn PDF Import Modal */}
+      {showLinkedInPdfModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+          <Card className="w-full max-w-2xl max-h-[90vh] overflow-y-auto border-t-4 border-t-blue-500 bg-gradient-to-br from-blue-50/30 to-white dark:from-blue-950/10 dark:to-background">
+            <CardHeader className="bg-gradient-to-r from-blue-50/50 to-transparent dark:from-blue-950/20">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <FileText className="h-5 w-5 text-blue-600 dark:text-blue-400" />
+                  <CardTitle className="text-blue-900 dark:text-blue-100">Importar Lead do LinkedIn (PDF)</CardTitle>
+                </div>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => {
+                    setShowLinkedInPdfModal(false)
+                  }}
+                >
+                  <XCircle className="h-4 w-4" />
+                </Button>
+              </div>
+              <CardDescription>
+                Importe um perfil do LinkedIn exportado em PDF. O sistema extrairá automaticamente as informações e criará o lead.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-6">
+                {/* Upload Section */}
+                <div className="space-y-4">
+                  <div>
+                    <h3 className="text-lg font-semibold mb-2">Enviar PDF do LinkedIn</h3>
+                    <p className="text-sm text-muted-foreground mb-4">
+                      Selecione o arquivo PDF exportado do LinkedIn para importar automaticamente
+                    </p>
+                  </div>
+                  
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium">Arquivo PDF</label>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="file"
+                        accept=".pdf"
+                        onChange={(e) => {
+                          const file = e.target.files?.[0]
+                          if (file) {
+                            handleImportLinkedInPdf(file)
+                          }
+                        }}
+                        disabled={importingPdf}
+                        className="flex-1 h-10 rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:mr-4 file:rounded-md file:border-0 file:bg-primary file:px-4 file:py-2 file:text-sm file:font-medium file:text-primary-foreground hover:file:bg-primary/90 disabled:opacity-50"
+                        id="linkedin-pdf-upload"
+                      />
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      Formatos aceitos: PDF. Tamanho máximo: 10MB. O PDF deve ser uma exportação do perfil do LinkedIn.
+                    </p>
+                  </div>
+                  
+                  {importingPdf && (
+                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      <span>Processando PDF e criando lead...</span>
+                    </div>
+                  )}
+                </div>
+
+                {/* Instructions */}
+                <div className="rounded-lg bg-muted p-4">
+                  <h4 className="font-semibold mb-2 text-sm">Como exportar do LinkedIn:</h4>
+                  <ol className="text-xs text-muted-foreground space-y-2 list-decimal list-inside">
+                    <li>Acesse o perfil do LinkedIn que deseja importar</li>
+                    <li>Clique nos três pontos (...) no topo do perfil</li>
+                    <li>Selecione "Salvar como PDF" ou "Exportar"</li>
+                    <li>Baixe o arquivo PDF</li>
+                    <li>Use o botão acima para fazer upload do arquivo</li>
+                  </ol>
+                  <p className="text-xs text-muted-foreground mt-3">
+                    <strong>Nota:</strong> O sistema extrairá automaticamente nome, email, telefone, empresa, cargo e todas as informações do LinkedIn disponíveis no PDF.
+                  </p>
+                </div>
+
+                {/* Actions */}
+                <div className="flex justify-end gap-2 pt-4 border-t">
+                  <Button
+                    variant="outline"
+                    onClick={() => {
+                      setShowLinkedInPdfModal(false)
+                    }}
+                    disabled={importingPdf}
+                  >
+                    Fechar
+                  </Button>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
       )}
 
       {/* Stats Cards */}

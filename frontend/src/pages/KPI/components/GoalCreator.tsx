@@ -25,10 +25,11 @@ import { Loader2 } from 'lucide-react'
 
 const goalSchema = z.object({
   title: z.string().min(1, 'Título é obrigatório'),
-  metric_type: z.enum(['tasks_completed', 'leads_created', 'revenue_generated', 'calls_made']),
+  metric_type: z.enum(['tasks_completed', 'leads_created', 'leads_enriched', 'leads_imported_from_linkedin', 'revenue_generated', 'calls_made']),
   target_value: z.number().min(0.01, 'Valor da meta deve ser maior que zero'),
   period: z.enum(['monthly', 'weekly']),
   is_visible_on_wallboard: z.boolean().default(false),
+  due_date: z.string().optional().nullable(),
 })
 
 type GoalFormData = z.infer<typeof goalSchema>
@@ -64,6 +65,7 @@ export function GoalCreator({
       target_value: 0,
       period: 'monthly',
       is_visible_on_wallboard: false,
+      due_date: null,
     },
   })
 
@@ -79,6 +81,7 @@ export function GoalCreator({
         target_value: editingGoal.target_value,
         period: editingGoal.period,
         is_visible_on_wallboard: editingGoal.is_visible_on_wallboard,
+        due_date: editingGoal.due_date || null,
       })
     } else {
       reset({
@@ -87,6 +90,7 @@ export function GoalCreator({
         target_value: 0,
         period: 'monthly',
         is_visible_on_wallboard: false,
+        due_date: null,
       })
     }
   }, [editingGoal, open, reset])
@@ -112,6 +116,8 @@ export function GoalCreator({
     const labels: Record<MetricType, string> = {
       tasks_completed: 'Tarefas Completadas',
       leads_created: 'Leads Criados',
+      leads_enriched: 'Leads Enriquecidos',
+      leads_imported_from_linkedin: 'Leads Importados do LinkedIn',
       revenue_generated: 'Receita Gerada',
       calls_made: 'Chamadas Realizadas',
     }
@@ -170,6 +176,12 @@ export function GoalCreator({
                 <SelectItem value="calls_made">
                   {getMetricLabel('calls_made')}
                 </SelectItem>
+                <SelectItem value="leads_enriched">
+                  {getMetricLabel('leads_enriched')}
+                </SelectItem>
+                <SelectItem value="leads_imported_from_linkedin">
+                  {getMetricLabel('leads_imported_from_linkedin')}
+                </SelectItem>
               </SelectContent>
             </Select>
             {errors.metric_type && (
@@ -223,6 +235,22 @@ export function GoalCreator({
             {errors.period && (
               <p className="text-sm text-destructive">{errors.period.message}</p>
             )}
+          </div>
+
+          <div className="space-y-2">
+            <label htmlFor="due_date" className="text-sm font-medium">
+              Data de Vencimento (Opcional)
+            </label>
+            <Input
+              id="due_date"
+              type="date"
+              {...register('due_date')}
+              value={watch('due_date') || ''}
+              onChange={(e) => setValue('due_date', e.target.value || null)}
+            />
+            <p className="text-xs text-muted-foreground">
+              Se definida, a meta diária será calculada com base nesta data
+            </p>
           </div>
 
           <div className="flex items-center justify-between">

@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useAuth } from '@/contexts/AuthContext'
+import { useKPI } from '@/contexts/KPIContext'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { TyrLoadingSpinner } from '@/components/TyrLoadingSpinner'
 import { 
@@ -117,6 +118,7 @@ const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4'
 export function Dashboard() {
   const { t } = useTranslation()
   const { user } = useAuth()
+  const { goals, refreshGoals } = useKPI()
   const [loading, setLoading] = useState(true)
   const [stats, setStats] = useState<DashboardStats | null>(null)
   const [funnelData, setFunnelData] = useState<FunnelData | null>(null)
@@ -124,7 +126,8 @@ export function Dashboard() {
 
   useEffect(() => {
     fetchDashboardData()
-  }, [])
+    refreshGoals()
+  }, [refreshGoals])
 
   const fetchDashboardData = async () => {
     try {
@@ -297,6 +300,61 @@ export function Dashboard() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Metas Diárias dos KPIs */}
+      {goals && goals.length > 0 && goals.some(g => g.daily_target && g.daily_target > 0) && (
+        <Card className="border-t-4 border-t-orange-500 bg-gradient-to-br from-orange-50/30 to-white dark:from-orange-950/10 dark:to-background">
+          <CardHeader className="bg-gradient-to-r from-orange-50/50 to-transparent dark:from-orange-950/20">
+            <CardTitle className="flex items-center gap-2 text-orange-900 dark:text-orange-100">
+              <Target className="h-5 w-5 text-orange-600 dark:text-orange-400" />
+              Metas Diárias
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+              {goals
+                .filter(g => g.daily_target && g.daily_target > 0)
+                .map((goal) => {
+                  const getMetricLabel = (type: string) => {
+                    const labels: Record<string, string> = {
+                      tasks_completed: 'Tarefas Completadas',
+                      leads_created: 'Leads Criados',
+                      leads_enriched: 'Leads Enriquecidos',
+                      revenue_generated: 'Receita Gerada',
+                      calls_made: 'Chamadas Realizadas',
+                    }
+                    return labels[type] || type
+                  }
+                  
+                  return (
+                    <div
+                      key={goal.id}
+                      className="p-4 rounded-lg border bg-card text-card-foreground shadow-sm"
+                    >
+                      <div className="flex items-center justify-between mb-2">
+                        <h3 className="font-semibold text-sm">{goal.title}</h3>
+                        <span className="text-xs text-muted-foreground">
+                          {goal.period === 'monthly' ? 'Mensal' : 'Semanal'}
+                        </span>
+                      </div>
+                      <p className="text-xs text-muted-foreground mb-2">
+                        {getMetricLabel(goal.metric_type)}
+                      </p>
+                      <div className="text-2xl font-bold">
+                        {goal.metric_type === 'revenue_generated'
+                          ? formatCurrency(goal.daily_target || 0)
+                          : Math.round(goal.daily_target || 0)}
+                      </div>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        Meta diária para atingir o objetivo
+                      </p>
+                    </div>
+                  )
+                })}
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Gráficos */}
       <div className="grid gap-4 md:grid-cols-2">

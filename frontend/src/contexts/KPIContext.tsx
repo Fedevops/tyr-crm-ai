@@ -3,7 +3,7 @@ import api from '@/lib/api'
 import { useToast } from '@/components/ui/use-toast'
 import { useAuth } from './AuthContext'
 
-export type MetricType = 'tasks_completed' | 'leads_created' | 'revenue_generated' | 'calls_made'
+export type MetricType = 'tasks_completed' | 'leads_created' | 'leads_enriched' | 'leads_imported_from_linkedin' | 'revenue_generated' | 'calls_made'
 export type GoalPeriod = 'monthly' | 'weekly'
 export type GoalStatus = 'on_track' | 'at_risk' | 'completed'
 
@@ -20,6 +20,8 @@ export interface Goal {
   is_visible_on_wallboard: boolean
   period_start: string
   period_end: string
+  due_date?: string | null
+  daily_target?: number | null
   created_at: string
   updated_at: string
 }

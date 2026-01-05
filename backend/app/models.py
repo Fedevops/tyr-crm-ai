@@ -1098,6 +1098,8 @@ class AuditLogResponse(SQLModel):
 class GoalMetricType(str, Enum):
     TASKS_COMPLETED = "tasks_completed"
     LEADS_CREATED = "leads_created"
+    LEADS_ENRICHED = "leads_enriched"
+    LEADS_IMPORTED_FROM_LINKEDIN = "leads_imported_from_linkedin"
     REVENUE_GENERATED = "revenue_generated"
     CALLS_MADE = "calls_made"
     MEETINGS_SCHEDULED = "meetings_scheduled"
@@ -1129,6 +1131,7 @@ class Goal(SQLModel, table=True):
     is_visible_on_wallboard: bool = Field(default=False)
     period_start: datetime
     period_end: datetime
+    due_date: Optional[datetime] = None  # Data de vencimento da meta
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)
 
@@ -1139,6 +1142,7 @@ class GoalCreate(SQLModel):
     target_value: float
     period: GoalPeriod
     is_visible_on_wallboard: bool = False
+    due_date: Optional[datetime] = None  # Data de vencimento da meta
 
 
 class GoalUpdate(SQLModel):
@@ -1146,6 +1150,7 @@ class GoalUpdate(SQLModel):
     target_value: Optional[float] = None
     period: Optional[GoalPeriod] = None
     is_visible_on_wallboard: Optional[bool] = None
+    due_date: Optional[datetime] = None  # Data de vencimento da meta
 
 
 class GoalResponse(SQLModel):
@@ -1161,6 +1166,8 @@ class GoalResponse(SQLModel):
     is_visible_on_wallboard: bool
     period_start: datetime
     period_end: datetime
+    due_date: Optional[datetime] = None
+    daily_target: Optional[float] = None  # Meta diária calculada
     created_at: datetime
     updated_at: datetime
 

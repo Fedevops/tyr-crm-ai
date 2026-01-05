@@ -1504,7 +1504,7 @@ def migrate_goal_metric_type_enum():
                 return
             
             # Valores a adicionar
-            new_values = ['MEETINGS_SCHEDULED', 'MEETINGS_COMPLETED']
+            new_values = ['MEETINGS_SCHEDULED', 'MEETINGS_COMPLETED', 'LEADS_ENRICHED', 'LEADS_IMPORTED_FROM_LINKEDIN']
             
             for value in new_values:
                 try:
@@ -1552,6 +1552,52 @@ def migrate_goal_metric_type_enum():
         except Exception as e:
             session.rollback()
             print(f"⚠️ Erro na migração do enum goalmetrictype: {e}")
+
+
+def migrate_goal_table():
+    """Adiciona coluna due_date à tabela goal se não existir"""
+    with Session(engine) as session:
+        try:
+            # Verificar se a tabela goal existe
+            table_check = text("""
+                SELECT EXISTS (
+                    SELECT FROM information_schema.tables 
+                    WHERE table_name = 'goal'
+                )
+            """)
+            result = session.exec(table_check).first()
+            table_exists = result[0] if result else False
+            
+            if not table_exists:
+                print("⚠️ Tabela goal não existe. Será criada pelo SQLModel.")
+                return
+            
+            # Verificar se a coluna due_date já existe
+            column_check = text("""
+                SELECT EXISTS (
+                    SELECT FROM information_schema.columns 
+                    WHERE table_name = 'goal' 
+                    AND column_name = 'due_date'
+                )
+            """)
+            result = session.exec(column_check).first()
+            column_exists = result[0] if result else False
+            
+            if not column_exists:
+                # Adicionar coluna due_date como nullable
+                add_column = text("""
+                    ALTER TABLE goal 
+                    ADD COLUMN due_date TIMESTAMP WITH TIME ZONE
+                """)
+                session.exec(add_column)
+                session.commit()
+                print("✓ Adicionada coluna 'due_date' à tabela goal")
+            else:
+                print("- Coluna 'due_date' já existe na tabela goal")
+                
+        except Exception as e:
+            session.rollback()
+            print(f"⚠️ Erro na migração da tabela goal: {e}")
 
 
 def migrate_llm_tokens_tracking():
@@ -1883,6 +1929,8 @@ def init_db():
     migrate_sequence_table()
     # Adicionar novos valores ao enum GoalMetricType
     migrate_goal_metric_type_enum()
+    # Adicionar coluna due_date à tabela goal
+    migrate_goal_table()
     # Adicionar coluna max_tokens e criar tabela LLMTokenUsage
     migrate_llm_tokens_tracking()
     # Criar tabela de notificações

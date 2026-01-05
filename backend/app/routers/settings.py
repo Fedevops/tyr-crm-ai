@@ -877,3 +877,99 @@ async def update_tenant_limits(
         }
     }
 
+
+@router.post("/usage/limits/leads/unlimited")
+async def set_unlimited_leads(
+    session: Session = Depends(get_session),
+    current_user: User = Depends(get_current_active_user)
+):
+    """Definir limite de leads como ilimitado para o tenant atual (apenas admin)"""
+    if current_user.role != UserRole.ADMIN:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Apenas administradores podem definir limites ilimitados"
+        )
+    
+    tenant_id = current_user.tenant_id
+    tenant_limit = session.exec(
+        select(TenantLimit).where(TenantLimit.tenant_id == tenant_id)
+    ).first()
+    
+    if not tenant_limit:
+        tenant_limit = TenantLimit(
+            tenant_id=tenant_id,
+            plan_type=PlanType.ENTERPRISE,
+            max_leads=-1,
+            max_users=3,
+            max_items=50,
+            max_api_calls=1000,
+            max_tokens=100000
+        )
+        session.add(tenant_limit)
+    else:
+        tenant_limit.max_leads = -1
+        tenant_limit.updated_at = datetime.utcnow()
+    
+    session.add(tenant_limit)
+    session.commit()
+    session.refresh(tenant_limit)
+    
+    return {
+        "message": "Limite de leads definido como ilimitado com sucesso",
+        "max_leads": tenant_limit.max_leads
+    }
+
+
+@router.post("/usage/limits/unlimited")
+async def set_unlimited_limits(
+    session: Session = Depends(get_session),
+    current_user: User = Depends(get_current_active_user)
+):
+    """Definir todos os limites como ilimitados para o tenant atual (apenas admin)"""
+    if current_user.role != UserRole.ADMIN:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Apenas administradores podem definir limites ilimitados"
+        )
+    
+    tenant_id = current_user.tenant_id
+    tenant_limit = session.exec(
+        select(TenantLimit).where(TenantLimit.tenant_id == tenant_id)
+    ).first()
+    
+    if not tenant_limit:
+        tenant_limit = TenantLimit(
+            tenant_id=tenant_id,
+            plan_type=PlanType.ENTERPRISE,
+            max_leads=-1,
+            max_users=-1,
+            max_items=-1,
+            max_api_calls=-1,
+            max_tokens=-1
+        )
+        session.add(tenant_limit)
+    else:
+        tenant_limit.plan_type = PlanType.ENTERPRISE
+        tenant_limit.max_leads = -1
+        tenant_limit.max_users = -1
+        tenant_limit.max_items = -1
+        tenant_limit.max_api_calls = -1
+        tenant_limit.max_tokens = -1
+        tenant_limit.updated_at = datetime.utcnow()
+    
+    session.add(tenant_limit)
+    session.commit()
+    session.refresh(tenant_limit)
+    
+    return {
+        "message": "Limites definidos como ilimitados com sucesso",
+        "limits": {
+            "plan_type": tenant_limit.plan_type.value,
+            "max_leads": tenant_limit.max_leads,
+            "max_users": tenant_limit.max_users,
+            "max_items": tenant_limit.max_items,
+            "max_api_calls": tenant_limit.max_api_calls,
+            "max_tokens": tenant_limit.max_tokens
+        }
+    }
+

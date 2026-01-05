@@ -1484,6 +1484,277 @@ async def parse_linkedin_pdf(
             )
 
 
+@router.post("/import-from-linkedin-pdf", response_model=LeadResponse)
+async def import_lead_from_linkedin_pdf(
+    file: UploadFile = File(...),
+    session: Session = Depends(get_session),
+    current_user: User = Depends(get_current_active_user)
+):
+    """
+    Importa um PDF de exportação do LinkedIn e cria um lead automaticamente
+    
+    Args:
+        file: Arquivo PDF do LinkedIn
+        
+    Returns:
+        Lead criado com os dados extraídos do PDF
+    """
+    # Validar tipo de arquivo
+    if not file.filename or not file.filename.lower().endswith('.pdf'):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Arquivo deve ser um PDF (.pdf)"
+        )
+    
+    # Validar tamanho máximo (10MB)
+    MAX_FILE_SIZE = 10 * 1024 * 1024  # 10MB
+    file_content = await file.read()
+    if len(file_content) > MAX_FILE_SIZE:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Arquivo muito grande. Tamanho máximo: 10MB"
+        )
+    
+    # Resetar posição do arquivo para leitura
+    await file.seek(0)
+    
+    try:
+        logger.info(f"📄 [PDF IMPORT] Importando lead de PDF: {file.filename}")
+        
+        # Verificar limite antes de processar
+        await check_limit("leads", session, current_user)
+        
+        # Verificar se LLM está disponível
+        from app.agents.llm_helper import is_llm_available
+        if not is_llm_available():
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="LLM não está disponível. Verifique se o Ollama está rodando ou configure a API key do OpenAI no arquivo .env"
+            )
+        
+        # Extrair texto do PDF
+        text = await extract_text_from_pdf(file)
+        
+        if not text or len(text.strip()) < 100:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="PDF não contém texto suficiente para análise. Pode ser um PDF escaneado (imagem)."
+            )
+        
+        # Analisar texto com LLM
+        try:
+            parsed_data = await parse_linkedin_data_with_llm(
+                text, 
+                session=session, 
+                tenant_id=current_user.tenant_id, 
+                user_id=current_user.id
+            )
+        except ValueError as llm_error:
+            error_msg = str(llm_error)
+            if "Connection refused" in error_msg or "111" in error_msg:
+                raise HTTPException(
+                    status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                    detail="Não foi possível conectar ao Ollama. Verifique se o Ollama está rodando. Em ambiente Docker, use 'host.docker.internal:11434' ou configure a URL correta no .env (OLLAMA_BASE_URL)"
+                )
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Erro ao processar PDF com LLM: {error_msg}"
+            )
+        
+        logger.info(f"✅ [PDF IMPORT] Dados extraídos com sucesso: {list(parsed_data.keys())}")
+        logger.info(f"📋 [PDF IMPORT] Dados extraídos - Nome: {parsed_data.get('name')}, Empresa: {parsed_data.get('company')}, Cargo: {parsed_data.get('position')}, Segmento: {parsed_data.get('industry')}")
+        
+        # Validar que temos pelo menos um nome
+        if not parsed_data.get("name"):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Não foi possível extrair o nome do perfil do PDF. Verifique se o PDF contém informações do perfil do LinkedIn."
+            )
+        
+        # Se company ou position não foram extraídos diretamente, tentar extrair da experiência mais recente
+        company = parsed_data.get("company")
+        position = parsed_data.get("position")
+        industry = parsed_data.get("industry")
+        
+        # Se não tiver company ou position, tentar extrair da experiência mais recente
+        if not company or not position:
+            try:
+                experience_json = parsed_data.get("linkedin_experience_json")
+                if experience_json:
+                    # Se for string JSON, parsear
+                    if isinstance(experience_json, str):
+                        experiences = json.loads(experience_json)
+                    else:
+                        experiences = experience_json
+                    
+                    if experiences and len(experiences) > 0:
+                        # Pegar a experiência mais recente (primeira da lista geralmente é a atual)
+                        latest_exp = experiences[0]
+                        if not company and latest_exp.get("company"):
+                            company = latest_exp.get("company")
+                            logger.info(f"📋 [PDF IMPORT] Empresa extraída da experiência: {company}")
+                        if not position and latest_exp.get("position"):
+                            position = latest_exp.get("position")
+                            logger.info(f"📋 [PDF IMPORT] Cargo extraído da experiência: {position}")
+                        
+                        # Se não tiver industry e houver descrição na experiência, tentar inferir
+                        if not industry and latest_exp.get("description"):
+                            # Tentar inferir industry da descrição da experiência
+                            description = latest_exp.get("description", "").lower()
+                            industry_keywords = {
+                                "tecnologia": ["software", "tech", "desenvolvimento", "programação", "it", "ti", "sistema"],
+                                "saúde": ["médico", "hospital", "clínica", "saúde", "enfermagem"],
+                                "financeiro": ["banco", "financeiro", "investimento", "crédito", "fintech"],
+                                "educação": ["escola", "universidade", "educação", "ensino", "acadêmico"],
+                                "varejo": ["varejo", "loja", "comércio", "retail"],
+                                "consultoria": ["consultoria", "consultor", "advisory"],
+                                "manufatura": ["manufatura", "produção", "industrial", "fábrica"],
+                            }
+                            
+                            for ind, keywords in industry_keywords.items():
+                                if any(keyword in description for keyword in keywords):
+                                    industry = ind.title()
+                                    logger.info(f"📋 [PDF IMPORT] Segmento inferido da descrição: {industry}")
+                                    break
+            except Exception as e:
+                logger.warning(f"⚠️ [PDF IMPORT] Erro ao extrair company/position da experiência: {e}")
+        
+        # Log final dos dados que serão usados
+        logger.info(f"📋 [PDF IMPORT] Dados finais para criação - Nome: {parsed_data.get('name')}, Empresa: {company}, Cargo: {position}, Segmento: {industry}")
+        
+        # Preparar dados para criar o lead
+        lead_data = LeadCreate(
+            name=parsed_data.get("name"),
+            email=parsed_data.get("email"),
+            phone=parsed_data.get("phone"),
+            company=company,
+            position=position,
+            industry=industry,
+            website=parsed_data.get("website"),
+            linkedin_url=parsed_data.get("linkedin_url"),
+            linkedin_headline=parsed_data.get("linkedin_headline"),
+            linkedin_about=parsed_data.get("linkedin_about"),
+            linkedin_experience_json=parsed_data.get("linkedin_experience_json"),
+            linkedin_education_json=parsed_data.get("linkedin_education_json"),
+            linkedin_certifications_json=parsed_data.get("linkedin_certifications_json"),
+            linkedin_skills=parsed_data.get("linkedin_skills"),
+            linkedin_articles_json=parsed_data.get("linkedin_articles_json"),
+            linkedin_connections_count=parsed_data.get("linkedin_connections_count"),
+            linkedin_followers_count=parsed_data.get("linkedin_followers_count"),
+            source="linkedin",
+            status=LeadStatus.NEW
+        )
+        
+        # Criar lead usando a função existente (reutilizando código)
+        lead_dict = lead_data.dict()
+        lead_dict = ensure_ownership(lead_dict, current_user)
+        
+        # Se assigned_to foi fornecido mas owner_id não, usar assigned_to como owner_id
+        if lead_dict.get("assigned_to") and not lead_dict.get("owner_id"):
+            lead_dict["owner_id"] = lead_dict["assigned_to"]
+        
+        lead = Lead(
+            **lead_dict,
+            tenant_id=current_user.tenant_id
+        )
+        session.add(lead)
+        session.commit()
+        session.refresh(lead)
+        
+        # Calcular score automaticamente
+        try:
+            lead.score = calculate_lead_score(lead, session)
+            session.add(lead)
+            session.commit()
+            session.refresh(lead)
+        except Exception as score_error:
+            logger.warning(f"⚠️ [SCORING] Erro ao calcular score na criação do lead {lead.id}: {score_error}")
+        
+        # Calcular ICP score automaticamente
+        try:
+            lead.icp_score = calculate_icp_score(lead)
+            session.add(lead)
+            session.commit()
+            session.refresh(lead)
+        except Exception as icp_error:
+            logger.warning(f"⚠️ [ICP SCORING] Erro ao calcular ICP score na criação do lead {lead.id}: {icp_error}")
+        
+        # Track KPI activity for lead creation
+        try:
+            completed_goals = track_kpi_activity(
+                session=session,
+                user_id=current_user.id,
+                tenant_id=current_user.tenant_id,
+                metric_type=GoalMetricType.LEADS_CREATED,
+                value=1.0,
+                entity_type='Lead',
+                entity_id=lead.id
+            )
+            session.commit()
+            if completed_goals:
+                logger.info(f"🎯 [KPI] {len(completed_goals)} goal(s) completed by lead creation")
+        except Exception as kpi_error:
+            logger.warning(f"⚠️ [KPI] Error tracking activity: {kpi_error}")
+        
+        # Track KPI activity for LinkedIn import
+        try:
+            completed_goals_linkedin = track_kpi_activity(
+                session=session,
+                user_id=lead.owner_id or current_user.id,
+                tenant_id=current_user.tenant_id,
+                metric_type=GoalMetricType.LEADS_IMPORTED_FROM_LINKEDIN,
+                value=1.0,
+                entity_type='Lead',
+                entity_id=lead.id
+            )
+            session.commit()
+            if completed_goals_linkedin:
+                logger.info(f"🎯 [KPI] {len(completed_goals_linkedin)} goal(s) completed by LinkedIn import")
+        except Exception as kpi_error:
+            logger.warning(f"⚠️ [KPI] Erro ao trackear importação do LinkedIn: {kpi_error}")
+            # Não falhar a operação principal se o tracking falhar
+        
+        logger.info(f"✅ [PDF IMPORT] Lead criado com sucesso: ID {lead.id}, Nome: {lead.name}")
+        
+        return lead
+        
+    except HTTPException:
+        raise
+    except ValueError as e:
+        error_msg = str(e)
+        logger.error(f"❌ [PDF IMPORT] Erro de validação: {error_msg}")
+        if "Connection refused" in error_msg or "111" in error_msg or "conexão" in error_msg.lower():
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Não foi possível conectar ao Ollama. Verifique se o Ollama está rodando. Em ambiente Docker, configure OLLAMA_BASE_URL no .env (ex: http://host.docker.internal:11434)"
+            )
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=error_msg
+        )
+    except Exception as e:
+        error_msg = str(e)
+        logger.error(f"❌ [PDF IMPORT] Erro ao importar lead de PDF: {error_msg}")
+        import traceback
+        traceback.print_exc()
+        
+        if "Connection refused" in error_msg or "111" in error_msg:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Não foi possível conectar ao Ollama. Verifique se o Ollama está rodando. Em ambiente Docker, configure OLLAMA_BASE_URL no .env (ex: http://host.docker.internal:11434)"
+            )
+        elif "LLM não está configurado" in error_msg or "LLM não está disponível" in error_msg:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="LLM não está configurado. Configure OpenAI (OPENAI_API_KEY) ou Ollama (OLLAMA_BASE_URL) no arquivo .env"
+            )
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Erro ao importar lead de PDF: {error_msg}"
+            )
+
+
 @router.get("/{lead_id}", response_model=LeadResponse)
 async def get_lead(
     lead_id: int,
@@ -1519,6 +1790,7 @@ async def update_lead(
     
     # Salvar estado antigo para verificar mudanças relevantes
     # Criar um objeto temporário com os valores atuais
+    old_status = lead.status
     old_values = {
         'email': lead.email,
         'phone': lead.phone,
@@ -1544,8 +1816,25 @@ async def update_lead(
     
     # Atualizar campos, mas manter ownership e tenant
     lead_dict = lead_data.dict()
+    # Normalizar strings vazias para None em campos opcionais
+    optional_string_fields = [
+        'email', 'phone', 'company', 'position', 'website', 'linkedin_url',
+        'linkedin_headline', 'linkedin_about', 'linkedin_experience_json',
+        'linkedin_education_json', 'linkedin_certifications_json', 'linkedin_skills',
+        'linkedin_articles_json', 'linkedin_recent_activity', 'linkedin_summary',
+        'source', 'notes', 'tags', 'address', 'city', 'state', 'zip_code',
+        'country', 'industry', 'company_size', 'context', 'tech_stack',
+        'razao_social', 'nome_fantasia', 'cnpj', 'situacao_cadastral',
+        'motivo_situacao_cadastral', 'natureza_juridica', 'porte', 'logradouro',
+        'numero', 'bairro', 'cep', 'municipio', 'uf', 'complemento',
+        'cnae_principal_codigo', 'cnae_principal_descricao', 'cnaes_secundarios_json',
+        'telefone_empresa', 'email_empresa', 'socios_json', 'agent_suggestion'
+    ]
     for key, value in lead_dict.items():
         if key not in ['owner_id', 'created_by_id', 'tenant_id']:
+            # Converter strings vazias em None para campos opcionais
+            if key in optional_string_fields and isinstance(value, str) and value.strip() == '':
+                value = None
             setattr(lead, key, value)
     
     # Se owner_id foi especificado, atualizar (mas validar acesso)
@@ -1609,6 +1898,25 @@ async def update_lead(
         except Exception as icp_error:
             logger.warning(f"⚠️ [ICP SCORING] Erro ao recalcular ICP score do lead {lead.id}: {icp_error}")
             # Não falhar a operação principal se o ICP scoring falhar
+    
+    # Track KPI activity if lead status changed to NURTURING
+    if lead.status == LeadStatus.NURTURING and old_status != LeadStatus.NURTURING:
+        try:
+            completed_goals = track_kpi_activity(
+                session=session,
+                user_id=lead.owner_id or current_user.id,
+                tenant_id=current_user.tenant_id,
+                metric_type=GoalMetricType.LEADS_ENRICHED,
+                value=1.0,
+                entity_type='Lead',
+                entity_id=lead.id
+            )
+            session.commit()
+            if completed_goals:
+                logger.info(f"🎯 [KPI] {len(completed_goals)} goal(s) completed by lead enrichment")
+        except Exception as kpi_error:
+            logger.warning(f"⚠️ [KPI] Erro ao trackear enriquecimento de lead: {kpi_error}")
+            # Não falhar a operação principal se o tracking falhar
     
     return lead
 
@@ -1782,10 +2090,31 @@ async def update_lead_status(
         )
     require_ownership(lead, current_user)
     
+    old_status = lead.status
     lead.status = new_status
     session.add(lead)
     session.commit()
     session.refresh(lead)
+    
+    # Track KPI activity if lead status changed to NURTURING
+    if new_status == LeadStatus.NURTURING and old_status != LeadStatus.NURTURING:
+        try:
+            completed_goals = track_kpi_activity(
+                session=session,
+                user_id=lead.owner_id or current_user.id,
+                tenant_id=current_user.tenant_id,
+                metric_type=GoalMetricType.LEADS_ENRICHED,
+                value=1.0,
+                entity_type='Lead',
+                entity_id=lead.id
+            )
+            session.commit()
+            if completed_goals:
+                logger.info(f"🎯 [KPI] {len(completed_goals)} goal(s) completed by lead enrichment")
+        except Exception as kpi_error:
+            logger.warning(f"⚠️ [KPI] Erro ao trackear enriquecimento de lead: {kpi_error}")
+            # Não falhar a operação principal se o tracking falhar
+    
     return lead
 
 

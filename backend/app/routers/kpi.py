@@ -16,6 +16,7 @@ from app.services.kpi_service import (
     calculate_goal_status,
     reset_goal_period_if_needed,
     calculate_initial_goal_value,
+    calculate_daily_target,
 )
 
 router = APIRouter()
@@ -76,26 +77,30 @@ async def get_goals(
     
     session.commit()
     
-    # Criar lista de respostas
-    response_list = [
-        GoalResponse(
-            id=goal.id,
-            tenant_id=goal.tenant_id,
-            user_id=goal.user_id,
-            title=goal.title,
-            metric_type=goal.metric_type.value,
-            target_value=goal.target_value,
-            current_value=goal.current_value,
-            period=goal.period.value,
-            status=goal.status.value,
-            is_visible_on_wallboard=goal.is_visible_on_wallboard,
-            period_start=goal.period_start,
-            period_end=goal.period_end,
-            created_at=goal.created_at,
-            updated_at=goal.updated_at,
+    # Criar lista de respostas com meta diária calculada
+    response_list = []
+    for goal in updated_goals:
+        daily_target = calculate_daily_target(goal)
+        response_list.append(
+            GoalResponse(
+                id=goal.id,
+                tenant_id=goal.tenant_id,
+                user_id=goal.user_id,
+                title=goal.title,
+                metric_type=goal.metric_type.value,
+                target_value=goal.target_value,
+                current_value=goal.current_value,
+                period=goal.period.value,
+                status=goal.status.value,
+                is_visible_on_wallboard=goal.is_visible_on_wallboard,
+                period_start=goal.period_start,
+                period_end=goal.period_end,
+                due_date=goal.due_date,
+                daily_target=daily_target,
+                created_at=goal.created_at,
+                updated_at=goal.updated_at,
+            )
         )
-        for goal in updated_goals
-    ]
     
     logger.info(f"[KPI] Retornando {len(response_list)} goals para o frontend")
     
@@ -141,6 +146,7 @@ async def create_goal(
         is_visible_on_wallboard=goal_data.is_visible_on_wallboard,
         period_start=period_start,
         period_end=period_end,
+        due_date=goal_data.due_date,
     )
     
     # Recalcular status com o valor inicial
@@ -154,6 +160,7 @@ async def create_goal(
     
     logger.info(f"[KPI CREATE] Goal salvo no banco: id={goal.id}")
     
+    daily_target = calculate_daily_target(goal)
     response = GoalResponse(
         id=goal.id,
         tenant_id=goal.tenant_id,
@@ -167,6 +174,8 @@ async def create_goal(
         is_visible_on_wallboard=goal.is_visible_on_wallboard,
         period_start=goal.period_start,
         period_end=goal.period_end,
+        due_date=goal.due_date,
+        daily_target=daily_target,
         created_at=goal.created_at,
         updated_at=goal.updated_at,
     )
@@ -210,6 +219,8 @@ async def update_goal(
         goal.current_value = 0.0  # Reset ao mudar período
     if goal_data.is_visible_on_wallboard is not None:
         goal.is_visible_on_wallboard = goal_data.is_visible_on_wallboard
+    if goal_data.due_date is not None:
+        goal.due_date = goal_data.due_date
     
     goal.status = calculate_goal_status(goal)
     goal.updated_at = datetime.utcnow()
@@ -218,6 +229,7 @@ async def update_goal(
     session.commit()
     session.refresh(goal)
     
+    daily_target = calculate_daily_target(goal)
     return GoalResponse(
         id=goal.id,
         tenant_id=goal.tenant_id,
@@ -231,6 +243,8 @@ async def update_goal(
         is_visible_on_wallboard=goal.is_visible_on_wallboard,
         period_start=goal.period_start,
         period_end=goal.period_end,
+        due_date=goal.due_date,
+        daily_target=daily_target,
         created_at=goal.created_at,
         updated_at=goal.updated_at,
     )
