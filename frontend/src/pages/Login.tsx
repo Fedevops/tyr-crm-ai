@@ -31,20 +31,20 @@ export function Login() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50 dark:from-gray-950 dark:via-gray-900 dark:to-gray-950">
-      <div className="w-full max-w-md space-y-6">
+    <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50 dark:from-gray-950 dark:via-gray-900 dark:to-gray-950 p-4">
+      <div className="w-full max-w-md space-y-4 md:space-y-6">
         {/* Logo */}
-        <div className="flex justify-center mb-4">
+        <div className="flex justify-center mb-2 md:mb-4">
           <div className="relative">
             <img 
               src="/assets/LOGO AZUL.png" 
               alt="TYR CRM AI" 
-              className="h-32 w-auto dark:hidden transition-all duration-300 hover:scale-105"
+              className="h-24 md:h-32 w-auto dark:hidden transition-all duration-300 hover:scale-105"
             />
             <img 
               src="/assets/LOGO BRANCO.svg" 
               alt="TYR CRM AI" 
-              className="h-32 w-auto hidden dark:block transition-all duration-300 hover:scale-105"
+              className="h-24 md:h-32 w-auto hidden dark:block transition-all duration-300 hover:scale-105"
             />
           </div>
         </div>

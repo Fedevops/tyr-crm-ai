@@ -1,7 +1,7 @@
 import { Link, useLocation } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { useState, useEffect } from 'react'
-import { LayoutDashboard, BookOpen, Users, Settings, LogOut, ListChecks, Workflow, Search, Building2, UserCircle, TrendingUp, FileText, Filter, History, Target, Radio, BarChart3, Package, ShoppingCart, Database, Calendar as CalendarIcon, Wallet } from 'lucide-react'
+import { LayoutDashboard, BookOpen, Users, Settings, LogOut, ListChecks, Workflow, Search, Building2, UserCircle, TrendingUp, FileText, Filter, History, Target, Radio, BarChart3, Package, ShoppingCart, Database, Calendar as CalendarIcon, Wallet, Menu, X } from 'lucide-react'
 import { useAuth } from '@/contexts/AuthContext'
 import { Button } from './ui/button'
 import { cn } from '@/lib/utils'
@@ -30,7 +30,12 @@ const navigation = [
   { name: 'settings', href: '/settings', icon: Settings },
 ]
 
-export function Sidebar() {
+interface SidebarProps {
+  isOpen?: boolean
+  onClose?: () => void
+}
+
+export function Sidebar({ isOpen = true, onClose }: SidebarProps) {
   const { t } = useTranslation()
   const location = useLocation()
   const { logout } = useAuth()
@@ -50,10 +55,33 @@ export function Sidebar() {
     }
   }
 
+  const handleLinkClick = () => {
+    // Fechar sidebar em mobile quando um link for clicado
+    if (onClose && window.innerWidth < 768) {
+      onClose()
+    }
+  }
+
   return (
-    <div className="flex h-screen w-64 flex-col border-r bg-card shadow-sm">
-      <div className="flex h-20 items-center justify-center border-b px-6 bg-gradient-to-r from-blue-50/50 via-indigo-50/50 to-purple-50/50 dark:from-blue-950/20 dark:via-indigo-950/20 dark:to-purple-950/20">
-        <Link to="/dashboard" className="flex items-center gap-3 group transition-all duration-200 hover:opacity-80">
+    <>
+      {/* Overlay para mobile */}
+      {onClose && (
+        <div
+          className={cn(
+            "fixed inset-0 bg-black/50 z-40 transition-opacity md:hidden",
+            isOpen ? "opacity-100" : "opacity-0 pointer-events-none"
+          )}
+          onClick={onClose}
+        />
+      )}
+      
+      {/* Sidebar */}
+      <div className={cn(
+        "fixed md:static inset-y-0 left-0 z-50 flex h-screen w-64 flex-col border-r bg-card shadow-sm transition-transform duration-300 ease-in-out",
+        isOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0"
+      )}>
+      <div className="flex h-20 items-center justify-between border-b px-6 bg-gradient-to-r from-blue-50/50 via-indigo-50/50 to-purple-50/50 dark:from-blue-950/20 dark:via-indigo-950/20 dark:to-purple-950/20">
+        <Link to="/dashboard" onClick={handleLinkClick} className="flex items-center gap-3 group transition-all duration-200 hover:opacity-80">
           <div className="relative flex-shrink-0">
             <img 
               src="/assets/LOGO AZUL.png" 
@@ -75,6 +103,17 @@ export function Sidebar() {
             </span> */}
           </div>
         </Link>
+        {/* Botão fechar para mobile */}
+        {onClose && (
+          <Button
+            variant="ghost"
+            size="icon"
+            className="md:hidden"
+            onClick={onClose}
+          >
+            <X className="h-5 w-5" />
+          </Button>
+        )}
       </div>
       <nav className="flex-1 space-y-1 px-3 py-4 overflow-y-auto">
         {navigation.map((item) => {
@@ -84,6 +123,7 @@ export function Sidebar() {
             <Link
               key={item.name}
               to={item.href}
+              onClick={handleLinkClick}
               className={cn(
                 'flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors',
                 isActive
@@ -111,6 +151,7 @@ export function Sidebar() {
                 <Link
                   key={module.id}
                   to={`/custom-module/${module.id}`}
+                  onClick={handleLinkClick}
                   className={cn(
                     'flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors',
                     isActive
@@ -130,13 +171,17 @@ export function Sidebar() {
         <Button
           variant="ghost"
           className="w-full justify-start"
-          onClick={logout}
+          onClick={() => {
+            handleLinkClick()
+            logout()
+          }}
         >
           <LogOut className="mr-3 h-5 w-5" />
           {t('common.logout')}
         </Button>
       </div>
     </div>
+    </>
   )
 }
 

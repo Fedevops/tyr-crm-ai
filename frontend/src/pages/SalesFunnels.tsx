@@ -361,17 +361,17 @@ export function SalesFunnels() {
   })) || []
 
   return (
-    <div className="flex-1 space-y-6 p-6">
-      <div className="flex items-center justify-between">
+    <div className="flex-1 space-y-4 md:space-y-6 p-4 md:p-6 overflow-x-hidden">
+      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-bold">Funil de Vendas</h1>
-          <p className="text-muted-foreground">Configure seus funis de vendas e estágios</p>
+          <h1 className="text-2xl md:text-3xl font-bold">Funil de Vendas</h1>
+          <p className="text-sm md:text-base text-muted-foreground">Configure seus funis de vendas e estágios</p>
         </div>
         <Button 
           onClick={() => setShowForm(!showForm)}
-          className="bg-gradient-to-r from-violet-600 to-violet-700 hover:from-violet-700 hover:to-violet-800 text-white shadow-md hover:shadow-lg transition-all duration-200"
+          className="bg-gradient-to-r from-violet-600 to-violet-700 hover:from-violet-700 hover:to-violet-800 text-white shadow-md hover:shadow-lg transition-all duration-200 w-full md:w-auto text-xs md:text-sm"
         >
-          <Plus className="mr-2 h-4 w-4" />
+          <Plus className="mr-1 md:mr-2 h-3 w-3 md:h-4 md:w-4" />
           Novo Funil
         </Button>
       </div>
@@ -430,8 +430,8 @@ export function SalesFunnels() {
               {/* Estágios Iniciais (apenas para novo funil) */}
               {!editingId && (
                 <div className="space-y-4 border-t pt-6">
-                  <div className="flex items-center justify-between">
-                    <h3 className="font-semibold text-violet-900 dark:text-violet-100">Estágios Iniciais</h3>
+                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                    <h3 className="font-semibold text-violet-900 dark:text-violet-100 text-sm md:text-base">Estágios Iniciais</h3>
                     <Button
                       type="button"
                       size="sm"
@@ -439,9 +439,11 @@ export function SalesFunnels() {
                       onClick={() => {
                         setInitialStages([...initialStages, { name: '', description: '', order: initialStages.length + 1, probability: 0 }])
                       }}
+                      className="text-xs md:text-sm w-full sm:w-auto"
                     >
-                      <Plus className="h-4 w-4 mr-1" />
-                      Adicionar Estágio
+                      <Plus className="h-3 w-3 md:h-4 md:w-4 mr-1" />
+                      <span className="hidden sm:inline">Adicionar Estágio</span>
+                      <span className="sm:hidden">Adicionar</span>
                     </Button>
                   </div>
                   <p className="text-sm text-muted-foreground">
@@ -454,7 +456,7 @@ export function SalesFunnels() {
                         <CardContent className="pt-4">
                           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                             <div>
-                              <label className="block text-sm font-medium mb-1">Nome do Estágio *</label>
+                              <label className="block text-xs md:text-sm font-medium mb-1">Nome do Estágio *</label>
                               <Input
                                 value={stage.name}
                                 onChange={(e) => {
@@ -464,11 +466,11 @@ export function SalesFunnels() {
                                 }}
                                 placeholder="Ex: Qualificação"
                                 required
-                                className="focus:ring-2 focus:ring-violet-500 focus:border-violet-500 transition-all duration-200"
+                                className="focus:ring-2 focus:ring-violet-500 focus:border-violet-500 transition-all duration-200 text-xs md:text-sm"
                               />
                             </div>
                             <div>
-                              <label className="block text-sm font-medium mb-1">Descrição</label>
+                              <label className="block text-xs md:text-sm font-medium mb-1">Descrição</label>
                               <Input
                                 value={stage.description}
                                 onChange={(e) => {
@@ -477,11 +479,11 @@ export function SalesFunnels() {
                                   setInitialStages(newStages)
                                 }}
                                 placeholder="Breve descrição do estágio"
-                                className="focus:ring-2 focus:ring-violet-500 focus:border-violet-500 transition-all duration-200"
+                                className="focus:ring-2 focus:ring-violet-500 focus:border-violet-500 transition-all duration-200 text-xs md:text-sm"
                               />
                             </div>
                             <div>
-                              <label className="block text-sm font-medium mb-1">Ordem *</label>
+                              <label className="block text-xs md:text-sm font-medium mb-1">Ordem *</label>
                               <Input
                                 type="number"
                                 min="1"
@@ -492,11 +494,11 @@ export function SalesFunnels() {
                                   setInitialStages(newStages)
                                 }}
                                 required
-                                className="focus:ring-2 focus:ring-violet-500 focus:border-violet-500 transition-all duration-200"
+                                className="focus:ring-2 focus:ring-violet-500 focus:border-violet-500 transition-all duration-200 text-xs md:text-sm"
                               />
                             </div>
                             <div>
-                              <label className="block text-sm font-medium mb-1">Probabilidade (%) *</label>
+                              <label className="block text-xs md:text-sm font-medium mb-1">Probabilidade (%) *</label>
                               <div className="flex items-center gap-2">
                                 <Input
                                   type="number"
@@ -509,9 +511,9 @@ export function SalesFunnels() {
                                     setInitialStages(newStages)
                                   }}
                                   required
-                                  className="focus:ring-2 focus:ring-violet-500 focus:border-violet-500 transition-all duration-200"
+                                  className="focus:ring-2 focus:ring-violet-500 focus:border-violet-500 transition-all duration-200 text-xs md:text-sm"
                                 />
-                                <div className="w-16 h-10 rounded border flex items-center justify-center text-xs font-medium bg-violet-50 dark:bg-violet-950/20">
+                                <div className="w-14 md:w-16 h-10 rounded border flex items-center justify-center text-xs font-medium bg-violet-50 dark:bg-violet-950/20 flex-shrink-0">
                                   {stage.probability}%
                                 </div>
                               </div>
@@ -546,10 +548,10 @@ export function SalesFunnels() {
                 </div>
               )}
 
-              <div className="flex gap-2 pt-4 border-t">
+              <div className="flex flex-wrap gap-2 pt-4 border-t">
                 <Button 
                   type="submit"
-                  className="bg-gradient-to-r from-violet-600 to-violet-700 hover:from-violet-700 hover:to-violet-800 text-white shadow-md hover:shadow-lg transition-all duration-200"
+                  className="bg-gradient-to-r from-violet-600 to-violet-700 hover:from-violet-700 hover:to-violet-800 text-white shadow-md hover:shadow-lg transition-all duration-200 flex-1 md:flex-initial text-xs md:text-sm"
                 >
                   {editingId ? 'Atualizar' : 'Criar'} Funil
                 </Button>
@@ -557,7 +559,7 @@ export function SalesFunnels() {
                   type="button"
                   variant="outline"
                   onClick={resetFunnelForm}
-                  className="border-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800"
+                  className="border-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 flex-1 md:flex-initial text-xs md:text-sm"
                 >
                   Cancelar
                 </Button>
@@ -567,11 +569,11 @@ export function SalesFunnels() {
         </Card>
       )}
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 md:gap-6">
         {/* Lista de Funis */}
         <Card className="border-t-4 border-t-violet-500 bg-gradient-to-br from-violet-50/30 to-white dark:from-violet-950/10 dark:to-background">
           <CardHeader className="bg-gradient-to-r from-violet-50/50 to-transparent dark:from-violet-950/20">
-            <CardTitle className="text-violet-900 dark:text-violet-100">Funis de Vendas</CardTitle>
+            <CardTitle className="text-violet-900 dark:text-violet-100 text-lg md:text-xl">Funis de Vendas</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="space-y-2">
@@ -585,24 +587,25 @@ export function SalesFunnels() {
                       : 'border-gray-200 hover:border-violet-300 bg-white dark:bg-background'
                   }`}
                 >
-                  <div className="flex items-center justify-between">
-                    <div className="flex-1">
-                      <div className="flex items-center gap-2">
-                        <h3 className="font-semibold">{funnel.name}</h3>
+                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <h3 className="font-semibold text-sm md:text-base break-words">{funnel.name}</h3>
                         {funnel.is_default && (
-                          <span className="text-xs bg-violet-100 text-violet-700 dark:bg-violet-900 dark:text-violet-200 px-2 py-1 rounded">
+                          <span className="text-xs bg-violet-100 text-violet-700 dark:bg-violet-900 dark:text-violet-200 px-2 py-1 rounded flex-shrink-0">
                             Padrão
                           </span>
                         )}
                       </div>
                       {funnel.description && (
-                        <p className="text-sm text-muted-foreground mt-1">{funnel.description}</p>
+                        <p className="text-xs md:text-sm text-muted-foreground mt-1 break-words">{funnel.description}</p>
                       )}
                     </div>
-                    <div className="flex gap-2">
+                    <div className="flex gap-2 flex-shrink-0">
                       <Button
                         size="sm"
                         variant="ghost"
+                        className="h-8 w-8 md:h-9 md:w-9"
                         onClick={(e) => {
                           e.stopPropagation()
                           handleEditFunnel(funnel)
@@ -613,6 +616,7 @@ export function SalesFunnels() {
                       <Button
                         size="sm"
                         variant="ghost"
+                        className="h-8 w-8 md:h-9 md:w-9"
                         onClick={(e) => {
                           e.stopPropagation()
                           handleDeleteFunnel(funnel.id)
@@ -626,7 +630,7 @@ export function SalesFunnels() {
               ))}
             </div>
             {funnels.length === 0 && (
-              <p className="text-center text-muted-foreground py-4">Nenhum funil criado</p>
+              <p className="text-center text-muted-foreground py-4 text-sm">Nenhum funil criado</p>
             )}
           </CardContent>
         </Card>
@@ -638,14 +642,16 @@ export function SalesFunnels() {
             {funnelStats && showStats && (
               <Card className="border-t-4 border-t-violet-500 bg-gradient-to-br from-violet-50/30 to-white dark:from-violet-950/10 dark:to-background">
                 <CardHeader className="bg-gradient-to-r from-violet-50/50 to-transparent dark:from-violet-950/20">
-                  <div className="flex items-center justify-between">
-                    <CardTitle className="text-violet-900 dark:text-violet-100">
-                      Estatísticas do Funil: {funnelStats.funnel.name}
+                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                    <CardTitle className="text-violet-900 dark:text-violet-100 text-base md:text-lg break-words">
+                      <span className="hidden sm:inline">Estatísticas do Funil: </span>
+                      {funnelStats.funnel.name}
                     </CardTitle>
                     <Button
                       size="sm"
                       variant="ghost"
                       onClick={() => setShowStats(!showStats)}
+                      className="h-8 w-8 md:h-9 md:w-9 flex-shrink-0"
                     >
                       {showStats ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                     </Button>
@@ -653,31 +659,31 @@ export function SalesFunnels() {
                 </CardHeader>
                 <CardContent className="space-y-6">
                   {/* Resumo Geral */}
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    <div className="p-4 rounded-lg bg-gradient-to-br from-violet-50 to-white dark:from-violet-950/20 dark:to-background border border-violet-200">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                    <div className="p-3 md:p-4 rounded-lg bg-gradient-to-br from-violet-50 to-white dark:from-violet-950/20 dark:to-background border border-violet-200">
                       <div className="flex items-center gap-2 mb-2">
-                        <Target className="h-5 w-5 text-violet-600" />
-                        <span className="text-sm font-medium text-violet-700 dark:text-violet-300">Total de Oportunidades</span>
+                        <Target className="h-4 w-4 md:h-5 md:w-5 text-violet-600 flex-shrink-0" />
+                        <span className="text-xs md:text-sm font-medium text-violet-700 dark:text-violet-300 break-words">Total de Oportunidades</span>
                       </div>
-                      <p className="text-2xl font-bold text-violet-900 dark:text-violet-100">
+                      <p className="text-xl md:text-2xl font-bold text-violet-900 dark:text-violet-100 break-words">
                         {funnelStats.summary.total_opportunities}
                       </p>
                     </div>
-                    <div className="p-4 rounded-lg bg-gradient-to-br from-emerald-50 to-white dark:from-emerald-950/20 dark:to-background border border-emerald-200">
+                    <div className="p-3 md:p-4 rounded-lg bg-gradient-to-br from-emerald-50 to-white dark:from-emerald-950/20 dark:to-background border border-emerald-200">
                       <div className="flex items-center gap-2 mb-2">
-                        <DollarSign className="h-5 w-5 text-emerald-600" />
-                        <span className="text-sm font-medium text-emerald-700 dark:text-emerald-300">Valor Total</span>
+                        <DollarSign className="h-4 w-4 md:h-5 md:w-5 text-emerald-600 flex-shrink-0" />
+                        <span className="text-xs md:text-sm font-medium text-emerald-700 dark:text-emerald-300 break-words">Valor Total</span>
                       </div>
-                      <p className="text-2xl font-bold text-emerald-900 dark:text-emerald-100">
+                      <p className="text-xl md:text-2xl font-bold text-emerald-900 dark:text-emerald-100 break-words">
                         {formatCurrency(funnelStats.summary.total_value)}
                       </p>
                     </div>
-                    <div className="p-4 rounded-lg bg-gradient-to-br from-blue-50 to-white dark:from-blue-950/20 dark:to-background border border-blue-200">
+                    <div className="p-3 md:p-4 rounded-lg bg-gradient-to-br from-blue-50 to-white dark:from-blue-950/20 dark:to-background border border-blue-200 sm:col-span-2 lg:col-span-1">
                       <div className="flex items-center gap-2 mb-2">
-                        <TrendingUp className="h-5 w-5 text-blue-600" />
-                        <span className="text-sm font-medium text-blue-700 dark:text-blue-300">Valor Ponderado</span>
+                        <TrendingUp className="h-4 w-4 md:h-5 md:w-5 text-blue-600 flex-shrink-0" />
+                        <span className="text-xs md:text-sm font-medium text-blue-700 dark:text-blue-300 break-words">Valor Ponderado</span>
                       </div>
-                      <p className="text-2xl font-bold text-blue-900 dark:text-blue-100">
+                      <p className="text-xl md:text-2xl font-bold text-blue-900 dark:text-blue-100 break-words">
                         {formatCurrency(funnelStats.summary.weighted_value)}
                       </p>
                     </div>
@@ -686,51 +692,55 @@ export function SalesFunnels() {
                   {/* Gráfico de Oportunidades por Estágio */}
                   {funnelChartData.length > 0 && (
                     <div>
-                      <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
-                        <BarChart3 className="h-5 w-5 text-violet-600" />
+                      <h3 className="text-base md:text-lg font-semibold mb-4 flex items-center gap-2">
+                        <BarChart3 className="h-4 w-4 md:h-5 md:w-5 text-violet-600 flex-shrink-0" />
                         Oportunidades por Estágio
                       </h3>
-                      <ResponsiveContainer width="100%" height={300}>
-                        <BarChart data={funnelChartData}>
-                          <CartesianGrid strokeDasharray="3 3" />
-                          <XAxis dataKey="name" />
-                          <YAxis />
-                          <Tooltip />
-                          <Legend />
-                          <Bar dataKey="oportunidades" fill="#8b5cf6" name="Oportunidades" />
-                        </BarChart>
-                      </ResponsiveContainer>
+                      <div className="overflow-x-auto">
+                        <ResponsiveContainer width="100%" height={300} minWidth={300}>
+                          <BarChart data={funnelChartData}>
+                            <CartesianGrid strokeDasharray="3 3" />
+                            <XAxis dataKey="name" tick={{ fontSize: 10 }} angle={-45} textAnchor="end" height={80} />
+                            <YAxis tick={{ fontSize: 10 }} />
+                            <Tooltip />
+                            <Legend />
+                            <Bar dataKey="oportunidades" fill="#8b5cf6" name="Oportunidades" />
+                          </BarChart>
+                        </ResponsiveContainer>
+                      </div>
                     </div>
                   )}
 
                   {/* Gráfico de Valor por Estágio */}
                   {funnelChartData.length > 0 && (
                     <div>
-                      <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
-                        <DollarSign className="h-5 w-5 text-emerald-600" />
+                      <h3 className="text-base md:text-lg font-semibold mb-4 flex items-center gap-2">
+                        <DollarSign className="h-4 w-4 md:h-5 md:w-5 text-emerald-600 flex-shrink-0" />
                         Valor por Estágio
                       </h3>
-                      <ResponsiveContainer width="100%" height={300}>
-                        <BarChart data={funnelChartData}>
-                          <CartesianGrid strokeDasharray="3 3" />
-                          <XAxis dataKey="name" />
-                          <YAxis />
-                          <Tooltip 
-                            formatter={(value: number) => formatCurrency(value)}
-                          />
-                          <Legend />
-                          <Bar dataKey="valor" fill="#10b981" name="Valor Total" />
-                          <Bar dataKey="valorPonderado" fill="#3b82f6" name="Valor Ponderado" />
-                        </BarChart>
-                      </ResponsiveContainer>
+                      <div className="overflow-x-auto">
+                        <ResponsiveContainer width="100%" height={300} minWidth={300}>
+                          <BarChart data={funnelChartData}>
+                            <CartesianGrid strokeDasharray="3 3" />
+                            <XAxis dataKey="name" tick={{ fontSize: 10 }} angle={-45} textAnchor="end" height={80} />
+                            <YAxis tick={{ fontSize: 10 }} />
+                            <Tooltip 
+                              formatter={(value: number) => formatCurrency(value)}
+                            />
+                            <Legend />
+                            <Bar dataKey="valor" fill="#10b981" name="Valor Total" />
+                            <Bar dataKey="valorPonderado" fill="#3b82f6" name="Valor Ponderado" />
+                          </BarChart>
+                        </ResponsiveContainer>
+                      </div>
                     </div>
                   )}
 
                   {/* Taxas de Conversão */}
                   {funnelStats.summary.conversion_rates.length > 0 && (
                     <div>
-                      <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
-                        <ArrowRight className="h-5 w-5 text-blue-600" />
+                      <h3 className="text-base md:text-lg font-semibold mb-4 flex items-center gap-2">
+                        <ArrowRight className="h-4 w-4 md:h-5 md:w-5 text-blue-600 flex-shrink-0" />
                         Taxas de Conversão
                       </h3>
                       <div className="space-y-2">
@@ -739,13 +749,13 @@ export function SalesFunnels() {
                             key={index}
                             className="p-3 rounded-lg bg-gradient-to-r from-blue-50 to-white dark:from-blue-950/20 dark:to-background border border-blue-200"
                           >
-                            <div className="flex items-center justify-between">
-                              <div className="flex items-center gap-2">
-                                <span className="font-medium">{rate.from_stage}</span>
-                                <ArrowRight className="h-4 w-4 text-blue-600" />
-                                <span className="font-medium">{rate.to_stage}</span>
+                            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <span className="font-medium text-sm md:text-base break-words">{rate.from_stage}</span>
+                                <ArrowRight className="h-4 w-4 text-blue-600 flex-shrink-0" />
+                                <span className="font-medium text-sm md:text-base break-words">{rate.to_stage}</span>
                               </div>
-                              <span className="text-lg font-bold text-blue-900 dark:text-blue-100">
+                              <span className="text-base md:text-lg font-bold text-blue-900 dark:text-blue-100">
                                 {rate.rate.toFixed(1)}%
                               </span>
                             </div>
@@ -761,25 +771,27 @@ export function SalesFunnels() {
             {/* Estágios do Funil */}
             <Card className="border-t-4 border-t-violet-500 bg-gradient-to-br from-violet-50/30 to-white dark:from-violet-950/10 dark:to-background">
               <CardHeader className="bg-gradient-to-r from-violet-50/50 to-transparent dark:from-violet-950/20">
-                <div className="flex items-center justify-between">
-                  <CardTitle className="text-violet-900 dark:text-violet-100">
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                  <CardTitle className="text-violet-900 dark:text-violet-100 text-lg md:text-xl">
                     Estágios do Funil
                   </CardTitle>
-                  <div className="flex gap-2">
+                  <div className="flex gap-2 flex-wrap">
                     <Button
                       size="sm"
                       variant="ghost"
                       onClick={() => setShowStats(!showStats)}
+                      className="h-8 w-8 md:h-9 md:w-9"
                     >
                       {showStats ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                     </Button>
                     <Button
                       size="sm"
                       onClick={() => setShowStageForm(!showStageForm)}
-                      className="bg-gradient-to-r from-violet-600 to-violet-700 hover:from-violet-700 hover:to-violet-800 text-white"
+                      className="bg-gradient-to-r from-violet-600 to-violet-700 hover:from-violet-700 hover:to-violet-800 text-white text-xs md:text-sm"
                     >
-                      <Plus className="mr-2 h-4 w-4" />
-                      Novo Estágio
+                      <Plus className="mr-1 md:mr-2 h-3 w-3 md:h-4 md:w-4" />
+                      <span className="hidden sm:inline">Novo Estágio</span>
+                      <span className="sm:hidden">Novo</span>
                     </Button>
                   </div>
                 </div>
@@ -807,20 +819,20 @@ export function SalesFunnels() {
                             className="focus:ring-2 focus:ring-violet-500 focus:border-violet-500 transition-all duration-200"
                           />
                         </div>
-                        <div className="grid grid-cols-2 gap-3">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                           <div>
-                            <label className="block text-sm font-medium mb-1">Ordem *</label>
+                            <label className="block text-xs md:text-sm font-medium mb-1">Ordem *</label>
                             <Input
                               type="number"
                               min="1"
                               value={stageFormData.order}
                               onChange={(e) => setStageFormData({ ...stageFormData, order: Number(e.target.value) })}
                               required
-                              className="focus:ring-2 focus:ring-violet-500 focus:border-violet-500 transition-all duration-200"
+                              className="focus:ring-2 focus:ring-violet-500 focus:border-violet-500 transition-all duration-200 text-xs md:text-sm"
                             />
                           </div>
                           <div>
-                            <label className="block text-sm font-medium mb-1">Probabilidade (%) *</label>
+                            <label className="block text-xs md:text-sm font-medium mb-1">Probabilidade (%) *</label>
                             <Input
                               type="number"
                               min="0"
@@ -828,15 +840,15 @@ export function SalesFunnels() {
                               value={stageFormData.probability}
                               onChange={(e) => setStageFormData({ ...stageFormData, probability: Number(e.target.value) })}
                               required
-                              className="focus:ring-2 focus:ring-violet-500 focus:border-violet-500 transition-all duration-200"
+                              className="focus:ring-2 focus:ring-violet-500 focus:border-violet-500 transition-all duration-200 text-xs md:text-sm"
                             />
                           </div>
                         </div>
-                        <div className="flex gap-2">
+                        <div className="flex flex-wrap gap-2">
                           <Button 
                             type="submit"
                             size="sm"
-                            className="bg-gradient-to-r from-violet-600 to-violet-700 hover:from-violet-700 hover:to-violet-800 text-white"
+                            className="bg-gradient-to-r from-violet-600 to-violet-700 hover:from-violet-700 hover:to-violet-800 text-white flex-1 sm:flex-initial text-xs md:text-sm"
                           >
                             Salvar
                           </Button>
@@ -845,6 +857,7 @@ export function SalesFunnels() {
                             size="sm"
                             variant="outline"
                             onClick={resetStageForm}
+                            className="flex-1 sm:flex-initial text-xs md:text-sm"
                           >
                             Cancelar
                           </Button>
@@ -865,62 +878,62 @@ export function SalesFunnels() {
                         className="border-l-4 border-l-violet-500 bg-gradient-to-r from-white to-violet-50/30 dark:from-background dark:to-violet-950/20"
                       >
                         <CardHeader>
-                          <div className="flex items-start justify-between">
-                            <div className="flex-1">
-                              <div className="flex items-center gap-3 mb-2">
-                                <div className="flex items-center justify-center w-8 h-8 rounded-full bg-violet-100 dark:bg-violet-900/30 text-violet-700 dark:text-violet-300 font-bold">
+                          <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2 md:gap-3 mb-2 flex-wrap">
+                                <div className="flex items-center justify-center w-7 h-7 md:w-8 md:h-8 rounded-full bg-violet-100 dark:bg-violet-900/30 text-violet-700 dark:text-violet-300 font-bold text-sm md:text-base flex-shrink-0">
                                   {stageStat.order}
                                 </div>
-                                <div>
-                                  <CardTitle className="text-lg">{stageStat.stage_name}</CardTitle>
+                                <div className="min-w-0 flex-1">
+                                  <CardTitle className="text-base md:text-lg break-words">{stageStat.stage_name}</CardTitle>
                                   {stage?.description && (
-                                    <CardDescription className="mt-1">{stage.description}</CardDescription>
+                                    <CardDescription className="mt-1 text-xs md:text-sm break-words">{stage.description}</CardDescription>
                                   )}
                                 </div>
                               </div>
                               
                               {/* Estatísticas do Estágio */}
-                              <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-4">
+                              <div className="grid grid-cols-2 md:grid-cols-4 gap-2 md:gap-3 mt-4">
                                 <div className="p-2 rounded-lg bg-blue-50 dark:bg-blue-950/20 border border-blue-200">
-                                  <div className="flex items-center gap-2 mb-1">
-                                    <Target className="h-4 w-4 text-blue-600" />
-                                    <span className="text-xs font-medium text-blue-700 dark:text-blue-300">Probabilidade</span>
+                                  <div className="flex items-center gap-1 md:gap-2 mb-1">
+                                    <Target className="h-3 w-3 md:h-4 md:w-4 text-blue-600 flex-shrink-0" />
+                                    <span className="text-xs font-medium text-blue-700 dark:text-blue-300 break-words">Probabilidade</span>
                                   </div>
-                                  <p className="text-lg font-bold text-blue-900 dark:text-blue-100">
+                                  <p className="text-base md:text-lg font-bold text-blue-900 dark:text-blue-100 break-words">
                                     {stageStat.probability}%
                                   </p>
                                 </div>
                                 <div className="p-2 rounded-lg bg-violet-50 dark:bg-violet-950/20 border border-violet-200">
-                                  <div className="flex items-center gap-2 mb-1">
-                                    <Users className="h-4 w-4 text-violet-600" />
-                                    <span className="text-xs font-medium text-violet-700 dark:text-violet-300">Oportunidades</span>
+                                  <div className="flex items-center gap-1 md:gap-2 mb-1">
+                                    <Users className="h-3 w-3 md:h-4 md:w-4 text-violet-600 flex-shrink-0" />
+                                    <span className="text-xs font-medium text-violet-700 dark:text-violet-300 break-words">Oportunidades</span>
                                   </div>
-                                  <p className="text-lg font-bold text-violet-900 dark:text-violet-100">
+                                  <p className="text-base md:text-lg font-bold text-violet-900 dark:text-violet-100 break-words">
                                     {stageStat.opportunity_count}
                                   </p>
                                 </div>
                                 <div className="p-2 rounded-lg bg-emerald-50 dark:bg-emerald-950/20 border border-emerald-200">
-                                  <div className="flex items-center gap-2 mb-1">
-                                    <DollarSign className="h-4 w-4 text-emerald-600" />
-                                    <span className="text-xs font-medium text-emerald-700 dark:text-emerald-300">Valor Total</span>
+                                  <div className="flex items-center gap-1 md:gap-2 mb-1">
+                                    <DollarSign className="h-3 w-3 md:h-4 md:w-4 text-emerald-600 flex-shrink-0" />
+                                    <span className="text-xs font-medium text-emerald-700 dark:text-emerald-300 break-words">Valor Total</span>
                                   </div>
-                                  <p className="text-sm font-bold text-emerald-900 dark:text-emerald-100">
+                                  <p className="text-xs md:text-sm font-bold text-emerald-900 dark:text-emerald-100 break-words">
                                     {formatCurrency(stageStat.total_value, stageStat.opportunities[0]?.currency || 'BRL')}
                                   </p>
                                 </div>
                                 <div className="p-2 rounded-lg bg-orange-50 dark:bg-orange-950/20 border border-orange-200">
-                                  <div className="flex items-center gap-2 mb-1">
-                                    <TrendingUp className="h-4 w-4 text-orange-600" />
-                                    <span className="text-xs font-medium text-orange-700 dark:text-orange-300">Valor Médio</span>
+                                  <div className="flex items-center gap-1 md:gap-2 mb-1">
+                                    <TrendingUp className="h-3 w-3 md:h-4 md:w-4 text-orange-600 flex-shrink-0" />
+                                    <span className="text-xs font-medium text-orange-700 dark:text-orange-300 break-words">Valor Médio</span>
                                   </div>
-                                  <p className="text-sm font-bold text-orange-900 dark:text-orange-100">
+                                  <p className="text-xs md:text-sm font-bold text-orange-900 dark:text-orange-100 break-words">
                                     {formatCurrency(stageStat.average_value, stageStat.opportunities[0]?.currency || 'BRL')}
                                   </p>
                                 </div>
                               </div>
                             </div>
                             
-                            <div className="flex gap-2">
+                            <div className="flex gap-2 flex-shrink-0">
                               {stage && (
                                 <>
                                   <Button
@@ -956,24 +969,25 @@ export function SalesFunnels() {
                         {isExpanded && stageStat.opportunities.length > 0 && (
                           <CardContent className="pt-0">
                             <div className="mt-4 pt-4 border-t">
-                              <h4 className="font-semibold mb-3 text-sm">Oportunidades neste estágio:</h4>
+                              <h4 className="font-semibold mb-3 text-xs md:text-sm">Oportunidades neste estágio:</h4>
                               <div className="space-y-2">
                                 {stageStat.opportunities.map((opp) => (
                                   <div
                                     key={opp.id}
                                     className="p-3 rounded-lg bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-800"
                                   >
-                                    <div className="flex items-center justify-between">
-                                      <div className="flex-1">
-                                        <p className="font-medium text-sm">{opp.name}</p>
+                                    <div className="flex flex-col gap-2">
+                                      <div className="flex-1 min-w-0">
+                                        <p className="font-medium text-xs md:text-sm break-words">{opp.name}</p>
                                         {opp.amount && (
-                                          <p className="text-xs text-muted-foreground mt-1">
+                                          <p className="text-xs text-muted-foreground mt-1 break-words">
                                             {formatCurrency(opp.amount, opp.currency || 'BRL')}
                                           </p>
                                         )}
                                         {opp.expected_close_date && (
-                                          <p className="text-xs text-muted-foreground mt-1">
-                                            Fechamento previsto: {new Date(opp.expected_close_date).toLocaleDateString('pt-BR')}
+                                          <p className="text-xs text-muted-foreground mt-1 break-words">
+                                            <span className="hidden sm:inline">Fechamento previsto: </span>
+                                            {new Date(opp.expected_close_date).toLocaleDateString('pt-BR')}
                                           </p>
                                         )}
                                       </div>

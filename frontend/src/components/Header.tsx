@@ -1,5 +1,5 @@
 import { useTranslation } from 'react-i18next'
-import { Moon, Sun, Globe } from 'lucide-react'
+import { Moon, Sun, Globe, Menu } from 'lucide-react'
 import { useTheme } from '@/contexts/ThemeContext'
 import { useAuth } from '@/contexts/AuthContext'
 import { Button } from './ui/button'
@@ -11,7 +11,11 @@ import {
 } from './ui/dropdown-menu'
 import { NotificationBell } from './NotificationBell'
 
-export function Header() {
+interface HeaderProps {
+  onMenuClick?: () => void
+}
+
+export function Header({ onMenuClick }: HeaderProps) {
   const { t, i18n } = useTranslation()
   const { theme, toggleTheme } = useTheme()
   const { user } = useAuth()
@@ -48,11 +52,27 @@ export function Header() {
   }
 
   return (
-    <header className="flex h-16 items-center justify-between border-b bg-card px-6">
-      <div className="flex items-center gap-4">
-        <h2 className="text-lg font-semibold">{getWelcomeMessage()}</h2>
+    <header className="flex h-16 items-center justify-between border-b bg-card px-4 md:px-6">
+      <div className="flex items-center gap-2 md:gap-4">
+        {/* Botão menu hambúrguer para mobile */}
+        {onMenuClick && (
+          <Button
+            variant="ghost"
+            size="icon"
+            className="md:hidden"
+            onClick={onMenuClick}
+          >
+            <Menu className="h-5 w-5" />
+          </Button>
+        )}
+        <h2 className="text-sm md:text-lg font-semibold truncate max-w-[200px] md:max-w-none">
+          <span className="hidden md:inline">{getWelcomeMessage()}</span>
+          <span className="md:hidden">
+            {user?.full_name || 'Usuário'}
+          </span>
+        </h2>
       </div>
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-1 md:gap-2">
         <NotificationBell />
         <Button variant="ghost" size="icon" onClick={toggleTheme}>
           {theme === 'light' ? (

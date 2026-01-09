@@ -72,6 +72,44 @@
   }
 }
 
+/* Responsive utilities */
+@layer utilities {
+  /* Scrollbar styling for mobile */
+  .scrollbar-thin::-webkit-scrollbar {
+    width: 4px;
+    height: 4px;
+  }
+  
+  .scrollbar-thin::-webkit-scrollbar-track {
+    @apply bg-transparent;
+  }
+  
+  .scrollbar-thin::-webkit-scrollbar-thumb {
+    @apply bg-muted-foreground/20 rounded-full;
+  }
+  
+  .scrollbar-thin::-webkit-scrollbar-thumb:hover {
+    @apply bg-muted-foreground/40;
+  }
+
+  /* Table responsive wrapper */
+  .table-wrapper {
+    @apply overflow-x-auto -mx-4 md:mx-0;
+  }
+  
+  .table-wrapper table {
+    @apply min-w-full;
+  }
+
+  /* Mobile-friendly touch targets */
+  @media (max-width: 768px) {
+    button, a {
+      min-height: 44px;
+      min-width: 44px;
+    }
+  }
+}
+
 
 
 

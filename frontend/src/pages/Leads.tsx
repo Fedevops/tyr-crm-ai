@@ -2194,42 +2194,47 @@ export function Leads() {
   }
 
   return (
-    <div className="flex-1 space-y-6 p-6">
-      <div className="flex items-center justify-between">
-      <div>
-        <h1 className="text-3xl font-bold">{t('navigation.leads')}</h1>
-          <p className="text-muted-foreground">{t('leads.description')}</p>
-
+    <div className="flex-1 space-y-4 md:space-y-6 p-4 md:p-6 overflow-x-hidden">
+      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+        <div>
+          <h1 className="text-2xl md:text-3xl font-bold">{t('navigation.leads')}</h1>
+          <p className="text-sm md:text-base text-muted-foreground">{t('leads.description')}</p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           <Button
             variant="outline"
             onClick={() => setShowImportModal(!showImportModal)}
+            className="flex-1 md:flex-initial text-xs md:text-sm"
           >
-            <Upload className="mr-2 h-4 w-4" />
-            Importar CSV
+            <Upload className="mr-1 md:mr-2 h-3 w-3 md:h-4 md:w-4" />
+            <span className="hidden sm:inline">Importar CSV</span>
+            <span className="sm:hidden">CSV</span>
           </Button>
           <Button
             variant="outline"
             onClick={() => setShowLinkedInPdfModal(true)}
-            className="border-blue-300 hover:bg-blue-50 dark:hover:bg-blue-950/20"
+            className="border-blue-300 hover:bg-blue-50 dark:hover:bg-blue-950/20 flex-1 md:flex-initial text-xs md:text-sm"
           >
-            <FileText className="mr-2 h-4 w-4" />
-            Importar PDF LinkedIn
+            <FileText className="mr-1 md:mr-2 h-3 w-3 md:h-4 md:w-4" />
+            <span className="hidden lg:inline">Importar PDF LinkedIn</span>
+            <span className="hidden sm:inline lg:hidden">PDF LinkedIn</span>
+            <span className="sm:hidden">PDF</span>
           </Button>
           <Button
             variant="outline"
             onClick={() => setShowDuplicatesModal(true)}
-            className="border-orange-300 hover:bg-orange-50 dark:hover:bg-orange-950/20"
+            className="border-orange-300 hover:bg-orange-50 dark:hover:bg-orange-950/20 flex-1 md:flex-initial text-xs md:text-sm"
           >
-            <Copy className="mr-2 h-4 w-4" />
-            Analisar Duplicados
+            <Copy className="mr-1 md:mr-2 h-3 w-3 md:h-4 md:w-4" />
+            <span className="hidden lg:inline">Analisar Duplicados</span>
+            <span className="hidden sm:inline lg:hidden">Duplicados</span>
+            <span className="sm:hidden">Dup</span>
           </Button>
           <Button 
             onClick={() => setShowCreateModal(true)}
-            className="bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white shadow-md hover:shadow-lg transition-all duration-200"
+            className="bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white shadow-md hover:shadow-lg transition-all duration-200 flex-1 md:flex-initial text-xs md:text-sm"
           >
-            <Plus className="mr-2 h-4 w-4" />
+            <Plus className="mr-1 md:mr-2 h-3 w-3 md:h-4 md:w-4" />
             Novo Lead
           </Button>
         </div>
@@ -2615,7 +2620,7 @@ export function Leads() {
           </div>
           
           {/* Filtros Rápidos */}
-          <div className="flex items-center gap-2 mb-4">
+          <div className="flex flex-wrap items-center gap-2 mb-4">
             <Button
               type="button"
               variant={topIcpFilter ? "default" : "outline"}
@@ -2626,9 +2631,10 @@ export function Leads() {
               }}
               className={topIcpFilter ? "bg-purple-600 hover:bg-purple-700 text-white" : ""}
             >
-              <span className="flex items-center gap-1">
-                <span className="text-sm">★★★★</span>
-                Top ICP (Score 4+)
+              <span className="flex items-center gap-1 text-xs md:text-sm">
+                <span className="text-xs md:text-sm">★★★★</span>
+                <span className="hidden sm:inline">Top ICP (Score 4+)</span>
+                <span className="sm:hidden">Top ICP</span>
               </span>
             </Button>
           </div>
@@ -2755,36 +2761,40 @@ export function Leads() {
           {selectedLeads.size > 0 && (
           <Card className="bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-950 dark:to-indigo-950 border-blue-300 dark:border-blue-700 shadow-md">
             <CardContent className="py-3">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-4">
-                  <span className="font-medium text-blue-900 dark:text-blue-100">
+              <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+                <div className="flex flex-wrap items-center gap-2 md:gap-4">
+                  <span className="font-medium text-blue-900 dark:text-blue-100 text-sm md:text-base">
                     {selectedLeads.size} lead(s) selecionado(s)
                   </span>
                   <Button
                     size="sm"
                     variant="outline"
-                    className="border-blue-300 hover:bg-blue-100 dark:hover:bg-blue-900"
+                    className="border-blue-300 hover:bg-blue-100 dark:hover:bg-blue-900 text-xs md:text-sm"
                     onClick={() => setSelectedLeads(new Set())}
                   >
                     Limpar Seleção
                   </Button>
-    </div>
-                <div className="flex gap-2">
+                </div>
+                <div className="flex flex-wrap gap-2">
                   <Button
                     size="sm"
                     variant="outline"
                     onClick={handleExportSelected}
+                    className="flex-1 md:flex-initial text-xs"
                   >
-                    <FileText className="h-4 w-4 mr-1" />
-                    Exportar
+                    <FileText className="h-3 w-3 md:h-4 md:w-4 mr-1" />
+                    <span className="hidden sm:inline">Exportar</span>
+                    <span className="sm:hidden">Exp</span>
                   </Button>
                   <Button
                     size="sm"
                     variant="outline"
                     onClick={handleBulkSendEmail}
+                    className="flex-1 md:flex-initial text-xs"
                   >
-                    <Mail className="h-4 w-4 mr-1" />
-                    Enviar E-mail
+                    <Mail className="h-3 w-3 md:h-4 md:w-4 mr-1" />
+                    <span className="hidden sm:inline">Enviar E-mail</span>
+                    <span className="sm:hidden">E-mail</span>
                   </Button>
                   <Button
                     size="sm"
@@ -2793,26 +2803,33 @@ export function Leads() {
                       setSelectedLeadId(null)
                       setShowSequenceModal(true)
                     }}
+                    className="flex-1 md:flex-initial text-xs"
                   >
-                    <Workflow className="h-4 w-4 mr-1" />
-                    Associar Cadência
+                    <Workflow className="h-3 w-3 md:h-4 md:w-4 mr-1" />
+                    <span className="hidden lg:inline">Associar Cadência</span>
+                    <span className="hidden sm:inline lg:hidden">Cadência</span>
+                    <span className="sm:hidden">Cad</span>
                   </Button>
                   <Button
                     size="sm"
                     variant="outline"
                     onClick={() => setShowBulkUpdateModal(true)}
+                    className="flex-1 md:flex-initial text-xs"
                   >
-                    <Edit className="h-4 w-4 mr-1" />
-                    Atualizar em Massa
+                    <Edit className="h-3 w-3 md:h-4 md:w-4 mr-1" />
+                    <span className="hidden lg:inline">Atualizar em Massa</span>
+                    <span className="hidden sm:inline lg:hidden">Atualizar</span>
+                    <span className="sm:hidden">Atual</span>
                   </Button>
                   <Button
                     size="sm"
                     variant="outline"
                     onClick={handleBulkDelete}
-                    className="border-red-300 hover:bg-red-50 dark:hover:bg-red-950/20 text-red-600 dark:text-red-400"
+                    className="border-red-300 hover:bg-red-50 dark:hover:bg-red-950/20 text-red-600 dark:text-red-400 flex-1 md:flex-initial text-xs"
                   >
-                    <Trash2 className="h-4 w-4 mr-1" />
-                    Apagar
+                    <Trash2 className="h-3 w-3 md:h-4 md:w-4 mr-1" />
+                    <span className="hidden sm:inline">Apagar</span>
+                    <span className="sm:hidden">Del</span>
                   </Button>
                 </div>
               </div>
@@ -2824,38 +2841,39 @@ export function Leads() {
           {leads.map((lead) => (
             <Card 
               key={lead.id}
-              className="cursor-pointer hover:shadow-lg transition-all duration-200 border-l-4 border-l-slate-300 hover:border-l-blue-500 bg-gradient-to-r from-white to-slate-50/50 dark:from-background dark:to-slate-950/50"
+              className="cursor-pointer hover:shadow-lg transition-all duration-200 border-l-4 border-l-slate-300 hover:border-l-blue-500 bg-gradient-to-r from-white to-slate-50/50 dark:from-background dark:to-slate-950/50 w-full max-w-full overflow-hidden"
               onClick={() => handleOpenLeadDetail(lead)}
             >
-              <CardHeader>
-                <div className="flex items-start justify-between">
-                  <div className="flex items-start gap-3 flex-1">
+              <CardHeader className="overflow-hidden">
+                <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-3 md:gap-4">
+                  <div className="flex items-start gap-3 flex-1 min-w-0">
                     <input
                       type="checkbox"
                       checked={selectedLeads.has(lead.id)}
                       onChange={() => handleSelectLead(lead.id)}
-                      className="mt-1 h-4 w-4"
+                      className="mt-1 h-4 w-4 flex-shrink-0"
+                      onClick={(e) => e.stopPropagation()}
                     />
-                    <div className="flex-1">
-                      <CardTitle className="flex items-center gap-2 flex-wrap">
-                        {lead.name}
-                        <span className={`inline-block rounded-full px-2 py-1 text-xs ${statusColors[lead.status]}`}>
+                    <div className="flex-1 min-w-0 overflow-hidden">
+                      <CardTitle className="flex items-center gap-2 flex-wrap break-words min-w-0">
+                        <span className="break-words min-w-0">{lead.name}</span>
+                        <span className={`inline-block rounded-full px-2 py-1 text-xs flex-shrink-0 ${statusColors[lead.status]}`}>
                           {statusLabels[lead.status]}
                         </span>
                         {lead.score !== null && (
-                          <span className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-semibold ${
+                          <span className={`inline-flex items-center gap-1 rounded-full px-2 py-1 md:px-2.5 md:py-1 text-xs font-semibold flex-shrink-0 ${
                             lead.score >= 70 
                               ? 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400' 
                               : lead.score >= 40 
                               ? 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400'
                               : 'bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-400'
                           }`}>
-                            <TrendingUp className="h-3 w-3" />
-                            Score: {lead.score}
+                            <TrendingUp className="h-3 w-3 flex-shrink-0" />
+                            <span className="hidden sm:inline">Score: </span>{lead.score}
                           </span>
                         )}
                         {lead.icp_score !== null && lead.icp_score > 0 && (
-                          <span className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-semibold ${
+                          <span className={`inline-flex items-center gap-1 rounded-full px-2 py-1 md:px-2.5 md:py-1 text-xs font-semibold flex-shrink-0 ${
                             lead.icp_score >= 4
                               ? 'bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-400'
                               : lead.icp_score >= 3
@@ -2865,79 +2883,78 @@ export function Leads() {
                             <span className="flex items-center gap-0.5">
                               {'★'.repeat(lead.icp_score)}{'☆'.repeat(5 - lead.icp_score)}
                             </span>
-                            ICP: {lead.icp_score}/5
+                            <span className="hidden sm:inline">ICP: </span>{lead.icp_score}/5
                           </span>
                         )}
                       </CardTitle>
-                      <div className="mt-2 space-y-1 text-sm text-muted-foreground">
+                      <div className="mt-2 space-y-1 text-xs md:text-sm text-muted-foreground">
                       {lead.company && (
-                        <div className="flex items-center gap-2">
-                          <Building className="h-4 w-4" />
-                          <span>{lead.company}</span>
-                          {lead.position && <span> • {lead.position}</span>}
+                        <div className="flex items-start gap-2 min-w-0">
+                          <Building className="h-4 w-4 flex-shrink-0 mt-0.5" />
+                          <span className="break-words min-w-0">{lead.company}{lead.position && <span> • {lead.position}</span>}</span>
                         </div>
                       )}
                       {lead.email && (
-                        <div className="flex items-center gap-2">
-                          <Mail className="h-4 w-4" />
-                          <a href={`mailto:${lead.email}`} className="hover:underline">
+                        <div className="flex items-start gap-2 min-w-0">
+                          <Mail className="h-4 w-4 flex-shrink-0 mt-0.5" />
+                          <a href={`mailto:${lead.email}`} className="hover:underline break-all min-w-0">
                             {lead.email}
                           </a>
                         </div>
                       )}
                       {lead.phone && (
                         <div className="flex items-center gap-2">
-                          <Phone className="h-4 w-4" />
-                          <a href={`tel:${lead.phone}`} className="hover:underline">
+                          <Phone className="h-4 w-4 flex-shrink-0" />
+                          <a href={`tel:${lead.phone}`} className="hover:underline break-all">
                             {lead.phone}
                           </a>
                         </div>
                       )}
                       {lead.website && (
-                        <div className="flex items-center gap-2">
-                          <LinkIcon className="h-4 w-4" />
-                          <a href={lead.website} target="_blank" rel="noopener noreferrer" className="hover:underline">
-                            Site: {lead.website}
+                        <div className="flex items-start gap-2 min-w-0">
+                          <LinkIcon className="h-4 w-4 flex-shrink-0 mt-0.5" />
+                          <a href={lead.website} target="_blank" rel="noopener noreferrer" className="hover:underline break-all min-w-0">
+                            <span className="hidden sm:inline">Site: </span>{lead.website}
                           </a>
                         </div>
                       )}
                       {lead.linkedin_url && (
                         <div className="flex items-center gap-2">
-                          <LinkIcon className="h-4 w-4" />
+                          <LinkIcon className="h-4 w-4 flex-shrink-0" />
                           <a href={lead.linkedin_url} target="_blank" rel="noopener noreferrer" className="hover:underline">
                             LinkedIn
                           </a>
                         </div>
                       )}
                       {lead.source && (
-                        <div className="text-sm">Fonte: {lead.source}</div>
+                        <div className="text-xs md:text-sm break-words">Fonte: {lead.source}</div>
                       )}
                       {lead.owner && (
-                        <div className="flex items-center gap-2 text-sm">
-                          <User className="h-4 w-4" />
-                          <span>Responsável: {lead.owner.full_name}</span>
+                        <div className="flex items-center gap-2 text-xs md:text-sm">
+                          <User className="h-4 w-4 flex-shrink-0" />
+                          <span className="break-words min-w-0"><span className="hidden sm:inline">Responsável: </span>{lead.owner.full_name}</span>
                         </div>
                       )}
                       {lead.owner_id && !lead.owner && (
-                        <div className="flex items-center gap-2 text-sm">
-                          <User className="h-4 w-4" />
-                          <span>Responsável: {users.find(u => u.id === lead.owner_id)?.full_name || `ID: ${lead.owner_id}`}</span>
+                        <div className="flex items-center gap-2 text-xs md:text-sm">
+                          <User className="h-4 w-4 flex-shrink-0" />
+                          <span className="break-words min-w-0"><span className="hidden sm:inline">Responsável: </span>{users.find(u => u.id === lead.owner_id)?.full_name || `ID: ${lead.owner_id}`}</span>
                         </div>
                       )}
                       {lead.next_followup && (
-                        <div className="flex items-center gap-2 text-sm">
-                          <Clock className="h-4 w-4" />
-                          <span>Próximo follow-up: {new Date(lead.next_followup).toLocaleDateString('pt-BR')}</span>
+                        <div className="flex items-center gap-2 text-xs md:text-sm">
+                          <Clock className="h-4 w-4 flex-shrink-0" />
+                          <span className="break-words"><span className="hidden sm:inline">Próximo follow-up: </span>{new Date(lead.next_followup).toLocaleDateString('pt-BR')}</span>
                         </div>
                       )}
                       </div>
                     </div>
                   </div>
-                  <div className="flex gap-2">
+                  <div className="flex flex-wrap gap-2 flex-shrink-0">
                     <select
                       value={lead.status}
                       onChange={(e) => handleStatusChange(lead.id, e.target.value as LeadStatus)}
-                      className="text-xs rounded-md border border-input bg-background px-2 py-1"
+                      className="text-xs rounded-md border border-input bg-background px-2 py-1 min-w-[100px] md:min-w-[120px] max-w-full"
                       onClick={(e) => e.stopPropagation()}
                     >
                       {Object.entries(statusLabels).map(([value, label]) => (
@@ -2947,6 +2964,7 @@ export function Leads() {
                     <Button
                       variant="ghost"
                       size="icon"
+                      className="h-8 w-8 md:h-10 md:w-10"
                       onClick={(e) => {
                         e.stopPropagation()
                         handleEdit(lead)
@@ -2957,6 +2975,7 @@ export function Leads() {
                     <Button
                       variant="ghost"
                       size="icon"
+                      className="h-8 w-8 md:h-10 md:w-10"
                       onClick={(e) => {
                         e.stopPropagation()
                         setSelectedLeadId(lead.id)
@@ -2969,6 +2988,7 @@ export function Leads() {
                     <Button
                       variant="ghost"
                       size="icon"
+                      className="h-8 w-8 md:h-10 md:w-10"
                       onClick={(e) => {
                         e.stopPropagation()
                         handleDelete(lead.id)
@@ -2981,7 +3001,7 @@ export function Leads() {
               </CardHeader>
               {lead.notes && (
                 <CardContent>
-                  <p className="text-sm text-muted-foreground">{lead.notes}</p>
+                  <p className="text-xs md:text-sm text-muted-foreground break-words">{lead.notes}</p>
                 </CardContent>
               )}
             </Card>
@@ -2994,10 +3014,11 @@ export function Leads() {
       {totalLeads > 0 && (
       <Card>
           <CardContent className="py-4">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-4">
-                <span className="text-sm text-muted-foreground">
-                  Mostrando {((currentPage - 1) * pageSize) + 1} a {Math.min(currentPage * pageSize, totalLeads)} de {totalLeads} leads
+            <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+              <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 sm:gap-4">
+                <span className="text-xs md:text-sm text-muted-foreground">
+                  <span className="hidden sm:inline">Mostrando {((currentPage - 1) * pageSize) + 1} a {Math.min(currentPage * pageSize, totalLeads)} de {totalLeads} leads</span>
+                  <span className="sm:hidden">{((currentPage - 1) * pageSize) + 1}-{Math.min(currentPage * pageSize, totalLeads)} de {totalLeads}</span>
                 </span>
                 <select
                   value={pageSize}
@@ -3005,7 +3026,7 @@ export function Leads() {
                     setPageSize(Number(e.target.value))
                     setCurrentPage(1)
                   }}
-                  className="px-2 py-1 border rounded text-sm"
+                  className="px-2 py-1 border rounded text-xs md:text-sm"
                 >
                   <option value={10}>10 por página</option>
                   <option value={20}>20 por página</option>
@@ -3013,41 +3034,50 @@ export function Leads() {
                   <option value={100}>100 por página</option>
                 </select>
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-1 md:gap-2 flex-wrap">
                 <Button
                   variant="outline"
                   size="sm"
                   onClick={() => setCurrentPage(1)}
                   disabled={currentPage === 1}
+                  className="text-xs px-2 md:px-3"
                 >
-                  Primeira
+                  <span className="hidden sm:inline">Primeira</span>
+                  <span className="sm:hidden">1ª</span>
                 </Button>
                 <Button
                   variant="outline"
                   size="sm"
                   onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
                   disabled={currentPage === 1}
+                  className="text-xs px-2 md:px-3"
                 >
-                  Anterior
+                  <span className="hidden sm:inline">Anterior</span>
+                  <span className="sm:hidden">Ant</span>
                 </Button>
-                <span className="text-sm px-3">
-                  Página {currentPage} de {totalPages}
+                <span className="text-xs md:text-sm px-2 md:px-3">
+                  <span className="hidden sm:inline">Página {currentPage} de {totalPages}</span>
+                  <span className="sm:hidden">{currentPage}/{totalPages}</span>
                 </span>
                 <Button
                   variant="outline"
                   size="sm"
                   onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
                   disabled={currentPage === totalPages}
+                  className="text-xs px-2 md:px-3"
                 >
-                  Próxima
+                  <span className="hidden sm:inline">Próxima</span>
+                  <span className="sm:hidden">Próx</span>
                 </Button>
                 <Button
                   variant="outline"
                   size="sm"
                   onClick={() => setCurrentPage(totalPages)}
                   disabled={currentPage === totalPages}
+                  className="text-xs px-2 md:px-3"
                 >
-                  Última
+                  <span className="hidden sm:inline">Última</span>
+                  <span className="sm:hidden">Últ</span>
                 </Button>
               </div>
             </div>

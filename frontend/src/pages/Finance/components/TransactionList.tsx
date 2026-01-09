@@ -163,12 +163,12 @@ export function TransactionList({ accountId, filters = {}, onEdit, onRefresh }: 
   return (
     <div className="space-y-4">
       {/* Filtros */}
-      <div className="flex gap-2">
+      <div className="flex flex-wrap gap-2">
         <Select
           value={localFilters.type || 'all'}
           onValueChange={(value) => setLocalFilters({ ...localFilters, type: value === 'all' ? undefined : value as 'income' | 'expense' })}
         >
-          <SelectTrigger className="w-[180px]">
+          <SelectTrigger className="w-full sm:w-[180px]">
             <SelectValue placeholder="Tipo" />
           </SelectTrigger>
           <SelectContent>
@@ -182,7 +182,7 @@ export function TransactionList({ accountId, filters = {}, onEdit, onRefresh }: 
           value={localFilters.status || 'all'}
           onValueChange={(value) => setLocalFilters({ ...localFilters, status: value === 'all' ? undefined : value as 'pending' | 'paid' | 'overdue' })}
         >
-          <SelectTrigger className="w-[180px]">
+          <SelectTrigger className="w-full sm:w-[180px]">
             <SelectValue placeholder="Status" />
           </SelectTrigger>
           <SelectContent>

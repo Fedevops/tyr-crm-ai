@@ -181,15 +181,15 @@ export function Finance() {
   const totalBalance = accounts.reduce((sum, acc) => sum + acc.balance, 0)
 
   return (
-    <div className="space-y-6 p-6">
-      <div className="flex items-center justify-between">
+    <div className="space-y-4 md:space-y-6 p-4 md:p-6 overflow-x-hidden">
+      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-bold">Gestão Financeira</h1>
-          <p className="text-muted-foreground mt-1">
+          <h1 className="text-2xl md:text-3xl font-bold">Gestão Financeira</h1>
+          <p className="text-sm md:text-base text-muted-foreground mt-1">
             Controle de contas a pagar e receber
           </p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           <Button 
             variant="outline" 
             onClick={async () => {
@@ -217,30 +217,40 @@ export function Finance() {
                 })
               }
             }}
+            className="flex-1 md:flex-initial text-xs md:text-sm"
           >
-            <FileDown className="h-4 w-4 mr-2" />
-            Exportar PDF
+            <FileDown className="h-3 w-3 md:h-4 md:w-4 mr-1 md:mr-2" />
+            <span className="hidden sm:inline">Exportar PDF</span>
+            <span className="sm:hidden">PDF</span>
           </Button>
-          <Button variant="outline" onClick={handleCreateAccount}>
-            <Building2 className="h-4 w-4 mr-2" />
-            Nova Conta
+          <Button 
+            variant="outline" 
+            onClick={handleCreateAccount}
+            className="flex-1 md:flex-initial text-xs md:text-sm"
+          >
+            <Building2 className="h-3 w-3 md:h-4 md:w-4 mr-1 md:mr-2" />
+            <span className="hidden sm:inline">Nova Conta</span>
+            <span className="sm:hidden">Conta</span>
           </Button>
-          <Button onClick={handleCreateTransaction}>
-            <Plus className="h-4 w-4 mr-2" />
+          <Button 
+            onClick={handleCreateTransaction}
+            className="flex-1 md:flex-initial text-xs md:text-sm"
+          >
+            <Plus className="h-3 w-3 md:h-4 md:w-4 mr-1 md:mr-2" />
             Nova Transação
           </Button>
         </div>
       </div>
 
       {/* Cards de Estatísticas */}
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Saldo em Conta</CardTitle>
-            <Wallet className="h-4 w-4 text-muted-foreground" />
+            <CardTitle className="text-xs md:text-sm font-medium">Saldo em Conta</CardTitle>
+            <Wallet className="h-4 w-4 text-muted-foreground flex-shrink-0" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">
+            <div className="text-xl md:text-2xl font-bold break-words">
               {formatCurrency(totalBalance)}
             </div>
             <p className="text-xs text-muted-foreground mt-1">
@@ -251,11 +261,11 @@ export function Finance() {
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">A Receber (Mês)</CardTitle>
-            <TrendingUp className="h-4 w-4 text-green-600" />
+            <CardTitle className="text-xs md:text-sm font-medium">A Receber (Mês)</CardTitle>
+            <TrendingUp className="h-4 w-4 text-green-600 flex-shrink-0" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-green-600">
+            <div className="text-xl md:text-2xl font-bold text-green-600 break-words">
               {formatCurrency(stats?.current_month_to_receive || stats?.total_to_receive || 0)}
             </div>
             <p className="text-xs text-muted-foreground mt-1">
@@ -266,11 +276,11 @@ export function Finance() {
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">A Pagar (Mês)</CardTitle>
-            <TrendingDown className="h-4 w-4 text-red-600" />
+            <CardTitle className="text-xs md:text-sm font-medium">A Pagar (Mês)</CardTitle>
+            <TrendingDown className="h-4 w-4 text-red-600 flex-shrink-0" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-red-600">
+            <div className="text-xl md:text-2xl font-bold text-red-600 break-words">
               {formatCurrency(stats?.current_month_to_pay || stats?.total_to_pay || 0)}
             </div>
             <p className="text-xs text-muted-foreground mt-1">
@@ -281,14 +291,14 @@ export function Finance() {
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Fluxo do Mês</CardTitle>
-            <DollarSign className="h-4 w-4 text-muted-foreground" />
+            <CardTitle className="text-xs md:text-sm font-medium">Fluxo do Mês</CardTitle>
+            <DollarSign className="h-4 w-4 text-muted-foreground flex-shrink-0" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">
+            <div className="text-xl md:text-2xl font-bold break-words">
               {formatCurrency((stats?.total_received || 0) - (stats?.total_paid || 0))}
             </div>
-            <div className="flex items-center gap-2 mt-1">
+            <div className="flex flex-col sm:flex-row items-start sm:items-center gap-1 sm:gap-2 mt-1">
               <span className="text-xs text-green-600">
                 <ArrowUpRight className="h-3 w-3 inline" /> {formatCurrency(stats?.total_received || 0)}
               </span>
@@ -303,29 +313,29 @@ export function Finance() {
       {/* Filtro de Data Range */}
       <Card>
         <CardHeader>
-          <CardTitle>Filtro de Período</CardTitle>
-          <CardDescription>
+          <CardTitle className="text-lg md:text-xl">Filtro de Período</CardTitle>
+          <CardDescription className="text-xs md:text-sm">
             Selecione o período para visualizar as transações no gráfico
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="flex items-center gap-4">
+          <div className="flex flex-col md:flex-row items-stretch md:items-end gap-4">
             <div className="flex-1 space-y-2">
-              <label className="text-sm font-medium">Data Inicial</label>
+              <label className="text-xs md:text-sm font-medium">Data Inicial</label>
               <input
                 type="date"
                 value={dateRange.start_date}
                 onChange={(e) => setDateRange({ ...dateRange, start_date: e.target.value })}
-                className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-xs md:text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
               />
             </div>
             <div className="flex-1 space-y-2">
-              <label className="text-sm font-medium">Data Final</label>
+              <label className="text-xs md:text-sm font-medium">Data Final</label>
               <input
                 type="date"
                 value={dateRange.end_date}
                 onChange={(e) => setDateRange({ ...dateRange, end_date: e.target.value })}
-                className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-xs md:text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
               />
             </div>
             <div className="flex items-end">
@@ -339,8 +349,9 @@ export function Finance() {
                     end_date: sixMonthsLater.toISOString().split('T')[0]
                   })
                 }}
+                className="w-full md:w-auto text-xs md:text-sm"
               >
-                <Calendar className="h-4 w-4 mr-2" />
+                <Calendar className="h-3 w-3 md:h-4 md:w-4 mr-1 md:mr-2" />
                 Resetar
               </Button>
             </div>
@@ -357,27 +368,29 @@ export function Finance() {
               Entradas vs Saídas por mês (incluindo transações futuras)
             </CardDescription>
           </CardHeader>
-          <CardContent>
-            <ResponsiveContainer width="100%" height={300}>
+          <CardContent className="overflow-x-auto">
+            <ResponsiveContainer width="100%" height={300} minWidth={300}>
               <ComposedChart data={stats.cash_flow}>
                 <CartesianGrid strokeDasharray="3 3" />
                 <XAxis 
                   dataKey="month" 
-                  tick={{ fontSize: 12 }}
+                  tick={{ fontSize: 10 }}
                   angle={-45}
                   textAnchor="end"
                   height={80}
                 />
                 <YAxis 
                   yAxisId="left"
-                  tick={{ fontSize: 12 }}
+                  tick={{ fontSize: 10 }}
                   tickFormatter={(value) => `R$ ${(value / 1000).toFixed(0)}k`}
+                  width={50}
                 />
                 <YAxis 
                   yAxisId="right"
                   orientation="right"
-                  tick={{ fontSize: 12 }}
+                  tick={{ fontSize: 10 }}
                   tickFormatter={(value) => `R$ ${(value / 1000).toFixed(0)}k`}
+                  width={50}
                 />
                 <Tooltip 
                   formatter={(value: number, name: string) => {
@@ -435,43 +448,45 @@ export function Finance() {
               {accounts.map((account) => (
                 <div
                   key={account.id}
-                  className={`flex items-center justify-between p-4 border rounded-lg ${
+                  className={`flex flex-col md:flex-row md:items-center md:justify-between p-4 border rounded-lg gap-3 md:gap-4 ${
                     selectedAccount === account.id ? 'border-primary bg-primary/5' : ''
                   }`}
                 >
-                  <div className="flex-1">
-                    <div className="flex items-center gap-2">
-                      <h3 className="font-semibold">{account.name}</h3>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <h3 className="font-semibold text-sm md:text-base break-words">{account.name}</h3>
                       {!account.is_active && (
-                        <Badge variant="secondary">Inativa</Badge>
+                        <Badge variant="secondary" className="text-xs">Inativa</Badge>
                       )}
                     </div>
                     {account.description && (
-                      <p className="text-sm text-muted-foreground mt-1">
+                      <p className="text-xs md:text-sm text-muted-foreground mt-1 break-words">
                         {account.description}
                       </p>
                     )}
                     <div className="flex items-center gap-4 mt-2">
-                      <span className="text-sm font-medium">
-                        Saldo: <span className={account.balance >= 0 ? 'text-green-600' : 'text-red-600'}>
+                      <span className="text-xs md:text-sm font-medium">
+                        Saldo: <span className={`${account.balance >= 0 ? 'text-green-600' : 'text-red-600'} break-words`}>
                           {formatCurrency(account.balance)}
                         </span>
                       </span>
                     </div>
                   </div>
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 flex-shrink-0">
                     <Button
                       variant="ghost"
                       size="sm"
                       onClick={() => setSelectedAccount(account.id)}
-                      className={selectedAccount === account.id ? 'bg-primary text-primary-foreground' : ''}
+                      className={`${selectedAccount === account.id ? 'bg-primary text-primary-foreground' : ''} text-xs md:text-sm`}
                     >
-                      Selecionar
+                      <span className="hidden sm:inline">Selecionar</span>
+                      <span className="sm:hidden">Sel</span>
                     </Button>
                     <Button
                       variant="ghost"
                       size="sm"
                       onClick={() => handleEditAccount(account)}
+                      className="h-8 w-8 md:h-9 md:w-9"
                     >
                       <Edit className="h-4 w-4" />
                     </Button>
@@ -479,6 +494,7 @@ export function Finance() {
                       variant="ghost"
                       size="sm"
                       onClick={() => handleDeleteAccount(account.id)}
+                      className="h-8 w-8 md:h-9 md:w-9"
                     >
                       <Trash2 className="h-4 w-4 text-red-600" />
                     </Button>

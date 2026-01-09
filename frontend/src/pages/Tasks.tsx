@@ -631,24 +631,29 @@ export function Tasks() {
   }
 
   return (
-    <div className="flex-1 space-y-6 p-6">
-      <div className="flex items-center justify-between">
+    <div className="flex-1 space-y-4 md:space-y-6 p-4 md:p-6 overflow-x-hidden">
+      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-bold">{t('navigation.tasks')}</h1>
-          <p className="text-muted-foreground">
+          <h1 className="text-2xl md:text-3xl font-bold">{t('navigation.tasks')}</h1>
+          <p className="text-sm md:text-base text-muted-foreground">
             Gerencie suas tarefas de prospecção
           </p>
         </div>
-        <div className="flex gap-2">
-          <Button variant="outline" onClick={() => navigate('/leads')}>
-            <Plus className="mr-2 h-4 w-4" />
-            Associar Cadência a Lead
+        <div className="flex flex-wrap gap-2">
+          <Button 
+            variant="outline" 
+            onClick={() => navigate('/leads')}
+            className="flex-1 md:flex-initial text-xs md:text-sm"
+          >
+            <Plus className="mr-1 md:mr-2 h-3 w-3 md:h-4 md:w-4" />
+            <span className="hidden sm:inline">Associar Cadência a Lead</span>
+            <span className="sm:hidden">Cadência</span>
           </Button>
           <Button 
             onClick={() => setShowForm(!showForm)}
-            className="bg-gradient-to-r from-emerald-600 to-emerald-700 hover:from-emerald-700 hover:to-emerald-800 text-white shadow-md hover:shadow-lg transition-all duration-200"
+            className="bg-gradient-to-r from-emerald-600 to-emerald-700 hover:from-emerald-700 hover:to-emerald-800 text-white shadow-md hover:shadow-lg transition-all duration-200 flex-1 md:flex-initial text-xs md:text-sm"
           >
-            <Plus className="mr-2 h-4 w-4" />
+            <Plus className="mr-1 md:mr-2 h-3 w-3 md:h-4 md:w-4" />
             Nova Tarefa
           </Button>
         </div>
@@ -658,33 +663,37 @@ export function Tasks() {
       {selectedTasks.size > 0 && (
         <Card className="border-l-4 border-l-red-500 bg-gradient-to-r from-red-50/50 to-white dark:from-red-950/20 dark:to-background">
           <CardContent className="py-3">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-4">
-                <span className="text-sm font-medium">
+            <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+              <div className="flex flex-wrap items-center gap-2 md:gap-4">
+                <span className="text-xs md:text-sm font-medium">
                   {selectedTasks.size} tarefa(s) selecionada(s)
                 </span>
                 <Button
                   variant="outline"
                   size="sm"
                   onClick={handleSelectAll}
+                  className="text-xs md:text-sm"
                 >
-                  {selectedTasks.size === tasks.length ? 'Desselecionar todas' : 'Selecionar todas'}
+                  <span className="hidden sm:inline">{selectedTasks.size === tasks.length ? 'Desselecionar todas' : 'Selecionar todas'}</span>
+                  <span className="sm:hidden">{selectedTasks.size === tasks.length ? 'Desselecionar' : 'Selecionar'}</span>
                 </Button>
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
                 <Button
                   variant="destructive"
                   size="sm"
                   onClick={handleBulkDelete}
-                  className="flex items-center gap-2"
+                  className="flex items-center gap-2 flex-1 md:flex-initial text-xs md:text-sm"
                 >
-                  <Trash2 className="h-4 w-4" />
-                  Apagar Selecionadas
+                  <Trash2 className="h-3 w-3 md:h-4 md:w-4" />
+                  <span className="hidden sm:inline">Apagar Selecionadas</span>
+                  <span className="sm:hidden">Apagar</span>
                 </Button>
                 <Button
                   variant="ghost"
                   size="sm"
                   onClick={() => setSelectedTasks(new Set())}
+                  className="flex-1 md:flex-initial text-xs md:text-sm"
                 >
                   Cancelar
                 </Button>
@@ -786,7 +795,7 @@ export function Tasks() {
                 <div className="flex items-center justify-between mb-1">
                   <label className="block text-sm font-medium">Descrição</label>
                   {formData.type === 'linkedin' && formData.lead_id && (
-                    <div className="flex gap-2">
+                    <div className="flex flex-wrap gap-2">
                       {(formData.title === 'Enviar nota de conexão' || formData.title === 'Enviar solicitação de conexão') && (
                         <Button
                           type="button"
@@ -794,17 +803,19 @@ export function Tasks() {
                           size="sm"
                           onClick={() => handleGenerateLinkedInMessage('connection_note')}
                           disabled={generatingMessage}
-                          className="flex items-center gap-2"
+                          className="flex items-center gap-1 md:gap-2 text-xs"
                         >
                           {generatingMessage ? (
                             <>
                               <Loader2 className="h-3 w-3 animate-spin" />
-                              Gerando...
+                              <span className="hidden sm:inline">Gerando...</span>
+                              <span className="sm:hidden">...</span>
                             </>
                           ) : (
                             <>
                               <Sparkles className="h-3 w-3" />
-                              Gerar Nota de Conexão com IA
+                              <span className="hidden sm:inline">Gerar Nota de Conexão com IA</span>
+                              <span className="sm:hidden">Gerar Nota</span>
                             </>
                           )}
                         </Button>
@@ -820,17 +831,19 @@ export function Tasks() {
                           size="sm"
                           onClick={() => handleGenerateLinkedInMessage('followup')}
                           disabled={generatingMessage}
-                          className="flex items-center gap-2"
+                          className="flex items-center gap-1 md:gap-2 text-xs"
                         >
                           {generatingMessage ? (
                             <>
                               <Loader2 className="h-3 w-3 animate-spin" />
-                              Gerando...
+                              <span className="hidden sm:inline">Gerando...</span>
+                              <span className="sm:hidden">...</span>
                             </>
                           ) : (
                             <>
                               <Sparkles className="h-3 w-3" />
-                              Gerar Mensagem com IA
+                              <span className="hidden sm:inline">Gerar Mensagem com IA</span>
+                              <span className="sm:hidden">Gerar</span>
                             </>
                           )}
                         </Button>
@@ -886,17 +899,17 @@ export function Tasks() {
                   ))}
                 </select>
               </div>
-              <div className="flex gap-2 pt-4">
+              <div className="flex flex-wrap gap-2 pt-4">
                 <Button 
                   type="submit"
-                  className="bg-gradient-to-r from-emerald-600 to-emerald-700 hover:from-emerald-700 hover:to-emerald-800 text-white shadow-md hover:shadow-lg transition-all duration-200"
+                  className="bg-gradient-to-r from-emerald-600 to-emerald-700 hover:from-emerald-700 hover:to-emerald-800 text-white shadow-md hover:shadow-lg transition-all duration-200 flex-1 md:flex-initial text-xs md:text-sm"
                 >
                   Criar Tarefa
                 </Button>
                 <Button
                   type="button"
                   variant="outline"
-                  className="border-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800"
+                  className="border-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 flex-1 md:flex-initial text-xs md:text-sm"
                   onClick={() => {
                     setShowForm(false)
                     setFormData({
@@ -919,28 +932,28 @@ export function Tasks() {
 
       {/* Filtros e Paginação */}
       <Card className="border-t-4 border-t-emerald-500 bg-gradient-to-br from-emerald-50/30 to-white dark:from-emerald-950/10 dark:to-background">
-        <CardHeader className="bg-gradient-to-r from-emerald-50/50 to-transparent dark:from-emerald-950/20">
-          <div className="flex items-center justify-between">
-            <CardTitle className="text-emerald-900 dark:text-emerald-100">Filtros</CardTitle>
-            <div className="flex items-center gap-2">
-              <label className="text-sm font-medium">Itens por página:</label>
-              <select
-                value={pageSize}
-                onChange={(e) => {
-                  const newPageSize = Number(e.target.value)
-                  setPageSize(newPageSize)
-                  setCurrentPage(1)
-                }}
-                className="px-3 py-1.5 border rounded-md text-sm bg-background"
-              >
-                <option value={10}>10</option>
-                <option value={20}>20</option>
-                <option value={50}>50</option>
-                <option value={100}>100</option>
-              </select>
+          <CardHeader className="bg-gradient-to-r from-emerald-50/50 to-transparent dark:from-emerald-950/20">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+              <CardTitle className="text-emerald-900 dark:text-emerald-100 text-lg md:text-xl">Filtros</CardTitle>
+              <div className="flex items-center gap-2">
+                <label className="text-xs md:text-sm font-medium">Itens por página:</label>
+                <select
+                  value={pageSize}
+                  onChange={(e) => {
+                    const newPageSize = Number(e.target.value)
+                    setPageSize(newPageSize)
+                    setCurrentPage(1)
+                  }}
+                  className="px-2 md:px-3 py-1.5 border rounded-md text-xs md:text-sm bg-background"
+                >
+                  <option value={10}>10</option>
+                  <option value={20}>20</option>
+                  <option value={50}>50</option>
+                  <option value={100}>100</option>
+                </select>
+              </div>
             </div>
-          </div>
-        </CardHeader>
+          </CardHeader>
         <CardContent>
           <div className="grid gap-4 md:grid-cols-3">
             <div>
@@ -1011,7 +1024,7 @@ export function Tasks() {
                 return (
                   <div
                     key={task.id}
-                    className="flex items-center gap-3 p-3 rounded-lg bg-red-50 border border-red-200 dark:bg-red-950 dark:border-red-800 cursor-pointer hover:bg-red-100 dark:hover:bg-red-900 transition-colors"
+                    className="flex flex-col sm:flex-row sm:items-center gap-3 p-3 rounded-lg bg-red-50 border border-red-200 dark:bg-red-950 dark:border-red-800 cursor-pointer hover:bg-red-100 dark:hover:bg-red-900 transition-colors"
                     onClick={() => handleOpenTaskDetail(task)}
                   >
                     <input
@@ -1019,52 +1032,59 @@ export function Tasks() {
                       checked={selectedTasks.has(task.id)}
                       onChange={() => handleSelectTask(task.id)}
                       onClick={(e) => e.stopPropagation()}
-                      className="h-4 w-4 cursor-pointer"
+                      className="h-4 w-4 cursor-pointer flex-shrink-0"
                     />
-                    <div className="flex-1">
-                      <div className="flex items-center gap-2">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
                         {getTypeIcon(task.type)}
-                        <span className="font-medium">{task.title}</span>
-                        <span className="text-xs px-2 py-1 rounded bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200">
+                        <span className="font-medium text-sm md:text-base break-words">{task.title}</span>
+                        <span className="text-xs px-2 py-1 rounded bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200 flex-shrink-0">
                           {task.type}
                         </span>
                       </div>
                       {task.lead && (
-                        <p className="text-sm text-muted-foreground mt-1">
+                        <p className="text-xs md:text-sm text-muted-foreground mt-1 break-words">
                           {task.lead.name}
-                          {task.lead.company && ` - ${task.lead.company}`}
+                          {task.lead.company && <span className="hidden sm:inline"> - {task.lead.company}</span>}
                         </p>
                       )}
                       {task.owner && (
                         <p className="text-xs text-muted-foreground mt-1 flex items-center gap-1">
-                          <User className="h-3 w-3" />
-                          Responsável: {task.owner.full_name}
+                          <User className="h-3 w-3 flex-shrink-0" />
+                          <span className="hidden sm:inline">Responsável: </span>
+                          <span className="break-words">{task.owner.full_name}</span>
                         </p>
                       )}
                       {task.owner_id && !task.owner && (
                         <p className="text-xs text-muted-foreground mt-1 flex items-center gap-1">
-                          <User className="h-3 w-3" />
-                          Responsável: {users.find(u => u.id === task.owner_id)?.full_name || `ID: ${task.owner_id}`}
+                          <User className="h-3 w-3 flex-shrink-0" />
+                          <span className="hidden sm:inline">Responsável: </span>
+                          <span className="break-words">{users.find(u => u.id === task.owner_id)?.full_name || `ID: ${task.owner_id}`}</span>
                         </p>
                       )}
-                      <p className="text-xs text-red-600 dark:text-red-400 mt-1">
-                        Vencida em {formatDate(dueDate)}
+                      <p className="text-xs text-red-600 dark:text-red-400 mt-1 break-words">
+                        <span className="hidden sm:inline">Vencida em </span>
+                        {formatDate(dueDate)}
                       </p>
                     </div>
-                    <div className="flex gap-2" onClick={(e) => e.stopPropagation()}>
+                    <div className="flex gap-2 flex-shrink-0" onClick={(e) => e.stopPropagation()}>
                       <Button
                         size="sm"
                         onClick={() => handleStatusChange(task.id, 'completed')}
+                        className="text-xs md:text-sm h-8 md:h-9"
                       >
-                        <CheckCircle2 className="h-4 w-4 mr-1" />
-                        Concluir
+                        <CheckCircle2 className="h-3 w-3 md:h-4 md:w-4 mr-1" />
+                        <span className="hidden sm:inline">Concluir</span>
+                        <span className="sm:hidden">OK</span>
                       </Button>
                       <Button
                         size="sm"
                         variant="outline"
                         onClick={() => navigate(`/leads`)}
+                        className="text-xs md:text-sm h-8 md:h-9"
                       >
-                        Ver Lead
+                        <span className="hidden sm:inline">Ver Lead</span>
+                        <span className="sm:hidden">Lead</span>
                       </Button>
                     </div>
                   </div>
@@ -1093,7 +1113,7 @@ export function Tasks() {
                 return (
                   <div
                     key={task.id}
-                    className={`flex items-center gap-3 p-3 rounded-lg border cursor-pointer hover:opacity-90 transition-colors ${
+                    className={`flex flex-col sm:flex-row sm:items-center gap-3 p-3 rounded-lg border cursor-pointer hover:opacity-90 transition-colors ${
                       isToday
                         ? 'bg-yellow-50 border-yellow-200 dark:bg-yellow-950 dark:border-yellow-800 hover:bg-yellow-100 dark:hover:bg-yellow-900'
                         : 'bg-gray-50 border-gray-200 dark:bg-gray-900 dark:border-gray-800 hover:bg-gray-100 dark:hover:bg-gray-800'
@@ -1105,32 +1125,34 @@ export function Tasks() {
                       checked={selectedTasks.has(task.id)}
                       onChange={() => handleSelectTask(task.id)}
                       onClick={(e) => e.stopPropagation()}
-                      className="h-4 w-4 cursor-pointer"
+                      className="h-4 w-4 cursor-pointer flex-shrink-0"
                     />
-                    <div className="flex-1">
-                      <div className="flex items-center gap-2">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
                         {getTypeIcon(task.type)}
-                        <span className="font-medium">{task.title}</span>
-                        <span className="text-xs px-2 py-1 rounded bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200">
+                        <span className="font-medium text-sm md:text-base break-words">{task.title}</span>
+                        <span className="text-xs px-2 py-1 rounded bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200 flex-shrink-0">
                           {task.type}
                         </span>
                       </div>
                       {task.lead && (
-                        <p className="text-sm text-muted-foreground mt-1">
+                        <p className="text-xs md:text-sm text-muted-foreground mt-1 break-words">
                           {task.lead.name}
-                          {task.lead.company && ` - ${task.lead.company}`}
+                          {task.lead.company && <span className="hidden sm:inline"> - {task.lead.company}</span>}
                         </p>
                       )}
                       {task.owner && (
                         <p className="text-xs text-muted-foreground mt-1 flex items-center gap-1">
-                          <User className="h-3 w-3" />
-                          Responsável: {task.owner.full_name}
+                          <User className="h-3 w-3 flex-shrink-0" />
+                          <span className="hidden sm:inline">Responsável: </span>
+                          <span className="break-words">{task.owner.full_name}</span>
                         </p>
                       )}
                       {task.owner_id && !task.owner && (
                         <p className="text-xs text-muted-foreground mt-1 flex items-center gap-1">
-                          <User className="h-3 w-3" />
-                          Responsável: {users.find(u => u.id === task.owner_id)?.full_name || `ID: ${task.owner_id}`}
+                          <User className="h-3 w-3 flex-shrink-0" />
+                          <span className="hidden sm:inline">Responsável: </span>
+                          <span className="break-words">{users.find(u => u.id === task.owner_id)?.full_name || `ID: ${task.owner_id}`}</span>
                         </p>
                       )}
                       <p className={`text-xs mt-1 ${
@@ -1141,20 +1163,23 @@ export function Tasks() {
                         {isToday ? 'Hoje' : formatDate(dueDate)}
                       </p>
                     </div>
-                    <div className="flex gap-2" onClick={(e) => e.stopPropagation()}>
+                    <div className="flex gap-2 flex-shrink-0" onClick={(e) => e.stopPropagation()}>
                       <Button
                         size="sm"
                         onClick={() => handleStatusChange(task.id, 'in_progress')}
                         variant="outline"
+                        className="text-xs md:text-sm h-8 md:h-9"
                       >
                         Iniciar
                       </Button>
                       <Button
                         size="sm"
                         onClick={() => handleStatusChange(task.id, 'completed')}
+                        className="text-xs md:text-sm h-8 md:h-9"
                       >
-                        <CheckCircle2 className="h-4 w-4 mr-1" />
-                        Concluir
+                        <CheckCircle2 className="h-3 w-3 md:h-4 md:w-4 mr-1" />
+                        <span className="hidden sm:inline">Concluir</span>
+                        <span className="sm:hidden">OK</span>
                       </Button>
                     </div>
                   </div>
@@ -1179,7 +1204,7 @@ export function Tasks() {
               {completedTasks.map((task) => (
                 <div
                   key={task.id}
-                  className="flex items-center gap-3 p-2 rounded-lg bg-gray-50 border border-gray-200 dark:bg-gray-900 dark:border-gray-800 cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+                  className="flex items-center gap-2 md:gap-3 p-2 rounded-lg bg-gray-50 border border-gray-200 dark:bg-gray-900 dark:border-gray-800 cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
                   onClick={() => handleOpenTaskDetail(task)}
                 >
                   <input
@@ -1187,26 +1212,26 @@ export function Tasks() {
                     checked={selectedTasks.has(task.id)}
                     onChange={() => handleSelectTask(task.id)}
                     onClick={(e) => e.stopPropagation()}
-                    className="h-4 w-4 cursor-pointer"
+                    className="h-4 w-4 cursor-pointer flex-shrink-0"
                   />
-                  <div className="flex items-center gap-2">
-                    <CheckCircle2 className="h-4 w-4 text-green-500" />
-                    <span className="text-sm line-through text-muted-foreground">{task.title}</span>
+                  <div className="flex items-center gap-2 flex-wrap min-w-0 flex-1">
+                    <CheckCircle2 className="h-4 w-4 text-green-500 flex-shrink-0" />
+                    <span className="text-xs md:text-sm line-through text-muted-foreground break-words">{task.title}</span>
                     {task.lead && (
-                      <span className="text-xs text-muted-foreground">
+                      <span className="text-xs text-muted-foreground break-words">
                         - {task.lead.name}
                       </span>
                     )}
                     {task.owner && (
                       <span className="text-xs text-muted-foreground flex items-center gap-1">
-                        <User className="h-3 w-3" />
-                        {task.owner.full_name}
+                        <User className="h-3 w-3 flex-shrink-0" />
+                        <span className="break-words">{task.owner.full_name}</span>
                       </span>
                     )}
                     {task.owner_id && !task.owner && (
                       <span className="text-xs text-muted-foreground flex items-center gap-1">
-                        <User className="h-3 w-3" />
-                        {users.find(u => u.id === task.owner_id)?.full_name || `ID: ${task.owner_id}`}
+                        <User className="h-3 w-3 flex-shrink-0" />
+                        <span className="break-words">{users.find(u => u.id === task.owner_id)?.full_name || `ID: ${task.owner_id}`}</span>
                       </span>
                     )}
                   </div>
@@ -1220,19 +1245,20 @@ export function Tasks() {
       {/* Paginação - Sempre exibir o seletor */}
       <Card>
         <CardContent className="py-4">
-          <div className="flex items-center justify-between flex-wrap gap-4">
-            <div className="flex items-center gap-4">
+          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+            <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 sm:gap-4">
               {totalTasks > 0 ? (
-                <span className="text-sm text-muted-foreground">
-                  Mostrando {((currentPage - 1) * pageSize) + 1} a {Math.min(currentPage * pageSize, totalTasks)} de {totalTasks} tarefas
+                <span className="text-xs md:text-sm text-muted-foreground">
+                  <span className="hidden sm:inline">Mostrando {((currentPage - 1) * pageSize) + 1} a {Math.min(currentPage * pageSize, totalTasks)} de {totalTasks} tarefas</span>
+                  <span className="sm:hidden">{((currentPage - 1) * pageSize) + 1}-{Math.min(currentPage * pageSize, totalTasks)} de {totalTasks}</span>
                 </span>
               ) : (
-                <span className="text-sm text-muted-foreground">
+                <span className="text-xs md:text-sm text-muted-foreground">
                   {tasks.length > 0 ? `Mostrando ${tasks.length} tarefa(s)` : 'Nenhuma tarefa encontrada'}
                 </span>
               )}
               <div className="flex items-center gap-2">
-                <label className="text-sm font-medium">Itens por página:</label>
+                <label className="text-xs md:text-sm font-medium">Itens por página:</label>
                 <select
                   value={pageSize}
                   onChange={(e) => {
@@ -1240,7 +1266,7 @@ export function Tasks() {
                     setPageSize(newPageSize)
                     setCurrentPage(1)
                   }}
-                  className="px-3 py-1.5 border rounded-md text-sm bg-background min-w-[80px]"
+                  className="px-2 md:px-3 py-1.5 border rounded-md text-xs md:text-sm bg-background min-w-[80px]"
                 >
                   <option value={10}>10</option>
                   <option value={20}>20</option>
@@ -1249,41 +1275,50 @@ export function Tasks() {
                 </select>
               </div>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1 md:gap-2 flex-wrap">
               <Button
                 variant="outline"
                 size="sm"
                 onClick={() => setCurrentPage(1)}
                 disabled={currentPage === 1 || totalTasks === 0}
+                className="text-xs px-2 md:px-3"
               >
-                Primeira
+                <span className="hidden sm:inline">Primeira</span>
+                <span className="sm:hidden">1ª</span>
               </Button>
               <Button
                 variant="outline"
                 size="sm"
                 onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
                 disabled={currentPage === 1 || totalTasks === 0}
+                className="text-xs px-2 md:px-3"
               >
-                Anterior
+                <span className="hidden sm:inline">Anterior</span>
+                <span className="sm:hidden">Ant</span>
               </Button>
-              <span className="text-sm px-3 font-medium">
-                Página {currentPage} de {totalPages > 0 ? totalPages : 1}
+              <span className="text-xs md:text-sm px-2 md:px-3 font-medium">
+                <span className="hidden sm:inline">Página {currentPage} de {totalPages > 0 ? totalPages : 1}</span>
+                <span className="sm:hidden">{currentPage}/{totalPages > 0 ? totalPages : 1}</span>
               </span>
               <Button
                 variant="outline"
                 size="sm"
                 onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
                 disabled={currentPage >= totalPages || totalTasks === 0}
+                className="text-xs px-2 md:px-3"
               >
-                Próxima
+                <span className="hidden sm:inline">Próxima</span>
+                <span className="sm:hidden">Próx</span>
               </Button>
               <Button
                 variant="outline"
                 size="sm"
                 onClick={() => setCurrentPage(totalPages)}
                 disabled={currentPage >= totalPages || totalTasks === 0}
+                className="text-xs px-2 md:px-3"
               >
-                Última
+                <span className="hidden sm:inline">Última</span>
+                <span className="sm:hidden">Últ</span>
               </Button>
             </div>
           </div>
@@ -1303,19 +1338,20 @@ export function Tasks() {
 
       {/* Modal de Detalhes da Tarefa */}
       {showTaskDetailModal && selectedTaskDetail && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <Card className="w-full max-w-4xl h-[90vh] overflow-hidden flex flex-col">
-            <CardHeader className="border-b flex-shrink-0">
-              <div className="flex items-center justify-between">
-                <CardTitle className="text-2xl">Detalhes da Tarefa</CardTitle>
-                <div className="flex items-center gap-2">
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-2 md:p-4">
+          <Card className="w-full max-w-4xl h-[90vh] md:h-[90vh] overflow-hidden flex flex-col">
+            <CardHeader className="border-b flex-shrink-0 p-4 md:p-6">
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                <CardTitle className="text-lg md:text-2xl break-words">Detalhes da Tarefa</CardTitle>
+                <div className="flex items-center gap-2 flex-shrink-0">
                   {!editingTask && (
                     <Button
                       variant="ghost"
                       size="sm"
                       onClick={() => setEditingTask(true)}
+                      className="text-xs md:text-sm h-8 md:h-9"
                     >
-                      <Edit className="h-4 w-4 mr-2" />
+                      <Edit className="h-3 w-3 md:h-4 md:w-4 mr-1 md:mr-2" />
                       Editar
                     </Button>
                   )}
@@ -1328,29 +1364,31 @@ export function Tasks() {
                       setActiveTab('basicas')
                       setEditingTask(false)
                     }}
+                    className="h-8 w-8 md:h-10 md:w-10"
                   >
-                    <XCircle className="h-5 w-5" />
+                    <XCircle className="h-4 w-4 md:h-5 md:w-5" />
                   </Button>
                 </div>
               </div>
             </CardHeader>
             
             {/* Abas */}
-            <div className="border-b px-6 flex-shrink-0">
+            <div className="border-b px-4 md:px-6 flex-shrink-0">
               <div className="flex gap-1 overflow-x-auto">
                 <button
                   onClick={() => setActiveTab('basicas')}
-                  className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
+                  className={`px-3 md:px-4 py-2 md:py-3 text-xs md:text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
                     activeTab === 'basicas'
                       ? 'border-primary text-primary'
                       : 'border-transparent text-muted-foreground hover:text-foreground'
                   }`}
                 >
-                  Informações Básicas
+                  <span className="hidden sm:inline">Informações Básicas</span>
+                  <span className="sm:hidden">Básicas</span>
                 </button>
                 <button
                   onClick={() => setActiveTab('comentarios')}
-                  className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
+                  className={`px-3 md:px-4 py-2 md:py-3 text-xs md:text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
                     activeTab === 'comentarios'
                       ? 'border-primary text-primary'
                       : 'border-transparent text-muted-foreground hover:text-foreground'
@@ -1361,35 +1399,37 @@ export function Tasks() {
               </div>
             </div>
 
-            <CardContent className="flex-1 overflow-y-auto p-6">
+            <CardContent className="flex-1 overflow-y-auto p-4 md:p-6">
               {/* Aba: Informações Básicas */}
               {activeTab === 'basicas' && (
                 <div className="space-y-4">
                   {editingTask ? (
                     <div className="space-y-4">
                       <div>
-                        <label className="block text-sm font-medium mb-1">Título *</label>
+                        <label className="block text-xs md:text-sm font-medium mb-1">Título *</label>
                         <Input
                           value={editFormData.title}
                           onChange={(e) => setEditFormData({ ...editFormData, title: e.target.value })}
                           required
+                          className="text-xs md:text-sm"
                         />
                       </div>
                       <div>
-                        <label className="block text-sm font-medium mb-1">Descrição</label>
+                        <label className="block text-xs md:text-sm font-medium mb-1">Descrição</label>
                         <Textarea
                           value={editFormData.description}
                           onChange={(e) => setEditFormData({ ...editFormData, description: e.target.value })}
                           rows={4}
+                          className="text-xs md:text-sm"
                         />
                       </div>
-                      <div className="grid gap-4 md:grid-cols-2">
+                      <div className="grid gap-4 grid-cols-1 sm:grid-cols-2">
                         <div>
-                          <label className="block text-sm font-medium mb-1">Status *</label>
+                          <label className="block text-xs md:text-sm font-medium mb-1">Status *</label>
                           <select
                             value={editFormData.status}
                             onChange={(e) => setEditFormData({ ...editFormData, status: e.target.value })}
-                            className="w-full px-3 py-2 border rounded-md"
+                            className="w-full px-3 py-2 border rounded-md text-xs md:text-sm"
                             required
                           >
                             <option value="pending">Pendente</option>
@@ -1399,11 +1439,11 @@ export function Tasks() {
                           </select>
                         </div>
                         <div>
-                          <label className="block text-sm font-medium mb-1">Responsável</label>
+                          <label className="block text-xs md:text-sm font-medium mb-1">Responsável</label>
                           <select
                             value={editFormData.owner_id || ''}
                             onChange={(e) => setEditFormData({ ...editFormData, owner_id: e.target.value ? Number(e.target.value) : null })}
-                            className="w-full px-3 py-2 border rounded-md"
+                            className="w-full px-3 py-2 border rounded-md text-xs md:text-sm"
                           >
                             <option value="">Sem responsável</option>
                             {users.map((user) => (
@@ -1414,33 +1454,39 @@ export function Tasks() {
                           </select>
                         </div>
                         <div>
-                          <label className="block text-sm font-medium mb-1">Data de Vencimento *</label>
+                          <label className="block text-xs md:text-sm font-medium mb-1">Data de Vencimento *</label>
                           <Input
                             type="date"
                             value={editFormData.due_date}
                             onChange={(e) => setEditFormData({ ...editFormData, due_date: e.target.value })}
                             required
+                            className="text-xs md:text-sm"
                           />
                         </div>
                         <div>
-                          <label className="block text-sm font-medium mb-1">Horário</label>
+                          <label className="block text-xs md:text-sm font-medium mb-1">Horário</label>
                           <Input
                             type="time"
                             value={editFormData.due_time}
                             onChange={(e) => setEditFormData({ ...editFormData, due_time: e.target.value })}
+                            className="text-xs md:text-sm"
                           />
                         </div>
                       </div>
                       <div>
-                        <label className="block text-sm font-medium mb-1">Notas</label>
+                        <label className="block text-xs md:text-sm font-medium mb-1">Notas</label>
                         <Textarea
                           value={editFormData.notes}
                           onChange={(e) => setEditFormData({ ...editFormData, notes: e.target.value })}
                           rows={3}
+                          className="text-xs md:text-sm"
                         />
                       </div>
-                      <div className="flex gap-2 pt-4">
-                        <Button onClick={handleUpdateTask}>
+                      <div className="flex flex-wrap gap-2 pt-4">
+                        <Button 
+                          onClick={handleUpdateTask}
+                          className="flex-1 sm:flex-initial text-xs md:text-sm"
+                        >
                           Salvar Alterações
                         </Button>
                         <Button
@@ -1459,6 +1505,7 @@ export function Tasks() {
                               notes: selectedTaskDetail.notes || ''
                             })
                           }}
+                          className="flex-1 sm:flex-initial text-xs md:text-sm"
                         >
                           Cancelar
                         </Button>
@@ -1466,13 +1513,13 @@ export function Tasks() {
                     </div>
                   ) : (
                     <>
-                      <div className="grid gap-4 md:grid-cols-2">
+                      <div className="grid gap-4 grid-cols-1 sm:grid-cols-2">
                         <div>
-                          <label className="text-sm font-medium text-muted-foreground">Título</label>
-                          <p className="text-base font-medium mt-1">{selectedTaskDetail.title}</p>
+                          <label className="text-xs md:text-sm font-medium text-muted-foreground">Título</label>
+                          <p className="text-sm md:text-base font-medium mt-1 break-words">{selectedTaskDetail.title}</p>
                         </div>
                         <div>
-                          <label className="text-sm font-medium text-muted-foreground">Status</label>
+                          <label className="text-xs md:text-sm font-medium text-muted-foreground">Status</label>
                           <p className="mt-1">
                             <span className={`text-xs px-2 py-1 rounded ${
                               selectedTaskDetail.status === 'completed' ? 'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-200' :
@@ -1487,58 +1534,58 @@ export function Tasks() {
                           </p>
                         </div>
                         <div>
-                          <label className="text-sm font-medium text-muted-foreground">Tipo</label>
-                          <p className="text-base mt-1 flex items-center gap-2">
+                          <label className="text-xs md:text-sm font-medium text-muted-foreground">Tipo</label>
+                          <p className="text-sm md:text-base mt-1 flex items-center gap-2">
                             {getTypeIcon(selectedTaskDetail.type)}
-                            <span className="capitalize">{selectedTaskDetail.type}</span>
+                            <span className="capitalize break-words">{selectedTaskDetail.type}</span>
                           </p>
                         </div>
                         <div>
-                          <label className="text-sm font-medium text-muted-foreground">Data de Vencimento</label>
-                          <p className="text-base mt-1 flex items-center gap-2">
-                            <Calendar className="h-4 w-4" />
-                            {formatDate(new Date(selectedTaskDetail.due_date))}
+                          <label className="text-xs md:text-sm font-medium text-muted-foreground">Data de Vencimento</label>
+                          <p className="text-sm md:text-base mt-1 flex items-center gap-2">
+                            <Calendar className="h-4 w-4 flex-shrink-0" />
+                            <span className="break-words">{formatDate(new Date(selectedTaskDetail.due_date))}</span>
                           </p>
                         </div>
                         {selectedTaskDetail.owner && (
                           <div>
-                            <label className="text-sm font-medium text-muted-foreground">Responsável</label>
-                            <p className="text-base mt-1 flex items-center gap-2">
-                              <User className="h-4 w-4" />
-                              {selectedTaskDetail.owner.full_name}
+                            <label className="text-xs md:text-sm font-medium text-muted-foreground">Responsável</label>
+                            <p className="text-sm md:text-base mt-1 flex items-center gap-2">
+                              <User className="h-4 w-4 flex-shrink-0" />
+                              <span className="break-words">{selectedTaskDetail.owner.full_name}</span>
                             </p>
                           </div>
                         )}
                         {selectedTaskDetail.lead && (
                           <div>
-                            <label className="text-sm font-medium text-muted-foreground">Lead</label>
-                            <p className="text-base mt-1">{selectedTaskDetail.lead.name}</p>
+                            <label className="text-xs md:text-sm font-medium text-muted-foreground">Lead</label>
+                            <p className="text-sm md:text-base mt-1 break-words">{selectedTaskDetail.lead.name}</p>
                             {selectedTaskDetail.lead.company && (
-                              <p className="text-sm text-muted-foreground">{selectedTaskDetail.lead.company}</p>
+                              <p className="text-xs md:text-sm text-muted-foreground break-words">{selectedTaskDetail.lead.company}</p>
                             )}
                           </div>
                         )}
                         {selectedTaskDetail.completed_at && (
                           <div>
-                            <label className="text-sm font-medium text-muted-foreground">Concluída em</label>
-                            <p className="text-base mt-1 flex items-center gap-2">
-                              <Calendar className="h-4 w-4" />
-                              {formatDate(new Date(selectedTaskDetail.completed_at))}
+                            <label className="text-xs md:text-sm font-medium text-muted-foreground">Concluída em</label>
+                            <p className="text-sm md:text-base mt-1 flex items-center gap-2">
+                              <Calendar className="h-4 w-4 flex-shrink-0" />
+                              <span className="break-words">{formatDate(new Date(selectedTaskDetail.completed_at))}</span>
                             </p>
                           </div>
                         )}
                       </div>
                       {selectedTaskDetail.description && (
                         <div className="mt-4">
-                          <label className="text-sm font-medium text-muted-foreground">Descrição</label>
-                          <p className="text-base mt-1 whitespace-pre-wrap">{selectedTaskDetail.description}</p>
+                          <label className="text-xs md:text-sm font-medium text-muted-foreground">Descrição</label>
+                          <p className="text-sm md:text-base mt-1 whitespace-pre-wrap break-words">{selectedTaskDetail.description}</p>
                         </div>
                       )}
                       {selectedTaskDetail.notes && (
                         <div className="mt-4">
-                          <label className="text-sm font-medium text-muted-foreground">Notas</label>
-                          <div className="mt-1 p-4 bg-gray-50 dark:bg-gray-900 rounded-lg">
-                            <p className="text-base whitespace-pre-wrap">{selectedTaskDetail.notes}</p>
+                          <label className="text-xs md:text-sm font-medium text-muted-foreground">Notas</label>
+                          <div className="mt-1 p-3 md:p-4 bg-gray-50 dark:bg-gray-900 rounded-lg">
+                            <p className="text-sm md:text-base whitespace-pre-wrap break-words">{selectedTaskDetail.notes}</p>
                           </div>
                         </div>
                       )}
@@ -1549,9 +1596,9 @@ export function Tasks() {
 
               {/* Aba: Comentários */}
               {activeTab === 'comentarios' && (
-                <div className="space-y-6">
+                <div className="space-y-4 md:space-y-6">
                   <div>
-                    <h3 className="text-lg font-semibold mb-4">Comentários</h3>
+                    <h3 className="text-base md:text-lg font-semibold mb-4">Comentários</h3>
                     
                     {/* Formulário para adicionar comentário */}
                     <div className="mb-4 space-y-2">
@@ -1560,13 +1607,14 @@ export function Tasks() {
                         value={newComment}
                         onChange={(e) => setNewComment(e.target.value)}
                         rows={3}
-                        className="w-full"
+                        className="w-full text-xs md:text-sm"
                       />
                       <div className="flex justify-end">
                         <Button
                           onClick={handleAddComment}
                           disabled={!newComment.trim() || addingComment}
                           size="sm"
+                          className="text-xs md:text-sm"
                         >
                           {addingComment ? 'Adicionando...' : 'Adicionar Comentário'}
                         </Button>
@@ -1622,53 +1670,56 @@ export function Tasks() {
 
       {/* Modal de Geração de Nota de Conexão */}
       {showConnectionNoteModal && taskForConnectionNote && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-2 md:p-4">
           <Card className="w-full max-w-2xl max-h-[90vh] overflow-hidden flex flex-col">
-            <CardHeader className="border-b flex-shrink-0">
-              <div className="flex items-center justify-between">
-                <CardTitle className="flex items-center gap-2">
-                  <LinkIcon className="h-5 w-5" />
+            <CardHeader className="border-b flex-shrink-0 p-4 md:p-6">
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                <CardTitle className="flex items-center gap-2 text-base md:text-lg break-words">
+                  <LinkIcon className="h-4 w-4 md:h-5 md:w-5 flex-shrink-0" />
                   Gerar Nota de Conexão
                 </CardTitle>
                 <Button
                   variant="ghost"
                   size="sm"
                   onClick={handleCancelConnectionNote}
+                  className="h-8 w-8 md:h-9 md:w-9 flex-shrink-0"
                 >
-                  <X className="h-4 w-4" />
+                  <X className="h-3 w-3 md:h-4 md:w-4" />
                 </Button>
               </div>
-              <p className="text-sm text-muted-foreground mt-2">
+              <p className="text-xs md:text-sm text-muted-foreground mt-2 break-words">
                 Tarefa: {taskForConnectionNote.title}
                 {taskForConnectionNote.lead && (
                   <span className="ml-2">• Lead: {taskForConnectionNote.lead.name}</span>
                 )}
               </p>
             </CardHeader>
-            <CardContent className="flex-1 overflow-y-auto p-6">
+            <CardContent className="flex-1 overflow-y-auto p-4 md:p-6">
               <div className="space-y-4">
                 <div>
-                  <label className="block text-sm font-medium mb-2">
+                  <label className="block text-xs md:text-sm font-medium mb-2">
                     Nota de Conexão
                   </label>
-                  <div className="flex gap-2 mb-2">
+                  <div className="flex flex-wrap gap-2 mb-2">
                     <Button
                       type="button"
                       variant="outline"
                       size="sm"
                       onClick={handleGenerateConnectionNote}
                       disabled={generatingConnectionNote}
-                      className="flex items-center gap-2"
+                      className="flex items-center gap-1 md:gap-2 text-xs"
                     >
                       {generatingConnectionNote ? (
                         <>
-                          <Loader2 className="h-4 w-4 animate-spin" />
-                          Gerando...
+                          <Loader2 className="h-3 w-3 md:h-4 md:w-4 animate-spin" />
+                          <span className="hidden sm:inline">Gerando...</span>
+                          <span className="sm:hidden">...</span>
                         </>
                       ) : (
                         <>
-                          <Sparkles className="h-4 w-4" />
-                          Gerar Nota de Conexão com IA
+                          <Sparkles className="h-3 w-3 md:h-4 md:w-4" />
+                          <span className="hidden sm:inline">Gerar Nota de Conexão com IA</span>
+                          <span className="sm:hidden">Gerar Nota</span>
                         </>
                       )}
                     </Button>
@@ -1678,32 +1729,34 @@ export function Tasks() {
                     onChange={(e) => setConnectionNoteText(e.target.value)}
                     placeholder="A nota de conexão será gerada aqui. Você pode editar antes de salvar."
                     rows={8}
-                    className="font-mono text-sm"
+                    className="font-mono text-xs md:text-sm"
                   />
                   <p className="text-xs text-muted-foreground mt-1">
                     {connectionNoteText.length} caracteres
                   </p>
                 </div>
-                <div className="bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-900 rounded-lg p-4">
-                  <p className="text-sm text-blue-900 dark:text-blue-100">
+                <div className="bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-900 rounded-lg p-3 md:p-4">
+                  <p className="text-xs md:text-sm text-blue-900 dark:text-blue-100 break-words">
                     <strong>Dica:</strong> A IA irá gerar uma nota de conexão personalizada baseada no insight do lead e nos produtos/serviços do catálogo. Você pode editar o texto gerado antes de salvar.
                   </p>
                 </div>
               </div>
             </CardContent>
-            <div className="border-t p-4 flex gap-2 justify-end flex-shrink-0">
+            <div className="border-t p-4 flex flex-wrap gap-2 justify-end flex-shrink-0">
               <Button
                 variant="outline"
                 onClick={handleCancelConnectionNote}
+                className="flex-1 sm:flex-initial text-xs md:text-sm"
               >
                 Cancelar
               </Button>
               <Button
                 onClick={handleSaveConnectionNote}
                 disabled={!connectionNoteText.trim()}
-                className="bg-blue-600 hover:bg-blue-700"
+                className="bg-blue-600 hover:bg-blue-700 flex-1 sm:flex-initial text-xs md:text-sm"
               >
-                Salvar e Completar Tarefa
+                <span className="hidden sm:inline">Salvar e Completar Tarefa</span>
+                <span className="sm:hidden">Salvar</span>
               </Button>
             </div>
           </Card>
