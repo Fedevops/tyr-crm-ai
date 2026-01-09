@@ -224,6 +224,33 @@ EXTRAÇÃO DE SEGMENTO/INDUSTRIA:
         response_text = re.sub(r',\s*}', '}', response_text)
         response_text = re.sub(r',\s*]', ']', response_text)
         
+        response_text = re.sub(r'("(?:[^"\\]|\\.)*")\s*\([^)]*\)', r'\1', response_text)
+
+        response_text = re.sub(r'(\d+|\w+)\s*\([^)]*\)', r'\1', response_text)
+        lines = response_text.split('\n')
+        cleaned_lines = []
+        for line in lines:
+            # Remover comentários // que não estão dentro de strings
+            if '//' in line:
+                # Verificar se // está dentro de uma string
+                in_string = False
+                escape_next = False
+                comment_pos = line.find('//')
+                if comment_pos != -1:
+                    for i, char in enumerate(line[:comment_pos]):
+                        if escape_next:
+                            escape_next = False
+                            continue
+                        if char == '\\':
+                            escape_next = True
+                            continue
+                        if char == '"':
+                            in_string = not in_string
+                    if not in_string:
+                        line = line[:comment_pos].rstrip()
+            cleaned_lines.append(line)
+        response_text = '\n'.join(cleaned_lines)
+        
         # Parsear JSON
         parsed_data = None
         json_error = None
@@ -241,6 +268,11 @@ EXTRAÇÃO DE SEGMENTO/INDUSTRIA:
                 # Remover caracteres de controle exceto \n, \r, \t
                 fixed_text = ''.join(char for char in fixed_text if ord(char) >= 32 or char in '\n\r\t')
                 
+                fixed_text = re.sub(r'("(?:[^"\\]|\\.)*")\s*\([^)]*\)', r'\1', fixed_text)
+                fixed_text = re.sub(r'(:)\s*([^,}\]]+?)\s*\([^)]*\)', r'\1 \2', fixed_text)
+                fixed_text = re.sub(r',\s*\([^)]*\)\s*,', ',', fixed_text)
+                fixed_text = re.sub(r'\([^)]*\)\s*,', ',', fixed_text)
+
                 # Tentar encontrar e extrair apenas o JSON válido
                 # Procurar pelo primeiro { e último }
                 first_brace = fixed_text.find('{')
