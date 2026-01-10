@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import React, { useState, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 import api from '@/lib/api'
 import { leadsApi } from '@/lib/api'
@@ -388,7 +388,7 @@ export function Leads() {
       
       // Atualizar apenas updated_at sem disparar useEffect (evita múltiplas requisições)
       const leadResponse = await api.get(`/api/leads/${selectedLeadDetail.id}`)
-      setSelectedLeadDetail(prev => prev ? { ...prev, updated_at: leadResponse.data.updated_at } : leadResponse.data)
+      setSelectedLeadDetail((prev: Lead | null) => prev ? { ...prev, updated_at: leadResponse.data.updated_at } : leadResponse.data)
     } catch (error: any) {
       console.error('Error adding comment:', error)
       alert(error.response?.data?.detail || 'Erro ao adicionar comentário')
@@ -402,12 +402,12 @@ export function Leads() {
     
     try {
       await api.delete(`/api/leads/comments/${commentId}`)
-      setLeadComments(prevComments => prevComments.filter(c => c.id !== commentId))
+      setLeadComments((prevComments: any[]) => prevComments.filter((c: any) => c.id !== commentId))
       
       // Atualizar lead sem disparar useEffect (apenas updated_at)
       if (selectedLeadDetail) {
         const leadResponse = await api.get(`/api/leads/${selectedLeadDetail.id}`)
-        setSelectedLeadDetail(prev => prev ? { ...prev, updated_at: leadResponse.data.updated_at } : leadResponse.data)
+        setSelectedLeadDetail((prev: Lead | null) => prev ? { ...prev, updated_at: leadResponse.data.updated_at } : leadResponse.data)
       }
     } catch (error: any) {
       console.error('Error deleting comment:', error)
@@ -510,7 +510,7 @@ export function Leads() {
     if (selectedLeads.size === leads.length) {
       setSelectedLeads(new Set())
     } else {
-      setSelectedLeads(new Set(leads.map(l => l.id)))
+      setSelectedLeads(new Set(leads.map((l: Lead) => l.id)))
     }
   }
 
@@ -525,7 +525,7 @@ export function Leads() {
   }
 
   const handleExportSelected = () => {
-    const selected = leads.filter(l => selectedLeads.has(l.id))
+    const selected = leads.filter((l: Lead) => selectedLeads.has(l.id))
     if (selected.length === 0) {
       alert('Selecione pelo menos um lead para exportar')
       return
@@ -533,20 +533,20 @@ export function Leads() {
 
     // Create CSV
     const headers = ['Nome', 'Email', 'Telefone', 'Empresa', 'Cargo', 'Status', 'Fonte', 'Score']
-    const rows = selected.map(lead => [
+    const rows = selected.map((lead: Lead) => [
       lead.name,
       lead.email || '',
       lead.phone || '',
       lead.company || '',
       lead.position || '',
-      statusLabels[lead.status],
+      statusLabels[lead.status as keyof typeof statusLabels],
       lead.source || '',
       lead.score?.toString() || '0'
     ])
 
     const csvContent = [
       headers.join(','),
-      ...rows.map(row => row.map(cell => `"${cell}"`).join(','))
+      ...rows.map((row: string[]) => row.map((cell: string) => `"${cell}"`).join(','))
     ].join('\n')
 
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8-sig;' })
@@ -618,14 +618,14 @@ export function Leads() {
   }
 
   const handleBulkSendEmail = () => {
-    const selected = leads.filter(l => selectedLeads.has(l.id) && l.email)
+    const selected = leads.filter((l: Lead) => selectedLeads.has(l.id) && l.email)
     if (selected.length === 0) {
       alert('Selecione pelo menos um lead com e-mail')
       return
     }
 
     // Open email client with selected emails
-    const emails = selected.map(l => l.email).join(';')
+    const emails = selected.map((l: Lead) => l.email).join(';')
     window.location.href = `mailto:${emails}`
   }
 
@@ -763,7 +763,7 @@ export function Leads() {
       // Se houver filtros avançados, usar o endpoint de filtros
       if (advancedFilters.length > 0) {
         // Filtrar apenas filtros válidos (com valor ou operadores especiais)
-        const validFilters = advancedFilters.filter(f => {
+        const validFilters = advancedFilters.filter((f: any) => {
           // Operadores que não precisam de valor
           if (f.operator === 'is_null' || f.operator === 'is_not_null') {
             return true
@@ -940,7 +940,7 @@ export function Leads() {
     }
   }
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault()
     
     const storedToken = localStorage.getItem('token')
@@ -1027,7 +1027,7 @@ export function Leads() {
         response = await api.post('/api/leads', data)
         // Track KPI activity for new lead creation
         if (response.data?.id) {
-          trackActivity('leads_created', 1, 'Lead', response.data.id).catch((err) => {
+          trackActivity('leads_created', 1, 'Lead', response.data.id).catch((err: any) => {
             console.error('Error tracking KPI activity:', err)
           })
         }
@@ -2294,12 +2294,14 @@ export function Leads() {
                   </div>
                   
                   <div className="space-y-2">
-                    <label className="text-sm font-medium">Arquivo CSV</label>
+                    <label className="text-sm font-medium" htmlFor="csv-upload">
+                      Arquivo CSV
+                    </label>
                     <div className="flex items-center gap-2">
                       <input
                         type="file"
                         accept=".csv"
-                        onChange={handleFileUpload}
+                        onChange={(e: React.ChangeEvent<HTMLInputElement>) => handleFileUpload(e)}
                         disabled={importing}
                         className="flex-1 h-10 rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:mr-4 file:rounded-md file:border-0 file:bg-primary file:px-4 file:py-2 file:text-sm file:font-medium file:text-primary-foreground hover:file:bg-primary/90 disabled:opacity-50"
                         id="csv-upload"
@@ -2858,7 +2860,7 @@ export function Leads() {
                       <CardTitle className="flex items-center gap-2 flex-wrap break-words min-w-0">
                         <span className="break-words min-w-0">{lead.name}</span>
                         <span className={`inline-block rounded-full px-2 py-1 text-xs flex-shrink-0 ${statusColors[lead.status]}`}>
-                          {statusLabels[lead.status]}
+                          {statusLabels[lead.status as keyof typeof statusLabels]}
                         </span>
                         {lead.score !== null && (
                           <span className={`inline-flex items-center gap-1 rounded-full px-2 py-1 md:px-2.5 md:py-1 text-xs font-semibold flex-shrink-0 ${
@@ -3469,7 +3471,7 @@ export function Leads() {
                       <label className="text-sm font-medium text-muted-foreground">Status</label>
                       <p className="mt-1">
                         <span className={`inline-block rounded-full px-2 py-1 text-xs ${statusColors[selectedLeadDetail.status]}`}>
-                          {statusLabels[selectedLeadDetail.status]}
+                          {statusLabels[selectedLeadDetail.status as keyof typeof statusLabels]}
                         </span>
                       </p>
                     </div>
@@ -4188,7 +4190,7 @@ export function Leads() {
                                   <CardTitle className="text-lg">{appointment.title}</CardTitle>
                                   <div className="flex items-center gap-2 mt-2 flex-wrap">
                                     <span className={`text-xs px-2 py-1 rounded-full font-medium ${statusColors[appointment.status] || statusColors.scheduled}`}>
-                                      {statusLabels[appointment.status] || appointment.status}
+                                      {statusLabels[appointment.status as keyof typeof statusLabels] || appointment.status}
                                     </span>
                                     {isUpcoming && (
                                       <span className="text-xs px-2 py-1 rounded-full bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200 font-medium">

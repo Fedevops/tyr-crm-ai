@@ -10,6 +10,7 @@ from pathlib import Path
 from app.database import engine, init_db
 from app.routers import auth, users, playbooks, agents, company_profile, debug, leads, sequences, tasks, prospecting, audit, sales_funnel, opportunities, proposals, proposal_templates, accounts, contacts, dashboard, settings, kpi, live_pulse, widgets, items, orders, integrations, forms, custom_fields, custom_modules, appointments, notifications, chat, finance
 from app.middleware import ApiCallTrackingMiddleware
+from app.health import router as health_router
 
 # Configurar logging para garantir que todos os logs apareçam
 logging.basicConfig(
@@ -37,6 +38,7 @@ app = FastAPI(
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
+        # Local development
         "http://localhost:3000",
         "http://localhost:5173",
         "http://frontend:3000",
@@ -47,7 +49,23 @@ app.add_middleware(
         "http://127.0.0.1:5500",  # Para testar widgets (Live Server)
         "http://localhost:5500",  # Para testar widgets (Live Server)
         "file://",  # Para arquivos HTML locais
+        # Vercel - URLs específicas conhecidas
+        "https://tyr-crm-dev.vercel.app",
+        "https://tyr-crm-hml.vercel.app",
+        "https://tyr-crm-prd.vercel.app",
+        "https://frontend-5r9jyugp2-fedevops-projects.vercel.app",
+        "https://frontend-flax-two-77.vercel.app",
+        "https://frontend-8shw9ln3w-fedevops-projects.vercel.app",
+        "http://crm.tyr-ai.com.br",
+        "https://crm.tyr-ai.com.br",
+
+        # Domínios customizados (ajuste conforme necessário)
+        "https://dev.tyr-crm.com",
+        "https://hml.tyr-crm.com",
+        "https://app.tyr-crm.com",
+        "https://tyr-crm.com",
     ],
+    allow_origin_regex=r"https://.*\.vercel\.app",  # Permite todos os subdomínios do Vercel (qualquer projeto)
     allow_credentials=True,  # Permitir credenciais para o frontend autenticado
     allow_methods=["*"],
     allow_headers=["*"],
@@ -83,6 +101,7 @@ async def general_exception_handler(request: Request, exc: Exception):
     )
 
 # Include routers
+app.include_router(health_router)  # Health check (sem prefixo para /health e /api/health)
 app.include_router(auth.router, prefix="/api/auth", tags=["auth"])
 app.include_router(users.router, prefix="/api/users", tags=["users"])
 app.include_router(playbooks.router, prefix="/api/playbooks", tags=["playbooks"])
@@ -126,7 +145,16 @@ app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
 @app.on_event("startup")
 async def startup_event():
     """Initialize database on startup"""
-    init_db()
+    import logging
+    logger = logging.getLogger(__name__)
+    try:
+        logger.info("🔄 Inicializando banco de dados...")
+        init_db()
+        logger.info("✅ Banco de dados inicializado com sucesso!")
+    except Exception as e:
+        logger.error(f"❌ Erro ao inicializar banco de dados: {e}")
+        # Não falhar completamente, permitir que a API inicie mesmo se houver problemas no DB
+        # O erro será tratado nas requisições individuais
 
 
 @app.get("/")

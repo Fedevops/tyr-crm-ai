@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import React, { useState, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -233,7 +233,7 @@ export function Tasks() {
       let filtered = tasksWithLeads
       if (searchTerm) {
         const searchLower = searchTerm.toLowerCase()
-        filtered = tasksWithLeads.filter(task => 
+        filtered = tasksWithLeads.filter((task: Task) => 
           task.title.toLowerCase().includes(searchLower) ||
           task.lead?.name.toLowerCase().includes(searchLower) ||
           task.lead?.company?.toLowerCase().includes(searchLower)
@@ -267,7 +267,7 @@ export function Tasks() {
   }
 
   // Funções de seleção múltipla
-  const handleSelectTask = (taskId: number, e?: React.MouseEvent) => {
+  const handleSelectTask = (taskId: number, e?: React.MouseEvent<HTMLInputElement>) => {
     e?.stopPropagation() // Prevenir que abra o modal ao clicar no checkbox
     const newSelected = new Set(selectedTasks)
     if (newSelected.has(taskId)) {
@@ -282,7 +282,7 @@ export function Tasks() {
     if (selectedTasks.size === tasks.length) {
       setSelectedTasks(new Set())
     } else {
-      setSelectedTasks(new Set(tasks.map(t => t.id)))
+      setSelectedTasks(new Set(tasks.map((t: Task) => t.id)))
     }
   }
 
@@ -338,7 +338,7 @@ export function Tasks() {
       })
       
       if (response.data.success && response.data.message) {
-        setFormData(prev => ({
+        setFormData((prev: typeof formData) => ({
           ...prev,
           description: response.data.message
         }))
@@ -387,7 +387,7 @@ export function Tasks() {
       setNewComment('')
       
       const taskResponse = await api.get(`/api/tasks/${selectedTaskDetail.id}`)
-      setSelectedTaskDetail(prev => prev ? { ...prev, updated_at: taskResponse.data.updated_at } : taskResponse.data)
+      setSelectedTaskDetail((prev: Task | null) => prev ? { ...prev, updated_at: taskResponse.data.updated_at } : taskResponse.data)
     } catch (error: any) {
       console.error('Error adding comment:', error)
       alert(error.response?.data?.detail || 'Erro ao adicionar comentário')
@@ -401,11 +401,11 @@ export function Tasks() {
     
     try {
       await api.delete(`/api/tasks/comments/${commentId}`)
-      setTaskComments(prevComments => prevComments.filter(c => c.id !== commentId))
+      setTaskComments((prevComments: any[]) => prevComments.filter((c: any) => c.id !== commentId))
       
       if (selectedTaskDetail) {
         const taskResponse = await api.get(`/api/tasks/${selectedTaskDetail.id}`)
-        setSelectedTaskDetail(prev => prev ? { ...prev, updated_at: taskResponse.data.updated_at } : taskResponse.data)
+        setSelectedTaskDetail((prev: Task | null) => prev ? { ...prev, updated_at: taskResponse.data.updated_at } : taskResponse.data)
       }
     } catch (error: any) {
       console.error('Error deleting comment:', error)
@@ -442,7 +442,7 @@ export function Tasks() {
     try {
       console.log(`🔄 [FRONTEND] Atualizando tarefa ${taskId} para status: ${newStatus}`)
       
-      const task = tasks.find(t => t.id === taskId)
+      const task = tasks.find((t: Task) => t.id === taskId)
       
       // Se está completando uma tarefa de LinkedIn de conexão, mostrar modal
       if (newStatus === 'completed' && task && task.type === 'linkedin') {
@@ -462,8 +462,8 @@ export function Tasks() {
       }
       
       // Atualizar otimisticamente a UI
-      setTasks(prevTasks => 
-        prevTasks.map(task => 
+      setTasks((prevTasks: Task[]) => 
+        prevTasks.map((task: Task) => 
           task.id === taskId 
             ? { ...task, status: newStatus, completed_at: newStatus === 'completed' ? new Date().toISOString() : task.completed_at }
             : task
@@ -484,7 +484,7 @@ export function Tasks() {
       
       // Track KPI activity if task was completed
       if (newStatus === 'completed' && task && task.status !== 'completed') {
-        trackActivity('tasks_completed', 1, 'Task', taskId).catch((err) => {
+        trackActivity('tasks_completed', 1, 'Task', taskId).catch((err: any) => {
           console.error('Error tracking KPI activity:', err)
         })
       }
@@ -546,7 +546,7 @@ export function Tasks() {
       })
       
       // Track KPI activity
-      trackActivity('tasks_completed', 1, 'Task', taskForConnectionNote.id).catch((err) => {
+      trackActivity('tasks_completed', 1, 'Task', taskForConnectionNote.id).catch((err: any) => {
         console.error('Error tracking KPI activity:', err)
       })
       
@@ -611,17 +611,17 @@ export function Tasks() {
   }
 
   // Categorizar tarefas da página atual para exibição
-  const upcomingTasks = tasks.filter(task => {
+  const upcomingTasks = tasks.filter((task: Task) => {
     const dueDate = new Date(task.due_date)
     return dueDate >= new Date() && task.status !== 'completed'
-  }).sort((a, b) => new Date(a.due_date).getTime() - new Date(b.due_date).getTime())
+  }).sort((a: Task, b: Task) => new Date(a.due_date).getTime() - new Date(b.due_date).getTime())
 
-  const overdueTasks = tasks.filter(task => {
+  const overdueTasks = tasks.filter((task: Task) => {
     const dueDate = new Date(task.due_date)
     return dueDate < new Date() && task.status !== 'completed'
   })
 
-  const completedTasks = tasks.filter(task => task.status === 'completed')
+  const completedTasks = tasks.filter((task: Task) => task.status === 'completed')
   
   // Calcular totalPages, garantindo pelo menos 1 página
   const totalPages = totalTasks > 0 ? Math.ceil(totalTasks / pageSize) : 1

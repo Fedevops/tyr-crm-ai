@@ -4,13 +4,10 @@ __pycache__/
 *$py.class
 *.so
 .Python
-env/
 venv/
+env/
 ENV/
 .venv
-*.egg-info/
-dist/
-build/
 
 # Node
 node_modules/
@@ -19,8 +16,7 @@ yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
 dist/
-dist-ssr/
-*.local
+build/
 
 # IDEs
 .vscode/
@@ -29,23 +25,31 @@ dist-ssr/
 *.swo
 *~
 
+# OS
+.DS_Store
+Thumbs.db
+
 # Environment
 .env
 .env.local
 .env.*.local
 
-# Database
-*.db
-*.sqlite
+# Logs
+*.log
+logs/
 
-# Docker
-.dockerignore
+# Uploads (manter estrutura, ignorar conteúdo)
+uploads/*
+!uploads/.gitkeep
 
-# OS
-.DS_Store
-Thumbs.db
+# Temporary files
+*.tmp
+*.temp
 
+# Build artifacts
+*.egg-info/
+dist/
+build/
 
-
-
-
+# Cloud
+.gcloudignore
