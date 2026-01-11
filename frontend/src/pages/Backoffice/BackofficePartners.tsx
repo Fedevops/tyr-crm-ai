@@ -19,7 +19,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { TyrLoadingSpinner } from '@/components/TyrLoadingSpinner'
-import { Plus, Edit, CheckCircle, XCircle, Trash2, Search } from 'lucide-react'
+import { Plus, Edit, CheckCircle, XCircle, Trash2, Search, Users, Copy } from 'lucide-react'
 import { backofficeApi } from '@/lib/api'
 import { useToast } from '@/components/ui/use-toast'
 
@@ -46,15 +46,15 @@ interface Partner {
 }
 
 export function BackofficePartners() {
-  const { toast } = useToast()
-  const [loading, setLoading] = useState(true)
-  const [partners, setPartners] = useState<Partner[]>([])
-  const [searchTerm, setSearchTerm] = useState('')
-  const [statusFilter, setStatusFilter] = useState<string>('all')
-  const [nivelFilter, setNivelFilter] = useState<string>('all')
-  const [isDialogOpen, setIsDialogOpen] = useState(false)
-  const [editingPartner, setEditingPartner] = useState<Partner | null>(null)
-  const [formData, setFormData] = useState({
+    const { toast } = useToast()
+    const [loading, setLoading] = useState(true)
+    const [partners, setPartners] = useState<Partner[]>([])
+    const [searchTerm, setSearchTerm] = useState('')
+    const [statusFilter, setStatusFilter] = useState<string>('all')
+    const [nivelFilter, setNivelFilter] = useState<string>('all')
+    const [isDialogOpen, setIsDialogOpen] = useState(false)
+    const [editingPartner, setEditingPartner] = useState<Partner | null>(null)
+    const [formData, setFormData] = useState({
     nome: '',
     cnpj: '',
     nivel: 'bronze' as 'bronze' | 'silver' | 'gold',
@@ -66,7 +66,15 @@ export function BackofficePartners() {
     cidade: '',
     estado: '',
     cep: '',
-  })
+    })
+    const [isCreateUserDialogOpen, setIsCreateUserDialogOpen] = useState(false)
+    const [selectedPartnerId, setSelectedPartnerId] = useState<number | null>(null)
+    const [generatedPassword, setGeneratedPassword] = useState<string | null>(null)
+    const [newUserData, setNewUserData] = useState({
+    email: '',
+    full_name: '',
+    is_owner: false,
+    })
 
   useEffect(() => {
     loadPartners()
@@ -127,6 +135,78 @@ export function BackofficePartners() {
     })
     setIsDialogOpen(true)
   }
+
+  const handleCreatePartnerUser = async () => {
+    if (!selectedPartnerId) return
+    
+    try {
+      const response = await backofficeApi.createPartnerUser(selectedPartnerId, {
+        email: newUserData.email,
+        full_name: newUserData.full_name,
+        is_owner: newUserData.is_owner,
+        is_active: true,
+      })
+
+      console.log('Resposta completa:', response)
+      console.log('response.data:', response.data)
+      console.log('temporary_password:', response.data?.temporary_password)
+
+      const tempPassword = response.data?.temporary_password || response.data?.temporary_password
+
+      if (!tempPassword) {
+        console.error('Senha temporária não encontrada na resposta:', response.data)
+        toast({
+          title: 'Aviso',
+          description: 'Usuário criado, mas a senha temporária não foi retornada. Verifique o console.',
+          variant: 'destructive',
+        })
+        return
+      }
+      
+      // A senha temporária vem na resposta
+      setGeneratedPassword(response.data.temporary_password)
+      
+      toast({
+        title: 'Usuário criado com sucesso!',
+        description: 'Anote a senha temporária exibida abaixo',
+        duration: 10000,
+      })
+    } catch (err: any) {
+            // Tratar erros de validação do FastAPI
+        let errorMessage = 'Erro ao criar usuário'
+        
+        if (err.response?.data) {
+        if (err.response.data.detail) {
+            // Se for array de erros de validação
+            if (Array.isArray(err.response.data.detail)) {
+            errorMessage = err.response.data.detail
+                .map((e: any) => `${e.loc?.join('.')}: ${e.msg}`)
+                .join(', ')
+            } else {
+            // Se for string simples
+            errorMessage = err.response.data.detail
+            }
+        }
+        }
+    
+      toast({
+        title: 'Erro',
+        description: err.response?.data?.detail || 'Erro ao criar usuário',
+        variant: 'destructive',
+      })
+    }
+  }
+  
+    const handleOpenCreateUserDialog = (partnerId: number) => {
+        setSelectedPartnerId(partnerId)
+        setIsCreateUserDialogOpen(true)
+        setGeneratedPassword(null)
+        setNewUserData({
+            email: '',
+            full_name: '',
+            is_owner: false,
+        })
+    }
 
   const handleSave = async () => {
     try {
@@ -340,6 +420,44 @@ export function BackofficePartners() {
                           </Button>
                         </div>
                       </td>
+                      <td className="p-2">
+                        <div className="flex justify-end gap-2">
+                            {partner.status === 'pendente' && (
+                            <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => handleApprove(partner.id)}
+                                title="Aprovar parceiro"
+                            >
+                                <CheckCircle className="h-4 w-4" />
+                            </Button>
+                            )}
+                            <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => handleOpenCreateUserDialog(partner.id)}
+                            title="Criar usuário para este parceiro"
+                            >
+                            <Users className="h-4 w-4" />
+                            </Button>
+                            <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => handleEdit(partner)}
+                            title="Editar parceiro"
+                            >
+                            <Edit className="h-4 w-4" />
+                            </Button>
+                            <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => handleDelete(partner.id)}
+                            title="Deletar parceiro"
+                            >
+                            <Trash2 className="h-4 w-4" />
+                            </Button>
+                        </div>
+                        </td>
                     </tr>
                   ))}
                 </tbody>
@@ -459,6 +577,134 @@ export function BackofficePartners() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      <Dialog open={isCreateUserDialogOpen} onOpenChange={setIsCreateUserDialogOpen}>
+  <DialogContent className="max-w-md">
+    <DialogHeader>
+      <DialogTitle>
+        {generatedPassword ? 'Usuário Criado com Sucesso!' : 'Criar Usuário do Parceiro'}
+      </DialogTitle>
+      <DialogDescription>
+        {generatedPassword
+          ? 'Anote a senha temporária. Ela não será exibida novamente.'
+          : 'Preencha os dados para criar um usuário que poderá acessar o Portal do Parceiro'}
+      </DialogDescription>
+    </DialogHeader>
+
+    {generatedPassword ? (
+      // Mostrar senha gerada
+      <div className="space-y-4 py-4">
+        <div className="bg-green-50 dark:bg-green-950/20 p-4 rounded-lg border-2 border-green-200 dark:border-green-800">
+          <Label className="text-sm font-semibold text-green-800 dark:text-green-200 block mb-2">
+            Senha Temporária Gerada:
+          </Label>
+          <div className="flex items-center gap-2">
+            <Input
+              value={generatedPassword}
+              readOnly
+              className="font-mono text-lg font-bold bg-white dark:bg-gray-900"
+            />
+            <Button
+              variant="outline"
+              size="icon"
+              onClick={() => {
+                navigator.clipboard.writeText(generatedPassword)
+                toast({
+                  title: 'Senha copiada!',
+                  description: 'A senha foi copiada para a área de transferência',
+                })
+              }}
+              title="Copiar senha"
+            >
+              <Copy className="h-4 w-4" />
+            </Button>
+          </div>
+          <p className="text-sm text-green-700 dark:text-green-300 mt-3 flex items-center gap-2">
+            <span className="text-lg">⚠️</span>
+            <span>Anote esta senha! Ela não será exibida novamente.</span>
+          </p>
+        </div>
+        
+        <div className="bg-blue-50 dark:bg-blue-950/20 p-4 rounded-lg border border-blue-200 dark:border-blue-800">
+          <p className="text-sm text-blue-800 dark:text-blue-200 font-semibold mb-1">
+            Informações do Usuário:
+          </p>
+          <p className="text-sm text-blue-700 dark:text-blue-300">
+            <strong>Email:</strong> {newUserData.email}
+          </p>
+          <p className="text-sm text-blue-700 dark:text-blue-300">
+            <strong>Nome:</strong> {newUserData.full_name}
+          </p>
+          <p className="text-sm text-blue-700 dark:text-blue-300 mt-2">
+            O usuário pode fazer login em: <code className="bg-blue-100 dark:bg-blue-900 px-1 rounded">/partner/login</code>
+          </p>
+        </div>
+
+        <DialogFooter>
+          <Button
+            onClick={() => {
+              setIsCreateUserDialogOpen(false)
+              setGeneratedPassword(null)
+              setNewUserData({ email: '', full_name: '', is_owner: false })
+            }}
+          >
+            Fechar
+          </Button>
+        </DialogFooter>
+      </div>
+    ) : (
+      // Formulário para criar usuário
+      <div className="space-y-4 py-4">
+        <div>
+          <Label htmlFor="user-email">Email *</Label>
+          <Input
+            id="user-email"
+            type="email"
+            value={newUserData.email}
+            onChange={(e) => setNewUserData({ ...newUserData, email: e.target.value })}
+            placeholder="usuario@parceiro.com"
+            required
+          />
+        </div>
+        
+        <div>
+          <Label htmlFor="user-full-name">Nome Completo *</Label>
+          <Input
+            id="user-full-name"
+            value={newUserData.full_name}
+            onChange={(e) => setNewUserData({ ...newUserData, full_name: e.target.value })}
+            placeholder="Nome do usuário"
+            required
+          />
+        </div>
+        
+        <div className="flex items-center gap-2">
+          <input
+            type="checkbox"
+            id="user-is-owner"
+            checked={newUserData.is_owner}
+            onChange={(e) => setNewUserData({ ...newUserData, is_owner: e.target.checked })}
+            className="h-4 w-4"
+          />
+          <Label htmlFor="user-is-owner" className="cursor-pointer">
+            É proprietário do parceiro?
+          </Label>
+        </div>
+
+        <DialogFooter>
+          <Button variant="outline" onClick={() => setIsCreateUserDialogOpen(false)}>
+            Cancelar
+          </Button>
+          <Button
+            onClick={handleCreatePartnerUser}
+            disabled={!newUserData.email || !newUserData.full_name}
+          >
+            Criar Usuário
+          </Button>
+        </DialogFooter>
+      </div>
+    )}
+  </DialogContent>
+</Dialog>
     </div>
   )
 }

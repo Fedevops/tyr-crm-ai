@@ -60,8 +60,8 @@ export function PartnerSupport() {
   const [isDialogOpen, setIsDialogOpen] = useState(false)
   const [resolucao, setResolucao] = useState('')
   const [filters, setFilters] = useState({
-    status: '',
-    priority: '',
+    status: 'all',
+    priority: 'all',
   })
   const [currentPage, setCurrentPage] = useState(0)
   const [total, setTotal] = useState(0)
@@ -79,8 +79,8 @@ export function PartnerSupport() {
         limit: itemsPerPage,
       }
       
-      if (filters.status) params.status = filters.status
-      if (filters.priority) params.priority = filters.priority
+      if (filters.status && filters.status !== 'all') params.status = filters.status
+      if (filters.priority && filters.priority !== 'all') params.priority = filters.priority
 
       const response = await partnerPortalApi.getSupportTickets(params)
       setTickets(response.data.items)
@@ -203,7 +203,7 @@ export function PartnerSupport() {
                   <SelectValue placeholder="Todos" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">Todos</SelectItem>
+                  <SelectItem value="all">Todos</SelectItem>
                   <SelectItem value="aberto">Aberto</SelectItem>
                   <SelectItem value="em_andamento">Em Andamento</SelectItem>
                   <SelectItem value="resolvido">Resolvido</SelectItem>
@@ -221,7 +221,7 @@ export function PartnerSupport() {
                   <SelectValue placeholder="Todas" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">Todas</SelectItem>
+                  <SelectItem value="all">Todas</SelectItem>
                   <SelectItem value="baixa">Baixa</SelectItem>
                   <SelectItem value="media">Média</SelectItem>
                   <SelectItem value="alta">Alta</SelectItem>

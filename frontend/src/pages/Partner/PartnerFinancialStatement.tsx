@@ -62,7 +62,7 @@ export function PartnerFinancialStatement() {
   const [filters, setFilters] = useState({
     start_date: '',
     end_date: '',
-    status: '',
+    status: 'all',
   })
   const [currentPage, setCurrentPage] = useState(0)
   const itemsPerPage = 20
@@ -105,7 +105,7 @@ export function PartnerFinancialStatement() {
     setFilters({
       start_date: '',
       end_date: '',
-      status: '',
+      status: 'all',
     })
     setCurrentPage(0)
     setTimeout(() => {
@@ -218,7 +218,7 @@ export function PartnerFinancialStatement() {
                   <SelectValue placeholder="Todos" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">Todos</SelectItem>
+                  <SelectItem value="all">Todos</SelectItem>
                   <SelectItem value="pendente">Pendente</SelectItem>
                   <SelectItem value="pago">Pago</SelectItem>
                   <SelectItem value="cancelado">Cancelado</SelectItem>

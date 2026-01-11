@@ -2,12 +2,13 @@ from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlmodel import Session, select, func, and_, or_, desc
 from typing import Optional, List
 from datetime import datetime, timedelta
+from fastapi.responses import JSONResponse
 from app.database import get_session
 from app.dependencies import get_current_active_user, require_ownership
 from app.models import (
     User, UserRole, Partner, PartnerCreate, PartnerUpdate, PartnerResponse,
     Commission, CommissionCreate, CommissionUpdate, CommissionResponse, CommissionStatus,
-    Tenant, PartnerStatus, PartnerLevel
+    Tenant, PartnerStatus, PartnerLevel, PartnerUserCreateWithoutPassword
 )
 from app.models import PartnerUser, PartnerUserCreate, PartnerUserResponse
 from app.auth import get_password_hash
@@ -120,10 +121,10 @@ async def list_partner_users(
     
     return users
 
-@router.post("/partners/{partner_id}/users", response_model=PartnerUserResponse)
+@router.post("/partners/{partner_id}/users")  # Remover response_model=PartnerUserResponse
 async def create_partner_user(
     partner_id: int,
-    user_data: PartnerUserCreate,
+    user_data: PartnerUserCreateWithoutPassword,
     session: Session = Depends(get_session),
     current_user: User = Depends(require_admin)
 ):
@@ -157,7 +158,7 @@ async def create_partner_user(
         email=user_data.email,
         full_name=user_data.full_name,
         hashed_password=hashed_password,
-        is_active=user_data.is_active if has_user_data.is_active is not None else True,
+        is_active=user_data.is_active if user_data.is_active is not None else True,
         is_owner=user_data.is_owner if user_data.is_owner is not None else False,
         role=user_data.role if user_data.role else "partner_user"
     )
@@ -167,21 +168,20 @@ async def create_partner_user(
     session.refresh(partner_user)
     
     # Retornar resposta com senha temporária (apenas na criação)
-    response = PartnerUserResponse(
-        id=partner_user.id,
-        email=partner_user.email,
-        full_name=partner_user.full_name,
-        is_active=partner_user.is_active,
-        is_owner=partner_user.is_owner,
-        role=partner_user.role,
-        partner_id=partner_user.partner_id
-    )
+    response_dict = {
+        "id": partner_user.id,
+        "email": partner_user.email,
+        "full_name": partner_user.full_name,
+        "is_active": partner_user.is_active,
+        "is_owner": partner_user.is_owner,
+        "role": partner_user.role,
+        "partner_id": partner_user.partner_id,
+        "created_at": partner_user.created_at.isoformat() if partner_user.created_at else None,
+        "updated_at": partner_user.updated_at.isoformat() if partner_user.updated_at else None,
+        "temporary_password": password  # Senha temporária - IMPORTANTE!
+    }
     
-    # Adicionar senha temporária na resposta (apenas para exibição)
-    response_dict = response.model_dump()
-    response_dict["temporary_password"] = password  # Senha temporária
-    
-    return response_dict
+    return JSONResponse(content=response_dict, status_code=200)
 
 
 @router.delete("/partners/{partner_id}/users/{user_id}")

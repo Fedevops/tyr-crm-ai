@@ -2441,6 +2441,13 @@ class PartnerUserCreate(SQLModel):
             raise ValueError('Password must be at least 6 characters long')
         return v
 
+class PartnerUserCreateWithoutPassword(SQLModel):
+    """Modelo para criar PartnerUser sem senha (senha será gerada automaticamente)"""
+    email: str
+    full_name: str
+    is_owner: Optional[bool] = False
+    role: Optional[str] = "partner_user"
+    is_active: Optional[bool] = True
 
 class PartnerUserUpdate(SQLModel):
     email: Optional[str] = None
