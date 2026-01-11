@@ -13,15 +13,27 @@ const api = axios.create({
 
 // Add token to requests
 api.interceptors.request.use((config) => {
-  const token = localStorage.getItem('token')
-  if (token) {
-    config.headers.Authorization = `Bearer ${token}`
-    console.log('Token adicionado à requisição:', config.url, 'Token:', token.substring(0, 20) + '...')
+  // Verificar se é endpoint de parceiro
+  const isPartnerEndpoint = config.url?.includes('/api/partner-')
+  
+  if (isPartnerEndpoint) {
+    // Usar token de parceiro
+    const partnerToken = localStorage.getItem('partner_token')
+    if (partnerToken) {
+      config.headers.Authorization = `Bearer ${partnerToken}`
+    }
   } else {
-    // Se não há token e não é uma requisição de auth, pode ser um problema
-    const isAuthEndpoint = config.url?.includes('/api/auth/')
-    if (!isAuthEndpoint) {
-      console.warn('⚠️ Requisição sem token:', config.url)
+    // Usar token normal
+    const token = localStorage.getItem('token')
+    if (token) {
+      config.headers.Authorization = `Bearer ${token}`
+      console.log('Token adicionado à requisição:', config.url, 'Token:', token.substring(0, 20) + '...')
+    } else {
+      // Se não há token e não é uma requisição de auth, pode ser um problema
+      const isAuthEndpoint = config.url?.includes('/api/auth/')
+      if (!isAuthEndpoint) {
+        console.warn('⚠️ Requisição sem token:', config.url)
+      }
     }
   }
   return config
@@ -33,7 +45,8 @@ api.interceptors.response.use(
   (error) => {
     if (error.response?.status === 401) {
       const url = error.config?.url || ''
-      const isAuthEndpoint = url.includes('/api/auth/')
+      const isAuthEndpoint = url.includes('/api/auth/') || url.includes('/api/partner-auth/')
+      const isPartnerEndpoint = url.includes('/api/partner-')
       
       // Para endpoints de autenticação (login, register), apenas rejeitar o erro
       if (isAuthEndpoint) {
@@ -41,30 +54,28 @@ api.interceptors.response.use(
       }
       
       // Para outros endpoints com 401, verificar se há um token
-      const token = localStorage.getItem('token')
-      
-      if (token) {
-        // Token existe mas foi rejeitado - está expirado ou inválido
-        console.log('⚠️ Token expirado ou inválido. Limpando autenticação...')
-        console.log('URL:', url)
-        console.log('Detalhes do erro:', error.response?.data)
-        
-        // Limpar token do localStorage
-        localStorage.removeItem('token')
-        
-        // Disparar evento customizado para notificar outros componentes
-        window.dispatchEvent(new CustomEvent('auth:token-expired'))
-        
-        // Redirecionar para login apenas se não estiver já na página de login
-        if (!window.location.pathname.includes('/login')) {
-          console.log('Redirecionando para login...')
-          // Usar setTimeout para evitar problemas com navegação durante tratamento de erro
-          setTimeout(() => {
-            window.location.href = '/login'
-          }, 100)
+      if (isPartnerEndpoint) {
+        const partnerToken = localStorage.getItem('partner_token')
+        if (partnerToken) {
+          localStorage.removeItem('partner_token')
+          window.dispatchEvent(new CustomEvent('auth:token-expired'))
+          if (!window.location.pathname.includes('/partner/login')) {
+            setTimeout(() => {
+              window.location.href = '/partner/login'
+            }, 100)
+          }
         }
       } else {
-        console.log('Token não existe no localStorage. Requisição foi feita sem autenticação.')
+        const token = localStorage.getItem('token')
+        if (token) {
+          localStorage.removeItem('token')
+          window.dispatchEvent(new CustomEvent('auth:token-expired'))
+          if (!window.location.pathname.includes('/login')) {
+            setTimeout(() => {
+              window.location.href = '/login'
+            }, 100)
+          }
+        }
       }
     }
     return Promise.reject(error)
@@ -272,6 +283,87 @@ export const leadsApi = {
     api.get('/api/leads/analyze-duplicates', { params: { min_similarity: minSimilarity } }),
   mergeDuplicates: (leadIds: number[], keepLeadId: number) => 
     api.post('/api/leads/merge-duplicates', { lead_ids: leadIds, keep_lead_id: keepLeadId }),
+}
+
+// Backoffice API functions
+export const backofficeApi = {
+  // Dashboard
+  getDashboard: () => api.get('/api/backoffice/dashboard'),
+  
+  // Partners
+  getPartners: (params?: { status?: string, nivel?: string, skip?: number, limit?: number }) => 
+    api.get('/api/backoffice/partners', { params }),
+  getPartner: (partnerId: number) => api.get(`/api/backoffice/partners/${partnerId}`),
+  createPartner: (data: any) => api.post('/api/backoffice/partners', data),
+  updatePartner: (partnerId: number, data: any) => api.put(`/api/backoffice/partners/${partnerId}`, data),
+  approvePartner: (partnerId: number) => api.patch(`/api/backoffice/partners/${partnerId}/approve`),
+  deletePartner: (partnerId: number) => api.delete(`/api/backoffice/partners/${partnerId}`),
+  
+  getPartnerUsers: (partnerId: number) => 
+    api.get(`/api/backoffice/partners/${partnerId}/users`),
+  createPartnerUser: (partnerId: number, data: any) => 
+    api.post(`/api/backoffice/partners/${partnerId}/users`, data),
+  deletePartnerUser: (partnerId: number, userId: number) => 
+    api.delete(`/api/backoffice/partners/${partnerId}/users/${userId}`),
+  // Sales Report
+  getSalesReport: (params?: { 
+    partner_id?: number, 
+    data_inicio?: string, 
+    data_fim?: string, 
+    skip?: number, 
+    limit?: number 
+  }) => api.get('/api/backoffice/sales-report', { params }),
+  getTenants: (params?: {
+    partner_id?: number;
+    search?: string;
+    skip?: number;
+    limit?: number;
+  }) => api.get('/api/backoffice/tenants', { params }),
+  getTenant: (tenantId: number) => api.get(`/api/backoffice/tenants/${tenantId}`),
+}
+
+// Partner Auth API functions
+export const partnerAuthApi = {
+  login: (email: string, password: string) => api.post('/api/partner-auth/login', { email, password }),
+  getMe: () => api.get('/api/partner-auth/me'),
+}
+
+// Partner Portal API functions
+export const partnerPortalApi = {
+  // Dashboard
+  getDashboard: () => api.get('/api/partner-portal/dashboard'),
+  
+  changePassword: (data: { current_password: string; new_password: string }) =>
+    api.post('/api/partner-portal/change-password', data),
+
+  // Referral Link
+  getReferralLink: () => api.get('/api/partner-portal/referral-link'),
+  registerCustomer: (data: any) => api.post('/api/partner-portal/register-customer', data),
+  
+  // Customers
+  getCustomers: (params?: { skip?: number, limit?: number }) => 
+    api.get('/api/partner-portal/customers', { params }),
+  getCustomer: (customerId: number) => api.get(`/api/partner-portal/customers/${customerId}`),
+  
+  // Financial Statement
+  getFinancialStatement: (params?: {
+    start_date?: string,
+    end_date?: string,
+    status?: string,
+    skip?: number,
+    limit?: number
+  }) => api.get('/api/partner-portal/financial-statement', { params }),
+  
+  // Support Tickets
+  getSupportTickets: (params?: {
+    status?: string,
+    priority?: string,
+    skip?: number,
+    limit?: number
+  }) => api.get('/api/partner-portal/support-tickets', { params }),
+  getSupportTicket: (ticketId: number) => api.get(`/api/partner-portal/support-tickets/${ticketId}`),
+  updateSupportTicket: (ticketId: number, data: any) => 
+    api.put(`/api/partner-portal/support-tickets/${ticketId}`, data),
 }
 
 export default api

@@ -39,7 +39,8 @@
     "audit-log": "Audit Log",
     "settings": "Settings",
     "prospecting": "Prospecting",
-    "finance": "Finance"
+    "finance": "Finance",
+    "backoffice": "Backoffice"
   },
   "dashboard": {
     "title": "Dashboard",

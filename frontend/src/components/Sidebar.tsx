@@ -1,7 +1,7 @@
 import { Link, useLocation } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { useState, useEffect } from 'react'
-import { LayoutDashboard, BookOpen, Users, Settings, LogOut, ListChecks, Workflow, Search, Building2, UserCircle, TrendingUp, FileText, Filter, History, Target, Radio, BarChart3, Package, ShoppingCart, Database, Calendar as CalendarIcon, Wallet, Menu, X } from 'lucide-react'
+import { LayoutDashboard, BookOpen, Users, Settings, LogOut, ListChecks, Workflow, Search, Building2, UserCircle, TrendingUp, FileText, Filter, History, Target, Radio, BarChart3, Package, ShoppingCart, Database, Calendar as CalendarIcon, Wallet, X, Shield, UsersIcon } from 'lucide-react'
 import { useAuth } from '@/contexts/AuthContext'
 import { Button } from './ui/button'
 import { cn } from '@/lib/utils'
@@ -38,8 +38,10 @@ interface SidebarProps {
 export function Sidebar({ isOpen = true, onClose }: SidebarProps) {
   const { t } = useTranslation()
   const location = useLocation()
-  const { logout } = useAuth()
+  const { logout, user } = useAuth()
   const [customModules, setCustomModules] = useState<Array<{ id: string; name: string; slug: string; is_active: boolean }>>([])
+  const canAccessBackoffice = user?.email === 'fernando.silva@tyr-ai.com.br'
+
 
   useEffect(() => {
     loadCustomModules()
@@ -116,6 +118,66 @@ export function Sidebar({ isOpen = true, onClose }: SidebarProps) {
         )}
       </div>
       <nav className="flex-1 space-y-1 px-3 py-4 overflow-y-auto">
+        {/* Backoffice - Apenas para Admin */}
+        {canAccessBackoffice && (
+          <>
+            <div className="px-3 py-2 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+              Backoffice
+            </div>
+            <Link
+              to="/backoffice"
+              onClick={handleLinkClick}
+              className={cn(
+                'flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors',
+                location.pathname === '/backoffice' || location.pathname.startsWith('/backoffice')
+                  ? 'bg-primary text-primary-foreground'
+                  : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'
+              )}
+            >
+              <Shield className="h-4 w-4" />
+              <span>{t('backoffice.dashboard', 'Dashboard')}</span>
+            </Link>
+            <Link
+              to="/backoffice/tenants"
+              onClick={handleLinkClick}
+              className={cn(
+                'flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors',
+                location.pathname === '/backoffice/tenants'
+                  ? 'bg-primary text-primary-foreground'
+                  : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'
+              )}
+            >
+              <UsersIcon className="h-4 w-4" />
+              <span>Clientes</span>
+            </Link>
+            <Link
+              to="/backoffice/partners"
+              onClick={handleLinkClick}
+              className={cn(
+                'flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors',
+                location.pathname === '/backoffice/partners'
+                  ? 'bg-primary text-primary-foreground'
+                  : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'
+              )}
+            >
+              <Users className="h-4 w-4" />
+              <span>{t('backoffice.partners', 'Parceiros')}</span>
+            </Link>
+            <Link
+              to="/backoffice/sales-report"
+              onClick={handleLinkClick}
+              className={cn(
+                'flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors',
+                location.pathname === '/backoffice/sales-report'
+                  ? 'bg-primary text-primary-foreground'
+                  : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'
+              )}
+            >
+              <BarChart3 className="h-4 w-4" />
+              <span>{t('backoffice.salesReport', 'Relatório de Vendas')}</span>
+            </Link>
+          </>
+        )}
         {navigation.map((item) => {
           const Icon = item.icon
           const isActive = location.pathname === item.href

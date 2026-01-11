@@ -135,6 +135,15 @@ app.include_router(appointments.router, prefix="/api/appointments", tags=["appoi
 app.include_router(notifications.router, prefix="/api/notifications", tags=["notifications"])
 app.include_router(chat.router, prefix="/api/chat", tags=["chat"])
 
+# Backoffice
+from app.routers import backoffice
+app.include_router(backoffice.router)
+
+# Partner Auth & Portal
+from app.routers import partner_auth, partner_portal
+app.include_router(partner_auth.router)
+app.include_router(partner_portal.router)
+
 # Servir arquivos estáticos (imagens)
 from pathlib import Path
 uploads_dir = Path("uploads")

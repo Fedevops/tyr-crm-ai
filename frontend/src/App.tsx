@@ -1,13 +1,23 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { useState } from 'react'
 import { AuthProvider, useAuth } from './contexts/AuthContext'
+import { PartnerAuthProvider, usePartnerAuth } from './contexts/PartnerAuthContext'
 import { ThemeProvider } from './contexts/ThemeContext'
 import { KPIProvider } from './contexts/KPIContext'
 import { Sidebar } from './components/Sidebar'
+import { PartnerSidebar } from './components/PartnerSidebar'
 import { Header } from './components/Header'
+import { PartnerHeader } from './components/PartnerHeader'
 import { ChatBot } from './components/ChatBot'
 import { Login } from './pages/Login'
 import { Register } from './pages/Register'
+import { PartnerLogin } from './pages/Partner/PartnerLogin'
+import { PartnerDashboard } from './pages/Partner/PartnerDashboard'
+import { PartnerReferralLink } from './pages/Partner/PartnerReferralLink'
+import { PartnerCustomers } from './pages/Partner/PartnerCustomers'
+import { PartnerCustomerDetails } from './pages/Partner/PartnerCustomerDetails'
+import { PartnerFinancialStatement } from './pages/Partner/PartnerFinancialStatement'
+import { PartnerSupport } from './pages/Partner/PartnerSupport'
 import { Dashboard } from './pages/Dashboard'
 import { Playbooks } from './pages/Playbooks'
 import { Leads } from './pages/Leads'
@@ -30,7 +40,11 @@ import { CatalogManager } from './pages/CatalogManager'
 import { Orders } from './pages/Orders'
 import { Finance } from './pages/Finance'
 import { CustomModulePage } from './pages/CustomModulePage'
+import { BackofficeDashboard } from './pages/Backoffice/BackofficeDashboard'
+import { BackofficePartners } from './pages/Backoffice/BackofficePartners'
+import { BackofficeSalesReport } from './pages/Backoffice/BackofficeSalesReport'
 import { Toaster } from './components/ui/toaster'
+import { BackofficeTenants } from './pages/Backoffice/BackofficeTenants'
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { isAuthenticated, loading } = useAuth()
@@ -54,6 +68,27 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
   return <>{children}</>
 }
 
+
+function ProtectedPartnerRoute({ children }: { children: React.ReactNode }) {
+  const { isAuthenticated, loading } = usePartnerAuth()
+  
+  if (loading) {
+    return (
+      <div className="flex h-screen items-center justify-center">
+        <div className="text-center">
+          <div className="mb-4">Carregando...</div>
+        </div>
+      </div>
+    )
+  }
+  
+  if (!isAuthenticated) {
+    return <Navigate to="/partner/login" replace />
+  }
+  
+  return <>{children}</>
+}
+
 function Layout({ children }: { children: React.ReactNode }) {
   const [sidebarOpen, setSidebarOpen] = useState(false)
 
@@ -62,6 +97,20 @@ function Layout({ children }: { children: React.ReactNode }) {
       <Sidebar isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} />
       <div className="flex flex-1 flex-col overflow-hidden w-full md:w-auto">
         <Header onMenuClick={() => setSidebarOpen(true)} />
+        <main className="flex-1 overflow-y-auto p-4 md:p-6">{children}</main>
+      </div>
+    </div>
+  )
+}
+
+function PartnerLayout({ children }: { children: React.ReactNode }) {
+  const [sidebarOpen, setSidebarOpen] = useState(false)
+
+  return (
+    <div className="flex h-screen">
+      <PartnerSidebar isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} />
+      <div className="flex flex-1 flex-col overflow-hidden w-full md:w-auto">
+        <PartnerHeader onMenuClick={() => setSidebarOpen(true)} />
         <main className="flex-1 overflow-y-auto p-4 md:p-6">{children}</main>
       </div>
     </div>
@@ -291,6 +340,108 @@ function AppRoutes() {
           </ProtectedRoute>
         }
       />
+      <Route
+        path="/backoffice"
+        element={
+          <ProtectedRoute>
+            <Layout>
+              <BackofficeDashboard />
+            </Layout>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/backoffice/partners"
+        element={
+          <ProtectedRoute>
+            <Layout>
+              <BackofficePartners />
+            </Layout>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/backoffice/sales-report"
+        element={
+          <ProtectedRoute>
+            <Layout>
+              <BackofficeSalesReport />
+            </Layout>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/backoffice/tenants"
+        element={
+          <ProtectedRoute>
+            <Layout>
+              <BackofficeTenants />
+            </Layout>
+          </ProtectedRoute>
+        }
+      />
+      {/* Partner Portal Routes */}
+      <Route path="/partner/login" element={<PartnerLogin />} />
+      <Route
+        path="/partner/dashboard"
+        element={
+          <ProtectedPartnerRoute>
+            <PartnerLayout>
+              <PartnerDashboard />
+            </PartnerLayout>
+          </ProtectedPartnerRoute>
+        }
+      />
+      <Route
+        path="/partner/referral-link"
+        element={
+          <ProtectedPartnerRoute>
+            <PartnerLayout>
+              <PartnerReferralLink />
+            </PartnerLayout>
+          </ProtectedPartnerRoute>
+        }
+      />
+      <Route
+        path="/partner/customers"
+        element={
+          <ProtectedPartnerRoute>
+            <PartnerLayout>
+              <PartnerCustomers />
+            </PartnerLayout>
+          </ProtectedPartnerRoute>
+        }
+      />
+      <Route
+        path="/partner/customers/:customerId"
+        element={
+          <ProtectedPartnerRoute>
+            <PartnerLayout>
+              <PartnerCustomerDetails />
+            </PartnerLayout>
+          </ProtectedPartnerRoute>
+        }
+      />
+      <Route
+        path="/partner/financial-statement"
+        element={
+          <ProtectedPartnerRoute>
+            <PartnerLayout>
+              <PartnerFinancialStatement />
+            </PartnerLayout>
+          </ProtectedPartnerRoute>
+        }
+      />
+      <Route
+        path="/partner/support"
+        element={
+          <ProtectedPartnerRoute>
+            <PartnerLayout>
+              <PartnerSupport />
+            </PartnerLayout>
+          </ProtectedPartnerRoute>
+        }
+      />
       <Route path="/" element={<Navigate to="/dashboard" />} />
     </Routes>
   )
@@ -300,6 +451,7 @@ function App() {
   return (
     <ThemeProvider>
       <AuthProvider>
+      <PartnerAuthProvider>
         <KPIProvider>
           <BrowserRouter>
             <AppRoutes />
@@ -307,6 +459,7 @@ function App() {
             <ChatBot />
           </BrowserRouter>
         </KPIProvider>
+      </PartnerAuthProvider>
       </AuthProvider>
     </ThemeProvider>
   )

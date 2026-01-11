@@ -67,12 +67,14 @@ class Tenant(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     name: str = Field(unique=True, index=True)
     company_name: str
+    partner_id: Optional[int] = Field(foreign_key="partner.id", default=None, index=True)  # Parceiro que vendeu a licença
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)
 
     users: List[User] = Relationship(back_populates="tenant")
     company_profile: Optional["CompanyProfile"] = Relationship(back_populates="tenant")
     playbooks: List["Playbook"] = Relationship(back_populates="tenant")
+    partner: Optional["Partner"] = Relationship()
 
 
 class CompanyProfile(SQLModel, table=True):
@@ -2306,3 +2308,299 @@ class CustomModuleResponse(SQLModel):
     is_active: bool
     created_at: datetime
     updated_at: datetime
+
+
+# ==================== PARTNERS & COMMISSIONS MODELS ====================
+
+class PartnerLevel(str, Enum):
+    BRONZE = "bronze"
+    SILVER = "silver"
+    GOLD = "gold"
+
+
+class PartnerStatus(str, Enum):
+    ATIVO = "ativo"
+    PENDENTE = "pendente"
+    INATIVO = "inativo"
+
+
+class Partner(SQLModel, table=True):
+    """Parceiros/Revendedores do CRM"""
+    id: Optional[int] = Field(default=None, primary_key=True)
+    nome: str = Field(index=True)
+    cnpj: Optional[str] = Field(default=None, unique=True, index=True)
+    nivel: PartnerLevel = Field(default=PartnerLevel.BRONZE)
+    porcentagem_comissao: float = Field(default=0.0, ge=0, le=100)  # Porcentagem de comissão (0-100)
+    status: PartnerStatus = Field(default=PartnerStatus.PENDENTE, index=True)
+    email: Optional[str] = None
+    telefone: Optional[str] = None
+    endereco: Optional[str] = None
+    cidade: Optional[str] = None
+    estado: Optional[str] = None
+    cep: Optional[str] = None
+    observacoes: Optional[str] = None
+    # Timestamps
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    
+    # Relationships
+    users: List["PartnerUser"] = Relationship(back_populates="partner")
+    commissions: List["Commission"] = Relationship(back_populates="partner")
+    support_tickets: List["SupportTicket"] = Relationship(back_populates="partner")
+
+
+class PartnerCreate(SQLModel):
+    nome: str
+    cnpj: Optional[str] = None
+    nivel: Optional[PartnerLevel] = PartnerLevel.BRONZE
+    porcentagem_comissao: Optional[float] = 0.0
+    status: Optional[PartnerStatus] = PartnerStatus.PENDENTE
+    email: Optional[str] = None
+    telefone: Optional[str] = None
+    endereco: Optional[str] = None
+    cidade: Optional[str] = None
+    estado: Optional[str] = None
+    cep: Optional[str] = None
+    observacoes: Optional[str] = None
+
+
+class PartnerUpdate(SQLModel):
+    nome: Optional[str] = None
+    cnpj: Optional[str] = None
+    nivel: Optional[PartnerLevel] = None
+    porcentagem_comissao: Optional[float] = None
+    status: Optional[PartnerStatus] = None
+    email: Optional[str] = None
+    telefone: Optional[str] = None
+    endereco: Optional[str] = None
+    cidade: Optional[str] = None
+    estado: Optional[str] = None
+    cep: Optional[str] = None
+    observacoes: Optional[str] = None
+
+
+class PartnerResponse(SQLModel):
+    id: int
+    nome: str
+    cnpj: Optional[str]
+    nivel: PartnerLevel
+    porcentagem_comissao: float
+    status: PartnerStatus
+    email: Optional[str]
+    telefone: Optional[str]
+    endereco: Optional[str]
+    cidade: Optional[str]
+    estado: Optional[str]
+    cep: Optional[str]
+    observacoes: Optional[str]
+    created_at: datetime
+    updated_at: datetime
+    # Estatísticas
+    total_comissoes: Optional[float] = 0.0
+    comissoes_pagas: Optional[float] = 0.0
+    comissoes_pendentes: Optional[float] = 0.0
+    total_clientes: Optional[int] = 0
+
+
+class PartnerUser(SQLModel, table=True):
+    """Usuários dos Parceiros (dono e funcionários)"""
+    id: Optional[int] = Field(default=None, primary_key=True)
+    partner_id: int = Field(foreign_key="partner.id", index=True)
+    email: str = Field(unique=True, index=True)
+    full_name: str
+    hashed_password: str
+    is_active: bool = Field(default=True)
+    is_owner: bool = Field(default=False)  # Se é o dono do parceiro
+    role: str = Field(default="partner_user")  # partner_user, partner_admin
+    # Timestamps
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    
+    # Relationships
+    partner: Optional[Partner] = Relationship(back_populates="users")
+
+
+class PartnerUserCreate(SQLModel):
+    partner_id: int
+    email: str
+    password: str
+    full_name: str
+    is_owner: Optional[bool] = False
+    role: Optional[str] = "partner_user"
+    is_active: Optional[bool] = True
+    
+    @field_validator('password')
+    @classmethod
+    def validate_password(cls, v: str) -> str:
+        if not v:
+            raise ValueError('Password cannot be empty')
+        password_bytes = v.encode('utf-8')
+        if len(password_bytes) > 72:
+            raise ValueError('Password is too long. Maximum length is 72 characters.')
+        if len(v) < 6:
+            raise ValueError('Password must be at least 6 characters long')
+        return v
+
+
+class PartnerUserUpdate(SQLModel):
+    email: Optional[str] = None
+    full_name: Optional[str] = None
+    is_active: Optional[bool] = None
+    is_owner: Optional[bool] = None
+    role: Optional[str] = None
+
+
+class PartnerUserResponse(SQLModel):
+    id: int
+    partner_id: int
+    email: str
+    full_name: str
+    is_active: bool
+    is_owner: bool
+    role: str
+    created_at: datetime
+    updated_at: datetime
+    partner_nome: Optional[str] = None
+
+
+class CommissionStatus(str, Enum):
+    PENDENTE = "pendente"
+    PAGO = "pago"
+    CANCELADO = "cancelado"
+
+
+class Commission(SQLModel, table=True):
+    """Comissões dos Parceiros"""
+    id: Optional[int] = Field(default=None, primary_key=True)
+    partner_id: int = Field(foreign_key="partner.id", index=True)
+    customer_id: int = Field(foreign_key="tenant.id", index=True)  # Tenant que comprou a licença
+    valor_pago: float = Field(ge=0)  # Valor da comissão paga
+    data_pagamento: Optional[datetime] = None
+    status_comissao: CommissionStatus = Field(default=CommissionStatus.PENDENTE, index=True)
+    valor_venda: Optional[float] = None  # Valor total da venda/licença
+    porcentagem_aplicada: Optional[float] = None  # Porcentagem de comissão aplicada
+    periodo_referencia: Optional[str] = None  # Ex: "2024-01", "2024-Q1"
+    observacoes: Optional[str] = None
+    # Timestamps
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    
+    # Relationships
+    partner: Optional[Partner] = Relationship(back_populates="commissions")
+    customer: Optional["Tenant"] = Relationship()
+
+
+class CommissionCreate(SQLModel):
+    partner_id: int
+    customer_id: int
+    valor_pago: float
+    data_pagamento: Optional[datetime] = None
+    status_comissao: Optional[CommissionStatus] = CommissionStatus.PENDENTE
+    valor_venda: Optional[float] = None
+    porcentagem_aplicada: Optional[float] = None
+    periodo_referencia: Optional[str] = None
+    observacoes: Optional[str] = None
+
+
+class CommissionUpdate(SQLModel):
+    valor_pago: Optional[float] = None
+    data_pagamento: Optional[datetime] = None
+    status_comissao: Optional[CommissionStatus] = None
+    valor_venda: Optional[float] = None
+    porcentagem_aplicada: Optional[float] = None
+    periodo_referencia: Optional[str] = None
+    observacoes: Optional[str] = None
+
+
+class CommissionResponse(SQLModel):
+    id: int
+    partner_id: int
+    customer_id: int
+    valor_pago: float
+    data_pagamento: Optional[datetime]
+    status_comissao: CommissionStatus
+    valor_venda: Optional[float]
+    porcentagem_aplicada: Optional[float]
+    periodo_referencia: Optional[str]
+    observacoes: Optional[str]
+    created_at: datetime
+    updated_at: datetime
+    # Dados relacionados
+    partner_nome: Optional[str] = None
+    customer_name: Optional[str] = None
+
+
+class TicketStatus(str, Enum):
+    ABERTO = "aberto"
+    EM_ANDAMENTO = "em_andamento"
+    RESOLVIDO = "resolvido"
+    FECHADO = "fechado"
+    CANCELADO = "cancelado"
+
+
+class TicketPriority(str, Enum):
+    BAIXA = "baixa"
+    MEDIA = "media"
+    ALTA = "alta"
+    URGENTE = "urgente"
+
+
+class SupportTicket(SQLModel, table=True):
+    """Tickets de Suporte"""
+    id: Optional[int] = Field(default=None, primary_key=True)
+    customer_id: int = Field(foreign_key="tenant.id", index=True)  # Cliente que abriu o ticket
+    partner_id: Optional[int] = Field(foreign_key="partner.id", default=None, index=True)  # Parceiro que está atendendo (se aplicável)
+    titulo: str
+    descricao: str
+    status: TicketStatus = Field(default=TicketStatus.ABERTO, index=True)
+    prioridade: TicketPriority = Field(default=TicketPriority.MEDIA, index=True)
+    categoria: Optional[str] = None  # Ex: "tecnico", "comercial", "financeiro"
+    resolucao: Optional[str] = None  # Resolução do ticket
+    # Timestamps
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    resolved_at: Optional[datetime] = None
+    closed_at: Optional[datetime] = None
+    
+    # Relationships
+    customer: Optional["Tenant"] = Relationship()
+    partner: Optional[Partner] = Relationship(back_populates="support_tickets")
+
+
+class SupportTicketCreate(SQLModel):
+    customer_id: int
+    partner_id: Optional[int] = None
+    titulo: str
+    descricao: str
+    status: Optional[TicketStatus] = TicketStatus.ABERTO
+    prioridade: Optional[TicketPriority] = TicketPriority.MEDIA
+    categoria: Optional[str] = None
+
+
+class SupportTicketUpdate(SQLModel):
+    titulo: Optional[str] = None
+    descricao: Optional[str] = None
+    status: Optional[TicketStatus] = None
+    prioridade: Optional[TicketPriority] = None
+    categoria: Optional[str] = None
+    resolucao: Optional[str] = None
+    partner_id: Optional[int] = None
+
+
+class SupportTicketResponse(SQLModel):
+    id: int
+    customer_id: int
+    partner_id: Optional[int]
+    titulo: str
+    descricao: str
+    status: TicketStatus
+    prioridade: TicketPriority
+    categoria: Optional[str]
+    resolucao: Optional[str]
+    created_at: datetime
+    updated_at: datetime
+    resolved_at: Optional[datetime]
+    closed_at: Optional[datetime]
+    # Dados relacionados
+    customer_name: Optional[str] = None
+    partner_nome: Optional[str] = None

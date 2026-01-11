@@ -1,15 +1,18 @@
-import { useState } from 'react'
-import { useNavigate, Link } from 'react-router-dom'
+import { useState, useEffect } from 'react'
+import { useNavigate, Link, useSearchParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { useAuth } from '@/contexts/AuthContext'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import api from '@/lib/api'
 
 export function Register() {
   const { t } = useTranslation()
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
   const { register } = useAuth()
+  const partnerId = searchParams.get('partner_id')
   const [formData, setFormData] = useState({
     email: '',
     password: '',
@@ -25,7 +28,19 @@ export function Register() {
     setLoading(true)
 
     try {
-      await register(formData.email, formData.password, formData.fullName, formData.tenantName)
+      // Se houver partner_id na URL, passar como query parameter
+      if (partnerId) {
+        const response = await api.post(`/api/auth/register?partner_id=${partnerId}`, {
+          email: formData.email,
+          password: formData.password,
+          full_name: formData.fullName,
+          tenant_name: formData.tenantName,
+        })
+        // Após registro, fazer login
+        await register(formData.email, formData.password, formData.fullName, formData.tenantName)
+      } else {
+        await register(formData.email, formData.password, formData.fullName, formData.tenantName)
+      }
       navigate('/dashboard')
     } catch (err: any) {
       setError(err.response?.data?.detail || t('common.error'))

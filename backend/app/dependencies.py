@@ -2,7 +2,7 @@ from fastapi import Depends, HTTPException, status, Request
 from typing import Optional, TypeVar, Type
 from sqlmodel import Session, select, SQLModel, func, and_
 from app.database import get_session
-from app.models import User, UserRole, TenantLimit, Lead, Item, PlanLimitDefaults, PlanType
+from app.models import User, UserRole, TenantLimit, Lead, Item, PlanLimitDefaults, PlanType, PartnerUser, Partner
 from app.auth import decode_access_token
 
 T = TypeVar('T', bound=SQLModel)
@@ -67,6 +67,9 @@ def get_current_user(
         logger.error("No user_id in token payload")
         raise credentials_exception
     
+    # Verificar tipo de usuário
+    user_type = payload.get("type", "user")  # Default é "user" para compatibilidade
+    
     # Converter user_id de string para int (já que JWT requer string)
     try:
         user_id = int(user_id_str)
@@ -74,8 +77,30 @@ def get_current_user(
         logger.error(f"Invalid user_id format in token: {user_id_str}")
         raise credentials_exception
     
-    logger.info(f"Token valid, user_id: {user_id}")
+    logger.info(f"Token valid, user_id: {user_id}, type: {user_type}")
     
+    if user_type == "partner":
+        # Buscar PartnerUser
+        partner_user = session.get(PartnerUser, user_id)
+        if partner_user is None:
+            logger.error(f"PartnerUser {user_id} not found in database")
+            raise credentials_exception
+        
+        if not partner_user.is_active:
+            logger.warning(f"PartnerUser {user_id} is inactive")
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="User is inactive"
+            )
+        
+        logger.info(f"PartnerUser authenticated: {partner_user.email}")
+        # Retornar como User para compatibilidade, mas vamos criar uma função separada
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Use /api/partner-portal endpoints for partner users"
+        )
+    
+    # Buscar User normal
     user = session.get(User, user_id)
     if user is None:
         logger.error(f"User {user_id} not found in database")
@@ -90,6 +115,75 @@ def get_current_user(
     
     logger.info(f"User authenticated: {user.email}")
     return user
+
+
+def get_current_partner_user(
+    request: Request,
+    session: Session = Depends(get_session)
+) -> PartnerUser:
+    """Get current authenticated partner user from JWT token"""
+    import logging
+    logger = logging.getLogger(__name__)
+    
+    credentials_exception = HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Could not validate credentials",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+    
+    authorization = request.headers.get("Authorization") or request.headers.get("authorization")
+    
+    if not authorization:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Not authenticated",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    
+    try:
+        scheme, token = authorization.split(maxsplit=1)
+        if scheme.lower() != "bearer":
+            raise credentials_exception
+    except ValueError:
+        raise credentials_exception
+    
+    payload = decode_access_token(token)
+    if payload is None:
+        raise credentials_exception
+    
+    user_id_str = payload.get("sub")
+    user_type = payload.get("type", "user")
+    
+    if user_type != "partner":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="This endpoint is only for partner users"
+        )
+    
+    try:
+        user_id = int(user_id_str)
+    except (ValueError, TypeError):
+        raise credentials_exception
+    
+    partner_user = session.get(PartnerUser, user_id)
+    if partner_user is None:
+        raise credentials_exception
+    
+    if not partner_user.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="User is inactive"
+        )
+    
+    # Verificar se o parceiro está ativo
+    partner = session.get(Partner, partner_user.partner_id)
+    if not partner or partner.status != "ativo":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Partner is inactive or not approved"
+        )
+    
+    return partner_user
 
 
 def get_current_active_user(
@@ -374,4 +468,3 @@ async def check_limit(
             status_code=status.HTTP_403_FORBIDDEN,
             detail=f"Limite de {metric_names.get(metric, metric)} atingido ({current_count}/{max_limit}). Faça upgrade ou compre um add-on."
         )
-

@@ -1,6 +1,6 @@
 from datetime import timedelta
 import uuid
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlmodel import Session, select
 from app.database import get_session
 from app.models import User, UserCreate, UserLogin, UserResponse, Tenant
@@ -14,6 +14,7 @@ router = APIRouter()
 @router.post("/register", response_model=UserResponse)
 async def register(
     user_data: UserCreate,
+    partner_id: int | None = Query(None, description="ID do parceiro (opcional)"),
     session: Session = Depends(get_session)
 ):
     """Register a new user and create a tenant"""
@@ -51,13 +52,15 @@ async def register(
                 tenant_name = f"{user_data.tenant_name}-{uuid.uuid4().hex[:8]}"
                 tenant = Tenant(
                     name=tenant_name,
-                    company_name=user_data.tenant_name
+                    company_name=user_data.tenant_name,
+                    partner_id=partner_id
                 )
         else:
             # Create new tenant
             tenant = Tenant(
                 name=user_data.tenant_name,
-                company_name=user_data.tenant_name
+                company_name=user_data.tenant_name,
+                partner_id=partner_id
             )
         
         session.add(tenant)

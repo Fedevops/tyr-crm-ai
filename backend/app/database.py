@@ -1905,6 +1905,135 @@ def migrate_finance_tables():
             print(f"⚠️ Error in migrate_finance_tables: {e}")
 
 
+def migrate_partners_tables():
+    """Create partners, partnerusers, commissions, and supporttickets tables, and add partner_id to tenant"""
+    with Session(engine) as session:
+        try:
+            # Check if partner table exists
+            table_check = text("""
+                SELECT EXISTS (
+                    SELECT FROM information_schema.tables 
+                    WHERE table_name = 'partner'
+                )
+            """)
+            result = session.exec(table_check).first()
+            partner_exists = result[0] if result else False
+            
+            if not partner_exists:
+                print("✓ Partner table will be created by SQLModel")
+            else:
+                print("✓ Partner table already exists")
+            
+            # Add partner_id column to tenant table if it doesn't exist
+            tenant_table_check = text("""
+                SELECT EXISTS (
+                    SELECT FROM information_schema.tables 
+                    WHERE table_name = 'tenant'
+                )
+            """)
+            tenant_exists = session.exec(tenant_table_check).first()
+            tenant_exists = tenant_exists[0] if tenant_exists else False
+            
+            if tenant_exists:
+                check_partner_id = text("""
+                    SELECT column_name 
+                    FROM information_schema.columns 
+                    WHERE table_name='tenant' AND column_name='partner_id'
+                """)
+                result = session.exec(check_partner_id).first()
+                
+                if not result:
+                    try:
+                        # Add column as nullable first
+                        alter_query = text("ALTER TABLE tenant ADD COLUMN partner_id INTEGER")
+                        session.exec(alter_query)
+                        session.commit()
+                        
+                        # Add foreign key constraint after partner table is created
+                        # Check if partner table exists now
+                        partner_check = text("""
+                            SELECT EXISTS (
+                                SELECT FROM information_schema.tables 
+                                WHERE table_name = 'partner'
+                            )
+                        """)
+                        partner_result = session.exec(partner_check).first()
+                        if partner_result and partner_result[0]:
+                            try:
+                                fk_query = text("""
+                                    ALTER TABLE tenant 
+                                    ADD CONSTRAINT tenant_partner_id_fkey 
+                                    FOREIGN KEY (partner_id) REFERENCES partner(id)
+                                """)
+                                session.exec(fk_query)
+                                session.commit()
+                                
+                                # Add index
+                                idx_query = text("CREATE INDEX IF NOT EXISTS idx_tenant_partner_id ON tenant(partner_id)")
+                                session.exec(idx_query)
+                                session.commit()
+                                print("✓ Added partner_id column to tenant table with foreign key and index")
+                            except Exception as fk_error:
+                                session.rollback()
+                                print(f"⚠️ Could not add foreign key for tenant.partner_id: {fk_error}")
+                        else:
+                            print("⚠️ Partner table does not exist yet. Foreign key will be added when table is created.")
+                    except Exception as e:
+                        session.rollback()
+                        print(f"⚠️ Could not add partner_id to tenant: {e}")
+                else:
+                    print("✓ tenant.partner_id column already exists")
+            
+            # Check if partneruser table exists
+            partneruser_check = text("""
+                SELECT EXISTS (
+                    SELECT FROM information_schema.tables 
+                    WHERE table_name = 'partneruser'
+                )
+            """)
+            partneruser_exists = session.exec(partneruser_check).first()
+            partneruser_exists = partneruser_exists[0] if partneruser_exists else False
+            
+            if not partneruser_exists:
+                print("✓ PartnerUser table will be created by SQLModel")
+            else:
+                print("✓ PartnerUser table already exists")
+            
+            # Check if commission table exists
+            commission_check = text("""
+                SELECT EXISTS (
+                    SELECT FROM information_schema.tables 
+                    WHERE table_name = 'commission'
+                )
+            """)
+            commission_exists = session.exec(commission_check).first()
+            commission_exists = commission_exists[0] if commission_exists else False
+            
+            if not commission_exists:
+                print("✓ Commission table will be created by SQLModel")
+            else:
+                print("✓ Commission table already exists")
+            
+            # Check if supportticket table exists
+            supportticket_check = text("""
+                SELECT EXISTS (
+                    SELECT FROM information_schema.tables 
+                    WHERE table_name = 'supportticket'
+                )
+            """)
+            supportticket_exists = session.exec(supportticket_check).first()
+            supportticket_exists = supportticket_exists[0] if supportticket_exists else False
+            
+            if not supportticket_exists:
+                print("✓ SupportTicket table will be created by SQLModel")
+            else:
+                print("✓ SupportTicket table already exists")
+                
+        except Exception as e:
+            session.rollback()
+            print(f"⚠️ Migration warning (partners tables): {e}")
+
+
 def init_db():
     """Initialize database tables"""
     SQLModel.metadata.create_all(engine)
@@ -1937,6 +2066,8 @@ def init_db():
     migrate_notifications_table()
     # Criar tabelas de chat e base de conhecimento
     migrate_chat_tables()
+    # Criar tabelas de parceiros e comissões
+    migrate_partners_tables()
     # Popular base de conhecimento inicial
     try:
         from app.scripts.populate_knowledge_base import populate_knowledge_base
