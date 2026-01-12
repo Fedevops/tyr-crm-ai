@@ -3,6 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { TyrLoadingSpinner } from '@/components/TyrLoadingSpinner'
 import { Users, DollarSign, TrendingUp, AlertCircle } from 'lucide-react'
 import { backofficeApi } from '@/lib/api'
+import { useTranslation } from 'react-i18next'
 
 const formatCurrency = (value: number) => {
   return new Intl.NumberFormat('pt-BR', {
@@ -25,6 +26,7 @@ export function BackofficeDashboard() {
   const [loading, setLoading] = useState(true)
   const [data, setData] = useState<DashboardData | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const { t } = useTranslation()
 
   useEffect(() => {
     loadDashboard()
@@ -76,21 +78,21 @@ export function BackofficeDashboard() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-3xl font-bold">Backoffice - Dashboard</h1>
-        <p className="text-gray-600 mt-2">Visão geral do sistema de parceiros</p>
+        <h1 className="text-3xl font-bold">{t('backoffice-dashboard.title', 'Backoffice - Dashboard')}</h1>
+        <p className="text-gray-600 mt-2">{t('backoffice-dashboard.generalOverview', 'Visão geral do sistema de parceiros')}</p>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         {/* Total de Parceiros Ativos */}
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Parceiros Ativos</CardTitle>
+            <CardTitle className="text-sm font-medium">{t('backoffice-dashboard.totalPartners', 'Total de Parceiros Ativos')}</CardTitle>
             <Users className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{data.total_parceiros_ativos}</div>
             <p className="text-xs text-muted-foreground">
-              de {data.total_parceiros} total
+              {t('backoffice-dashboard.totalPartners', 'Total Parceiros Ativos')} de {data.total_parceiros} total
             </p>
           </CardContent>
         </Card>
@@ -98,13 +100,13 @@ export function BackofficeDashboard() {
         {/* Volume de Vendas Este Mês */}
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Vendas Este Mês</CardTitle>
+            <CardTitle className="text-sm font-medium">{t('backoffice-dashboard.totalSalesThisMonth', 'Total de Vendas Este Mês')}</CardTitle>
             <TrendingUp className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{formatCurrency(data.volume_vendas_mes)}</div>
             <p className="text-xs text-muted-foreground">
-              Comissões pagas: {formatCurrency(data.comissoes_pagas_mes)}
+              {t('backoffice-dashboard.paidCommissions', 'Comissões pagas')}: {formatCurrency(data.comissoes_pagas_mes)}
             </p>
           </CardContent>
         </Card>
@@ -112,7 +114,7 @@ export function BackofficeDashboard() {
         {/* Comissões a Pagar */}
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Comissões a Pagar</CardTitle>
+            <CardTitle className="text-sm font-medium">{t('backoffice-dashboard.pendingCommissions', 'Comissões a Pagar')}</CardTitle>
             <DollarSign className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
@@ -120,7 +122,7 @@ export function BackofficeDashboard() {
               {formatCurrency(data.comissoes_pagar)}
             </div>
             <p className="text-xs text-muted-foreground">
-              Status: Pendente
+              {t('backoffice-dashboard.status', 'Status')}: {t('backoffice-dashboard.pending', 'Pendente')}
             </p>
           </CardContent>
         </Card>
@@ -128,13 +130,13 @@ export function BackofficeDashboard() {
         {/* Total de Clientes via Parceiros */}
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Clientes via Parceiros</CardTitle>
+            <CardTitle className="text-sm font-medium">{t('backoffice-dashboard.totalCustomersViaPartners', 'Total de Clientes via Parceiros')}</CardTitle>
             <Users className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{data.total_clientes_parceiros}</div>
             <p className="text-xs text-muted-foreground">
-              Licenças vendidas
+              {t('backoffice-dashboard.licensedSales', 'Licenças vendidas')}
             </p>
           </CardContent>
         </Card>
@@ -144,38 +146,38 @@ export function BackofficeDashboard() {
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         <Card>
           <CardHeader>
-            <CardTitle>Parceiros Pendentes</CardTitle>
+            <CardTitle>{t('backoffice-dashboard.totalPartnersPending', 'Total de Parceiros Pendentes')}</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="text-3xl font-bold text-yellow-600">
               {data.parceiros_pendentes}
             </div>
             <p className="text-sm text-muted-foreground mt-2">
-              Parceiros aguardando aprovação
+              {t('backoffice-dashboard.partnersWaitingApproval', 'Parceiros aguardando aprovação')}
             </p>
           </CardContent>
         </Card>
 
         <Card>
           <CardHeader>
-            <CardTitle>Resumo Financeiro</CardTitle>
+            <CardTitle>{t('backoffice-dashboard.financialSummary', 'Resumo Financeiro')}</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="space-y-2">
               <div className="flex justify-between">
-                <span className="text-sm text-muted-foreground">Comissões Pagas (Mês):</span>
+                <span className="text-sm text-muted-foreground">{t('backoffice-dashboard.paidCommissionsThisMonth', 'Comissões Pagas (Mês)')}:</span>
                 <span className="font-semibold text-green-600">
                   {formatCurrency(data.comissoes_pagas_mes)}
                 </span>
               </div>
               <div className="flex justify-between">
-                <span className="text-sm text-muted-foreground">Comissões Pendentes:</span>
+                <span className="text-sm text-muted-foreground">{t('backoffice-dashboard.pendingCommissions', 'Comissões Pendentes')}:</span>
                 <span className="font-semibold text-orange-600">
                   {formatCurrency(data.comissoes_pagar)}
                 </span>
               </div>
               <div className="flex justify-between pt-2 border-t">
-                <span className="text-sm font-medium">Volume Total (Mês):</span>
+                <span className="text-sm font-medium">{t('backoffice-dashboard.totalVolumeThisMonth', 'Volume Total (Mês)')}:</span>
                 <span className="font-bold text-lg">
                   {formatCurrency(data.volume_vendas_mes)}
                 </span>

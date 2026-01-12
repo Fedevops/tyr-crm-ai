@@ -148,7 +148,7 @@ export function Sidebar({ isOpen = true, onClose }: SidebarProps) {
               )}
             >
               <UsersIcon className="h-4 w-4" />
-              <span>Clientes</span>
+              <span>{t('backoffice.customers', 'Clientes')}</span>
             </Link>
             <Link
               to="/backoffice/partners"

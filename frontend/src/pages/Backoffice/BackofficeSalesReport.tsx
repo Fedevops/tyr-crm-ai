@@ -13,6 +13,7 @@ import {
 import { TyrLoadingSpinner } from '@/components/TyrLoadingSpinner'
 import { Search, Download } from 'lucide-react'
 import { backofficeApi } from '@/lib/api'
+import { useTranslation } from 'react-i18next'
 
 const formatCurrency = (value: number) => {
   return new Intl.NumberFormat('pt-BR', {
@@ -61,6 +62,7 @@ export function BackofficeSalesReport() {
     data_inicio: '',
     data_fim: '',
   })
+  const { t } = useTranslation()
   const [currentPage, setCurrentPage] = useState(0)
   const itemsPerPage = 20
 
@@ -131,28 +133,28 @@ export function BackofficeSalesReport() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-3xl font-bold">Relatório de Vendas</h1>
-        <p className="text-gray-600 mt-2">Licenças vendidas via parceiros</p>
+        <h1 className="text-3xl font-bold">{t('backoffice-sales-report.title', 'Relatório de Vendas')}</h1>
+        <p className="text-gray-600 mt-2">{t('backoffice-sales-report.description', 'Licenças vendidas via parceiros')}</p>
       </div>
 
       {/* Filtros */}
       <Card>
         <CardHeader>
-          <CardTitle>Filtros</CardTitle>
+          <CardTitle>{t('backoffice-sales-report.filters', 'Filtros')}</CardTitle>
         </CardHeader>
         <CardContent>
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
             <div>
-              <Label htmlFor="partner">Parceiro</Label>
+              <Label htmlFor="partner">{t('backoffice-sales-report.partner', 'Parceiro')}</Label>
               <Select
                 value={filters.partner_id}
                 onValueChange={(value) => handleFilterChange('partner_id', value)}
               >
                 <SelectTrigger>
-                  <SelectValue placeholder="Todos os parceiros" />
+                  <SelectValue placeholder={t('backoffice-sales-report.allPartners', 'Todos os parceiros')} />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">Todos os parceiros</SelectItem>
+                  <SelectItem value="all">{t('backoffice-sales-report.allPartners', 'Todos os parceiros')}</SelectItem>
                   {partners.map((partner) => (
                     <SelectItem key={partner.id} value={partner.id.toString()}>
                       {partner.nome}
@@ -162,7 +164,7 @@ export function BackofficeSalesReport() {
               </Select>
             </div>
             <div>
-              <Label htmlFor="data_inicio">Data Inicial</Label>
+              <Label htmlFor="data_inicio">{t('backoffice-sales-report.startDate', 'Data Inicial')}</Label>
               <Input
                 id="data_inicio"
                 type="date"
@@ -171,7 +173,7 @@ export function BackofficeSalesReport() {
               />
             </div>
             <div>
-              <Label htmlFor="data_fim">Data Final</Label>
+              <Label htmlFor="data_fim">{t('backoffice-sales-report.endDate', 'Data Final')}</Label>
               <Input
                 id="data_fim"
                 type="date"
@@ -182,10 +184,10 @@ export function BackofficeSalesReport() {
             <div className="flex items-end gap-2">
               <Button onClick={handleApplyFilters} className="flex-1">
                 <Search className="h-4 w-4 mr-2" />
-                Filtrar
+                {t('backoffice-sales-report.filter', 'Filtrar')}
               </Button>
               <Button variant="outline" onClick={handleClearFilters}>
-                Limpar
+                {t('backoffice-sales-report.clear', 'Limpar')}
               </Button>
             </div>
           </div>
@@ -198,11 +200,11 @@ export function BackofficeSalesReport() {
           <CardContent className="pt-6">
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div>
-                <p className="text-sm text-gray-600">Total de Vendas</p>
+                <p className="text-sm text-gray-600">{t('backoffice-sales-report.totalSales', 'Total de Vendas')}</p>
                 <p className="text-2xl font-bold">{report.total}</p>
               </div>
               <div>
-                <p className="text-sm text-gray-600">Total de Comissões Pagas</p>
+                <p className="text-sm text-gray-600">{t('backoffice-sales-report.totalPaidCommissions', 'Total de Comissões Pagas')}</p>
                 <p className="text-2xl font-bold text-green-600">
                   {formatCurrency(
                     report.items.reduce((sum, item) => sum + item.comissoes_pagas, 0)
@@ -210,7 +212,7 @@ export function BackofficeSalesReport() {
                 </p>
               </div>
               <div>
-                <p className="text-sm text-gray-600">Total de Comissões Pendentes</p>
+                <p className="text-sm text-gray-600">{t('backoffice-sales-report.totalPendingCommissions', 'Total de Comissões Pendentes')}</p>
                 <p className="text-2xl font-bold text-orange-600">
                   {formatCurrency(
                     report.items.reduce((sum, item) => sum + item.comissoes_pendentes, 0)
@@ -234,13 +236,13 @@ export function BackofficeSalesReport() {
               <table className="w-full">
                 <thead>
                   <tr className="border-b">
-                    <th className="text-left p-2">Cliente</th>
-                    <th className="text-left p-2">Parceiro</th>
-                    <th className="text-left p-2">Nível</th>
-                    <th className="text-left p-2">Data Venda</th>
-                    <th className="text-left p-2">Comissões Pagas</th>
-                    <th className="text-left p-2">Comissões Pendentes</th>
-                    <th className="text-left p-2">Total</th>
+                    <th className="text-left p-2">{t('backoffice-sales-report.customer', 'Cliente')}</th>
+                    <th className="text-left p-2">{t('backoffice-sales-report.partner', 'Parceiro')}</th>
+                    <th className="text-left p-2">{t('backoffice-sales-report.level', 'Nível')}</th>
+                    <th className="text-left p-2">{t('backoffice-sales-report.dataSale', 'Data Venda')}</th>
+                    <th className="text-left p-2">{t('backoffice-sales-report.paidCommission', 'Comissões Pagas')}</th>
+                    <th className="text-left p-2">{t('backoffice-sales-report.pendingCommission', 'Comissões Pendentes')}</th>
+                    <th className="text-left p-2">{t('backoffice-sales-report.total', 'Total')}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -291,7 +293,7 @@ export function BackofficeSalesReport() {
               </table>
               {(!report || report.items.length === 0) && (
                 <div className="text-center py-8 text-gray-500">
-                  Nenhuma venda encontrada
+                  {t('backoffice-sales-report.noSalesFound', 'Nenhuma venda encontrada')}
                 </div>
               )}
             </div>
@@ -300,7 +302,7 @@ export function BackofficeSalesReport() {
             {report && report.total > itemsPerPage && (
               <div className="flex justify-between items-center mt-4">
                 <div className="text-sm text-gray-600">
-                  Mostrando {currentPage * itemsPerPage + 1} a{' '}
+                  {t('backoffice-sales-report.showing', 'Mostrando')} {currentPage * itemsPerPage + 1} a{' '}
                   {Math.min((currentPage + 1) * itemsPerPage, report.total)} de {report.total}
                 </div>
                 <div className="flex gap-2">
@@ -309,14 +311,14 @@ export function BackofficeSalesReport() {
                     onClick={() => setCurrentPage((p) => Math.max(0, p - 1))}
                     disabled={currentPage === 0}
                   >
-                    Anterior
+                    {t('backoffice-sales-report.previous', 'Anterior')}
                   </Button>
                   <Button
                     variant="outline"
                     onClick={() => setCurrentPage((p) => Math.min(totalPages - 1, p + 1))}
                     disabled={currentPage >= totalPages - 1}
                   >
-                    Próxima
+                    {t('backoffice-sales-report.next', 'Próxima')}
                   </Button>
                 </div>
               </div>

@@ -22,6 +22,7 @@ import { TyrLoadingSpinner } from '@/components/TyrLoadingSpinner'
 import { Search, Eye, CheckCircle, XCircle, Users as UsersIcon } from 'lucide-react'
 import { backofficeApi } from '@/lib/api'
 import { useToast } from '@/components/ui/use-toast'
+import { useTranslation } from 'react-i18next'
 
 const formatDate = (dateString: string) => {
   const date = new Date(dateString)
@@ -62,6 +63,7 @@ export function BackofficeTenants() {
   const [partners, setPartners] = useState<any[]>([])
   const [selectedTenant, setSelectedTenant] = useState<Tenant | null>(null)
   const [isDialogOpen, setIsDialogOpen] = useState(false)
+  const { t } = useTranslation()
   const [filters, setFilters] = useState({
     partner_id: 'all',
     search: '',
@@ -133,14 +135,14 @@ export function BackofficeTenants() {
       return (
         <span className="flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800">
           <CheckCircle className="h-3 w-3" />
-          Ativo
+          {t('backoffice-customers.active', 'Ativo')}
         </span>
       )
     }
     return (
       <span className="flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-800">
         <XCircle className="h-3 w-3" />
-        Inativo
+        {t('backoffice-customers.inactive', 'Inativo')}
       </span>
     )
   }
@@ -150,24 +152,24 @@ export function BackofficeTenants() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-3xl font-bold">Gestão de Clientes</h1>
-        <p className="text-gray-600 mt-2">Visualize todos os tenants e seus usuários</p>
+        <h1 className="text-3xl font-bold">{t('backoffice-customers.title', 'Gestão de Clientes')}</h1>
+        <p className="text-gray-600 mt-2">{t('backoffice-customers.description', 'Visualize todos os tenants e seus usuários')}</p>
       </div>
 
       {/* Filtros */}
       <Card>
         <CardHeader>
-          <CardTitle>Filtros</CardTitle>
+          <CardTitle>{t('backoffice-customers.filters', 'Filtros')}</CardTitle>
         </CardHeader>
         <CardContent>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div>
-              <Label htmlFor="search">Buscar</Label>
+              <Label htmlFor="search">{t('backoffice-customers.search', 'Buscar')}</Label>
               <div className="relative">
                 <Search className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
                 <Input
                   id="search"
-                  placeholder="Nome ou empresa..."
+                  placeholder={t('backoffice-customers.searchPlaceholder', 'Nome ou empresa...')}
                   value={filters.search}
                   onChange={(e) => setFilters({ ...filters, search: e.target.value })}
                   className="pl-10"
@@ -175,16 +177,16 @@ export function BackofficeTenants() {
               </div>
             </div>
             <div>
-              <Label htmlFor="partner">Parceiro</Label>
+              <Label htmlFor="partner">{t('backoffice-customers.partner', 'Parceiro')}</Label>
               <Select
                 value={filters.partner_id}
                 onValueChange={(value) => setFilters({ ...filters, partner_id: value })}
               >
                 <SelectTrigger>
-                  <SelectValue placeholder="Todos" />
+                  <SelectValue placeholder={t('backoffice-customers.allPartners', 'Todos os parceiros')}/>
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">Todos os parceiros</SelectItem>
+                  <SelectItem value="all">{t('backoffice-customers.allPartners', 'Todos os parceiros')}</SelectItem>
                   {partners.map((partner) => (
                     <SelectItem key={partner.id} value={partner.id.toString()}>
                       {partner.nome}
@@ -196,7 +198,7 @@ export function BackofficeTenants() {
             <div className="flex items-end">
               <Button onClick={loadTenants} className="w-full">
                 <Search className="h-4 w-4 mr-2" />
-                Filtrar
+                {t('backoffice-customers.filter', 'Filtrar')}
               </Button>
             </div>
           </div>
@@ -215,12 +217,12 @@ export function BackofficeTenants() {
               <table className="w-full">
                 <thead>
                   <tr className="border-b">
-                    <th className="text-left p-2">Cliente</th>
-                    <th className="text-left p-2">Parceiro</th>
-                    <th className="text-left p-2">Status Licença</th>
-                    <th className="text-left p-2">Usuários</th>
-                    <th className="text-left p-2">Data Cadastro</th>
-                    <th className="text-right p-2">Ações</th>
+                    <th className="text-left p-2">{t('backoffice-customers.customer', 'Cliente')}</th>
+                    <th className="text-left p-2">{t('backoffice-customers.partner', 'Parceiro')}</th>
+                    <th className="text-left p-2">{t('backoffice-customers.licenseStatus', 'Status Licença')}</th>
+                    <th className="text-left p-2">{t('backoffice-customers.users', 'Usuários')}</th>
+                    <th className="text-left p-2">{t('backoffice-customers.registrationDate', 'Data Cadastro')}</th>
+                    <th className="text-right p-2">{t('backoffice-customers.actions', 'Ações')}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -232,8 +234,8 @@ export function BackofficeTenants() {
                           <div className="text-sm text-gray-600">{tenant.company_name}</div>
                         </div>
                       </td>
-                      <td className="p-2">{tenant.partner_nome || 'Venda Direta'}</td>
-                      <td className="p-2">{getStatusBadge(tenant.license_status)}</td>
+                      <td className="p-2">{tenant.partner_nome || t('backoffice-customers.directSale', 'Venda Direta')}</td>
+                      <td className="p-2">{getStatusBadge(t(tenant.license_status))}</td>
                       <td className="p-2">
                         <div className="flex items-center gap-2">
                           <UsersIcon className="h-4 w-4" />
@@ -249,7 +251,7 @@ export function BackofficeTenants() {
                             onClick={() => handleViewDetails(tenant.tenant_id)}
                           >
                             <Eye className="h-4 w-4 mr-2" />
-                            Ver Detalhes
+                            {t('backoffice-customers.viewDetails', 'Ver Detalhes')}
                           </Button>
                         </div>
                       </td>

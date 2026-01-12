@@ -22,6 +22,7 @@ import { TyrLoadingSpinner } from '@/components/TyrLoadingSpinner'
 import { Plus, Edit, CheckCircle, XCircle, Trash2, Search, Users, Copy } from 'lucide-react'
 import { backofficeApi } from '@/lib/api'
 import { useToast } from '@/components/ui/use-toast'
+import { useTranslation } from 'react-i18next'
 
 const formatCurrency = (value: number) => {
   return new Intl.NumberFormat('pt-BR', {
@@ -75,6 +76,7 @@ export function BackofficePartners() {
     full_name: '',
     is_owner: false,
     })
+    const { t } = useTranslation()
 
   useEffect(() => {
     loadPartners()
@@ -313,12 +315,12 @@ export function BackofficePartners() {
     <div className="space-y-6">
       <div className="flex justify-between items-center">
         <div>
-          <h1 className="text-3xl font-bold">Gestão de Parceiros</h1>
-          <p className="text-gray-600 mt-2">Gerencie parceiros e suas comissões</p>
+          <h1 className="text-3xl font-bold">{t('backoffice-partners.title', 'Gestão de Parceiros')}</h1>
+          <p className="text-gray-600 mt-2">{t('backoffice-partners.description', 'Gerencie parceiros e suas comissões')}</p>
         </div>
         <Button onClick={handleCreate}>
           <Plus className="h-4 w-4 mr-2" />
-          Novo Parceiro
+          {t('backoffice-partners.createNew', 'Novo Parceiro')}
         </Button>
       </div>
 
@@ -329,7 +331,7 @@ export function BackofficePartners() {
             <div className="relative">
               <Search className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
               <Input
-                placeholder="Buscar por nome, CNPJ ou email..."
+                placeholder={t('backoffice-partners.searchPlaceholder', 'Buscar por nome, CNPJ ou email...')}
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 className="pl-10"
@@ -340,10 +342,10 @@ export function BackofficePartners() {
                 <SelectValue placeholder="Status" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">Todos os Status</SelectItem>
-                <SelectItem value="ativo">Ativo</SelectItem>
-                <SelectItem value="pendente">Pendente</SelectItem>
-                <SelectItem value="inativo">Inativo</SelectItem>
+                <SelectItem value="all">{t('backoffice-partners.allStatuses', 'Todos os Statuses')}</SelectItem>
+                <SelectItem value="ativo">{t('backoffice-partners.active', 'Ativo')}</SelectItem>
+                <SelectItem value="pendente">{t('backoffice-partners.pending', 'Pendente')}</SelectItem>
+                <SelectItem value="inativo">{t('backoffice-partners.inactive', 'Inativo')}</SelectItem>
               </SelectContent>
             </Select>
             <Select value={nivelFilter} onValueChange={setNivelFilter}>
@@ -351,10 +353,10 @@ export function BackofficePartners() {
                 <SelectValue placeholder="Nível" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">Todos os Níveis</SelectItem>
-                <SelectItem value="bronze">Bronze</SelectItem>
-                <SelectItem value="silver">Silver</SelectItem>
-                <SelectItem value="gold">Gold</SelectItem>
+                <SelectItem value="all">{t('backoffice-partners.allLevels', 'Todos os Níveis')}</SelectItem>
+                <SelectItem value="bronze">{t('backoffice-partners.bronze', 'Bronze')}</SelectItem>
+                <SelectItem value="silver">{t('backoffice-partners.silver', 'Silver')}</SelectItem>
+                <SelectItem value="gold">{t('backoffice-partners.gold', 'Gold')}</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -373,14 +375,14 @@ export function BackofficePartners() {
               <table className="w-full">
                 <thead>
                   <tr className="border-b">
-                    <th className="text-left p-2">Nome</th>
-                    <th className="text-left p-2">CNPJ</th>
-                    <th className="text-left p-2">Nível</th>
-                    <th className="text-left p-2">Comissão</th>
-                    <th className="text-left p-2">Status</th>
-                    <th className="text-left p-2">Clientes</th>
-                    <th className="text-left p-2">Total Comissões</th>
-                    <th className="text-right p-2">Ações</th>
+                    <th className="text-left p-2">{t('backoffice-partners.name', 'Nome')}</th>
+                    <th className="text-left p-2">{t('backoffice-partners.cnpj', 'CNPJ')}</th>
+                    <th className="text-left p-2">{t('backoffice-partners.level', 'Nível')}</th>
+                    <th className="text-left p-2">{t('backoffice-partners.commission', 'Comissão')}</th>
+                    <th className="text-left p-2">{t('backoffice-partners.status', 'Status')}</th>
+                    <th className="text-left p-2">{t('backoffice-partners.clients', 'Clientes')}</th>
+                    <th className="text-left p-2">{t('backoffice-partners.totalCommissions', 'Total Comissões')}</th>
+                    <th className="text-right p-2">{t('backoffice-partners.actions', 'Ações')}</th>
                   </tr>
                 </thead>
                 <tbody>
